@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NFC Scan Usage Description</key>
+	<string>PM5モニターに近づけて接続するためにNFCを使用します。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>現在地の最寄りの観測所の潮汐情報を取得したり、トレーニング中の移動距離を記録したりするために位置情報を使用します。</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+</dict>
+</plist>
