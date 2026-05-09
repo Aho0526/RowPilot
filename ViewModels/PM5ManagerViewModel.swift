@@ -438,10 +438,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         // Phase 1: Terminate を全デバイスに順次送信
         enqueueToAllDevices(frame: terminateFrame, label: "TERMINATE") { [weak self] in
             guard let self = self else { return }
-            print("PM5ManagerVM: Phase 1 complete (TERMINATE). Waiting 1.0s for PM5 state transition...")
+            print("PM5ManagerVM: Phase 1 complete (TERMINATE). Waiting 0.8s for PM5 state transition...")
             
             // Phase 2: PM5の状態遷移を待機
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                 guard let workoutFrame = self.buildCSAFEFrame(payload: self.generateWorkoutCommand(distanceMeters: limitedMeters)) else {
                     print("PM5ManagerVM: ⛔ Workout frame construction failed")
                     self.isSending = false
@@ -477,10 +477,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         // Phase 1: Terminate を全デバイスに順次送信
         enqueueToAllDevices(frame: terminateFrame, label: "TERMINATE") { [weak self] in
             guard let self = self else { return }
-            print("PM5ManagerVM: Phase 1 complete (TERMINATE). Waiting 1.0s for PM5 state transition...")
+            print("PM5ManagerVM: Phase 1 complete (TERMINATE). Waiting 0.8s for PM5 state transition...")
             
             // Phase 2: PM5の状態遷移を待機
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                 guard let workoutFrame = self.buildCSAFEFrame(payload: self.generateWorkoutCommand(timeSeconds: limitedSeconds)) else {
                     print("PM5ManagerVM: ⛔ Workout frame construction failed")
                     self.isSending = false
@@ -567,10 +567,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         }
         pendingWorkoutAfterReset = nil
         
-        print("PM5ManagerVM: ✅ All devices GoReady complete. Waiting 1.0s for PM5 internal state transition...")
+        print("PM5ManagerVM: ✅ All devices GoReady complete. Waiting 0.8s for PM5 internal state transition...")
         
-        // GoReady後のPM5内部状態遷移を待つ（1秒）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+        // GoReady後のPM5内部状態遷移を待つ（0.8秒）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             guard let self = self else { return }
             print("PM5ManagerVM: Post-GoReady delay complete. Sending pending workout.")
             
@@ -806,6 +806,11 @@ extension PM5ManagerViewModel: CBPeripheralDelegate {
             return
         }
         print("PM5ManagerVM: Notify状態更新 \(characteristic.uuid.uuidString.prefix(8)): \(characteristic.isNotifying) on \(peripheral.name ?? "Unknown")")
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        // コマンドキューに対して書き込み完了を通知
+        commandQueue.handleWriteComplete(for: peripheral, error: error)
     }
 }
 
