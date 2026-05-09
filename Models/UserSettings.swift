@@ -29,6 +29,9 @@ struct UserSettings: Codable {
     // 言語設定
     var language: AppLanguage
     
+    // ヘルプ表示設定
+    var showHelpButtons: Bool
+    
     init(
         soundEnabled: Bool = true,
         voiceFeedbackEnabled: Bool = false,
@@ -43,7 +46,8 @@ struct UserSettings: Codable {
         iCloudSyncEnabled: Bool = false,
         distanceUnit: DistanceUnit = .meters,
         speedUnit: SpeedUnit = .kilometersPerHour,
-        language: AppLanguage = .japanese
+        language: AppLanguage = .japanese,
+        showHelpButtons: Bool = true
     ) {
         self.soundEnabled = soundEnabled
         self.voiceFeedbackEnabled = voiceFeedbackEnabled
@@ -59,6 +63,7 @@ struct UserSettings: Codable {
         self.distanceUnit = distanceUnit
         self.speedUnit = speedUnit
         self.language = language
+        self.showHelpButtons = showHelpButtons
     }
 }
 
@@ -120,5 +125,32 @@ extension UserSettings {
     /// 設定をリセット（デフォルトに戻す）
     static func reset() {
         UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+    }
+}
+
+// MARK: - Settings Manager
+class SettingsManager: ObservableObject {
+    static let shared = SettingsManager()
+    
+    @Published var settings: UserSettings {
+        didSet {
+            saveSettings()
+        }
+    }
+    
+    init() {
+        self.settings = UserSettings.load()
+        // 起動時に保存された言語でLocalizationManagerを初期化
+        LocalizationManager.shared.setLanguage(self.settings.language)
+    }
+    
+    private func saveSettings() {
+        settings.save()
+    }
+    
+    func resetToDefaults() {
+        UserSettings.reset()
+        settings = UserSettings()
+        LocalizationManager.shared.setLanguage(settings.language)
     }
 }

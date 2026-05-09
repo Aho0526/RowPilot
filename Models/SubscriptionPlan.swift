@@ -42,7 +42,7 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .pro:
             return ["ForceCurveの表示", "Stravaとの同期", "記録の拡張保存"]
         case .manager:
-            return ["PM5との1:複数接続機能",]
+            return ["PM5と複数台接続機能",]
         case .team:
             return ["チーム管理", "複数人にマネージャーモードを共有", "チーム間でのデータ共有"]
         case .max:

@@ -17,6 +17,7 @@ struct LandscapeView: View {
     @State private var gpsStrength: Int = 100
     @State private var statusTimer: Timer?
     @State private var showingSaveAlert = false
+    @State private var showingHelp = false
     
     // SOS State
     @State private var isSOSPressing = false
@@ -65,7 +66,7 @@ struct LandscapeView: View {
                             // 右側: GPS精度とバッテリー
                             HStack(spacing: 12) {
                                 // GPS情報
-                                if UserSettings.load().showGPSAccuracy {
+                                if SettingsManager.shared.settings.showGPSAccuracy {
                                     HStack(spacing: 4) {
                                         if let accuracy = locationManager.previousLocation?.horizontalAccuracy, accuracy >= 0 {
                                             Image(systemName: "location.fill")
@@ -89,6 +90,13 @@ struct LandscapeView: View {
                                     Text("\(Int(batteryLevel * 100))%")
                                         .font(.system(size: 14, weight: .medium, design: .monospaced))
                                         .foregroundColor(Theme.textMain)
+                                }
+                                
+                                // Help Button
+                                if SettingsManager.shared.settings.showHelpButtons {
+                                    HelpCircleButton {
+                                        showingHelp = true
+                                    }
                                 }
                             }
                             .padding(.trailing, 16)
@@ -215,6 +223,15 @@ struct LandscapeView: View {
                 SoundManager.shared.stopSOS() // Safety
             }
             .id(themeManager.currentPreset)
+            .sheet(isPresented: $showingHelp) {
+                HelpView(
+                    title: "RowMode Help".localized,
+                    content: """
+                    // 乗艇画面の使い方（横画面）
+                    // ここにヒントを記述してください
+                    """
+                )
+            }
         } // GeometryReader end
         .alert("Save Record".localized, isPresented: $showingSaveAlert) {
             Button("Save".localized, role: .none) {

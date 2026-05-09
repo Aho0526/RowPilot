@@ -2,7 +2,8 @@ import SwiftUI
 
 struct PracticeView: View {
     @EnvironmentObject var ergManager: RowErgManager
-    
+    @ObservedObject private var settingsManager = SettingsManager.shared
+    @State private var showingHelp = false    
     var body: some View {
         NavigationStack {
             ZStack {
@@ -182,6 +183,53 @@ struct PracticeView: View {
             .navigationTitle("Practice(Dev)".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                if settingsManager.settings.showHelpButtons {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        HelpCircleButton {
+                            showingHelp = true
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingHelp) {
+                HelpView(
+                    title: "Practice Help".localized,
+                    content: """
+    練習タブの使い方
+        1:1通信時
+            PM5をスキャンを押す
+            PM5でconnectボタンを押し、接続したいPM5の画面上に出てきた番号(例:PM5 ID 430665873)と合致するものをアプリ上で選択。
+            画面が遷移し、単一距離か単一時間ワークアウトを指定後、それぞれの目標を対応レンジ内で設定し送信。
+            送信するとともにアプリ内の数値がPM5の画面と合致するので、任意のタイミングでワークアウト開始。
+            終了時に保存/破棄を選択し、ワークアウトを終了する。
+
+
+        1:複数通信(マネージャーモード)時
+        ※これを利用するにはRowPilot Managerのサブスクリプション登録が必要です。
+            マネージャーモードを選択後、PM5をスキャン。
+            使用する全てのPM5を接続可能状態にし、使用するPM5の全てを追加する。
+            "次へ→"を選択し、単一距離か単一時間ワークアウトを設定する。
+            対応レンジ内で距離・時間を設定し送信(送信台数に応じて少し時間がかかります。)
+            送信後、ダッシュボード画面に自動で遷移し全ての接続状況やワークアウト状況が見られます。
+
+        "もう一度ボタン"
+            文字通り最初に設定したワークアウトを繰り返すことができます。
+            押すとワークアウトを保存・破棄を選択し、自動的にPM5のリセット->ワークアウトの設定が完了します。
+
+        "モード設定ボタン"
+            ワークアウトの再設定ができます。
+            強制的にPM5のワークアウト設定がリセットされるのでワークアウト中に操作しないようにしてください。
+
+        "PM5設定ボタン"
+            PM5のカスタムネームや表示上の並び替えができます。
+            ダッシュボードやレースビュー時に便利な機能です。
+
+        ダッシュボード画面にてスマホを横倒しにするとレースをしているような見た目に変更することができます。(RowPilot MAXのみ)
+        2000mTTや練習でレース練習をする際におすすめです。
+    """
+                )
+            }
         }
     }
     

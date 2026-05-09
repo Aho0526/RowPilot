@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingView: View {
-    @StateObject private var settingsManager = SettingsManager()
+    @ObservedObject private var settingsManager = SettingsManager.shared
     @ObservedObject private var themeManager = ThemeManager.shared
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @State private var showingResetAlert = false
@@ -114,6 +114,7 @@ struct SettingView: View {
             SettingsSection(title: "Display".localized, icon: "display") {
                 SettingsToggleRow(title: "Show Battery".localized, isOn: $settingsManager.settings.showBatteryStatus)
                 SettingsToggleRow(title: "Show GPS Accuracy".localized, isOn: $settingsManager.settings.showGPSAccuracy)
+                SettingsToggleRow(title: "Show Help Buttons".localized, isOn: $settingsManager.settings.showHelpButtons)
             }
             
             // 計測設定
@@ -256,31 +257,6 @@ struct SettingsToggleRow: View {
         Toggle(title, isOn: $isOn)
             .foregroundColor(Theme.textMain)
             .tint(Theme.accent)
-    }
-}
-
-// MARK: - Settings Manager
-class SettingsManager: ObservableObject {
-    @Published var settings: UserSettings {
-        didSet {
-            saveSettings()
-        }
-    }
-    
-    init() {
-        self.settings = UserSettings.load()
-        // Initialize LocalizationManager with saved language on startup
-        LocalizationManager.shared.setLanguage(self.settings.language)
-    }
-    
-    private func saveSettings() {
-        settings.save()
-    }
-    
-    func resetToDefaults() {
-        UserSettings.reset()
-        settings = UserSettings()
-        LocalizationManager.shared.setLanguage(settings.language)
     }
 }
 

@@ -16,14 +16,7 @@ enum AppLanguage: String, Codable, CaseIterable {
 class LocalizationManager: ObservableObject {
     static let shared = LocalizationManager()
     
-    @Published var language: AppLanguage = .japanese {
-        didSet {
-            // Save to UserSettings when changed
-            // Note: This creates a potential cycle if not handled carefully, 
-            // but for simplicity we will sync with UserSettings or just use UserSettings as source of truth.
-            // Better approach: UserSettings holds the truth, this manager provides the strings.
-        }
-    }
+    @Published var language: AppLanguage = .japanese
     
     private var translations: [String: [AppLanguage: String]] = [
         // Navigation / Tabs
@@ -54,6 +47,7 @@ class LocalizationManager: ObservableObject {
         "Display": [.japanese: "表示設定", .english: "Display"],
         "Show Battery": [.japanese: "バッテリー状態を表示", .english: "Show Battery"],
         "Show GPS Accuracy": [.japanese: "GPS精度を表示", .english: "Show GPS Accuracy"],
+        "Show Help Buttons": [.japanese: "ヘルプボタンを表示", .english: "Show Help Buttons"],
         "Measurement": [.japanese: "計測設定", .english: "Measurement"],
         "Auto Start": [.japanese: "動作検出で自動開始", .english: "Auto Start"],
         "Units": [.japanese: "単位", .english: "Units"],
@@ -62,6 +56,9 @@ class LocalizationManager: ObservableObject {
         "Data Sync": [.japanese: "データ同期", .english: "Data Sync"],
         "Coming Soon": [.japanese: "今後のアップデートで対応予定です", .english: "Coming soon in future updates"],
         "Reset Settings": [.japanese: "設定をリセット", .english: "Reset Settings"],
+        "Practice Help": [.japanese: "練習画面のヘルプ", .english: "Practice Help"],
+        "Tide Help": [.japanese: "潮位画面のヘルプ", .english: "Tide Help"],
+        "RowMode Help": [.japanese: "乗艇画面のヘルプ", .english: "RowMode Help"],
         "Reset Alert Message": [.japanese: "すべての設定をデフォルト値に戻します。この操作は取り消せません。", .english: "Reset all settings to default. This cannot be undone."],
         "Cancel": [.japanese: "キャンセル", .english: "Cancel"],
         "Reset": [.japanese: "リセット", .english: "Reset"],
@@ -115,7 +112,6 @@ class LocalizationManager: ObservableObject {
         "New Tag": [.japanese: "新しいタグ", .english: "New Tag"],
         "No Tags": [.japanese: "タグなし", .english: "No Tags"],
         "No Notes": [.japanese: "メモなし", .english: "No Notes"],
-        
         
         // Record List
         "Records": [.japanese: "練習記録一覧", .english: "History"],
@@ -171,15 +167,15 @@ class LocalizationManager: ObservableObject {
         "Term_4_Title": [.japanese: "4. 取得する情報", .english: "4. Information Collected"],
         "Term_4_Content": [.japanese: """
         本アプリは、以下の情報を取得する場合があります。
-          •  位置情報（GPS）：練習距離、速度、ペース、経路の記録・表示のため
-          •  時刻・経過時間
-          •  端末情報（OS種別等、動作確認のため）
+        •  位置情報（GPS）：練習距離、速度、ペース、経路の記録・表示のため
+        •  時刻・経過時間
+        •  端末情報（OS種別等、動作確認のため）
         取得する情報は、本アプリの機能提供に必要な範囲に限られます。
         """, .english: """
         The App may collect the following information:
-          • Location (GPS): For recording and displaying distance, speed, pace, and routes.
-          • Time and elapsed time.
-          • Device info (OS type, etc., for operation verification).
+        • Location (GPS): For recording and displaying distance, speed, pace, and routes.
+        • Time and elapsed time.
+        • Device info (OS type, etc., for operation verification).
         Information collected is limited to what is necessary for the App's functions.
         """],
         "Term_5_Title": [.japanese: "5. 位置情報の取り扱い", .english: "5. Handling of Location Information"],
@@ -206,19 +202,19 @@ class LocalizationManager: ObservableObject {
         """],
         "Term_7_Title": [.japanese: "7. 禁止事項", .english: "7. Prohibited Matters"],
         "Term_7_Content": [.japanese: """
-         ユーザーは、本アプリの利用に際し以下の行為を行ってはなりません。
-         •  本アプリの目的とは異なった利用
-         •  他者の権利・安全を侵害する行為
-         •  法令または公序良俗に反する行為
-         •  本アプリの運営を妨害する行為
-         •  本アプリの解析、改変、リバースエンジニアリングを目的とした行為
+        ユーザーは、本アプリの利用に際し以下の行為を行ってはなりません。
+        •  本アプリの目的とは異なった利用
+        •  他者の権利・安全を侵害する行為
+        •  法令または公序良俗に反する行為
+        •  本アプリの運営を妨害する行為
+        •  本アプリの解析、改変、リバースエンジニアリングを目的とした行為
         """, .english: """
         Users must not perform the following:
-         • Use for purposes other than intended.
-         • Infringing on the rights or safety of others.
-         • Actions against laws or public order.
-         • Interfering with the App's operation.
-         • Analysis, modification, or reverse engineering of the App.
+        • Use for purposes other than intended.
+        • Infringing on the rights or safety of others.
+        • Actions against laws or public order.
+        • Interfering with the App's operation.
+        • Analysis, modification, or reverse engineering of the App.
         """],
         "Term_8_Title": [.japanese: "8. 免責事項", .english: "8. Disclaimer"],
         "Term_8_Content": [.japanese: """
@@ -338,7 +334,7 @@ class LocalizationManager: ObservableObject {
         "Civil Engineering": [.japanese: "都市", .english: "Civil"],
         "Architecture": [.japanese: "建築", .english: "Architecture"],
         "Design": [.japanese: "デザイン", .english: "Design"],
-         "Advisor": [.japanese: "顧問・外部コーチ", .english: "Advisor"],
+        "Advisor": [.japanese: "顧問・外部コーチ", .english: "Advisor"],
     ]
     
     /// Get localized string

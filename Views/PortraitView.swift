@@ -12,6 +12,7 @@ struct PortraitView: View {
     private var recordManager: RecordManager { app.recordManager }
 
     @State private var showingSaveAlert = false
+    @State private var showingHelp = false
     
     // セッション状態はAppViewModelから取得
     private var isRunning: Bool { app.isSessionActive }
@@ -49,7 +50,7 @@ struct PortraitView: View {
                         )
                         
                         // GPS Indicator
-                        if UserSettings.load().showGPSAccuracy {
+                        if SettingsManager.shared.settings.showGPSAccuracy {
                             HStack(spacing: 6) {
                                 Image(systemName: "location.fill")
                                     .font(.caption)
@@ -66,6 +67,17 @@ struct PortraitView: View {
                             )
                             .padding(.leading, 16)
                             .padding(.top, 16)
+                        }
+                        
+                        // Help Button (Top Right)
+                        if SettingsManager.shared.settings.showHelpButtons {
+                            HStack {
+                                Spacer()
+                                HelpCircleButton {
+                                    showingHelp = true
+                                }
+                                .padding(16)
+                            }
                         }
                     }
                     
@@ -153,7 +165,16 @@ struct PortraitView: View {
             Text("Save Message".localized)
         }
         // Force redraw when theme changes
-        .id(themeManager.currentPreset) 
+        .id(themeManager.currentPreset)
+        .sheet(isPresented: $showingHelp) {
+            HelpView(
+                title: "RowMode Help".localized,
+                content: """
+                // 乗艇画面の使い方（縦画面）
+                // ここにヒントを記述してください
+                """
+            )
+        }
     }
     
     // Logic Helpers
