@@ -111,7 +111,6 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// CSAFE コマンドのシリアライズキュー（複数デバイスへの送信を1台ずつ順次実行）
     private let commandQueue = CSAFECommandQueue()
     
-    private var devicesWaitingForReset: Set<UUID> = []
     private var pollingTimer: Timer?
     private var lastHaltTime: Date? = nil
     
@@ -518,9 +517,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         
         let terminateFrame = Data([0xF1, 0x76, 0x04, 0x13, 0x02, 0x01, 0x02, 0x60, 0xF2])
         
-        // 全デバイスのメトリクスをクリア＋リセット待機リストに追加
+        // 全デバイスのメトリクスをクリア
         for device in connectedDevices {
-            devicesWaitingForReset.insert(device.identifier)
             if let metrics = deviceMetrics[device.identifier] {
                 DispatchQueue.main.async {
                     metrics.distance = 0
@@ -533,10 +531,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             }
         }
         
-        // Terminate を全デバイスに順次送信し、完了後にポーリング開始
+        // Terminate を全デバイスに順次送信
         enqueueToAllDevices(frame: terminateFrame, label: "TERMINATE_RESET") { [weak self] in
-            print("PM5ManagerVM: TERMINATE sent to all devices. Starting termination polling.")
-            self?.startTerminationPolling()
+            print("PM5ManagerVM: TERMINATE sent to all devices.")
+            self?.onAllDevicesReadyAfterReset()
         }
     }
     
@@ -559,67 +557,26 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         resetAllDevices()
     }
     
-    /// 全デバイスのGoReadyが完了した後に呼ばれる
+    /// 全デバイスに終了コマンドが送信された後に呼ばれる
     private func onAllDevicesReadyAfterReset() {
         guard let pending = pendingWorkoutAfterReset else {
-            print("PM5ManagerVM: All devices ready after reset. No pending workout.")
+            print("PM5ManagerVM: No pending workout after reset.")
             return
         }
         pendingWorkoutAfterReset = nil
         
-        print("PM5ManagerVM: ✅ All devices GoReady complete. Waiting 0.8s for PM5 internal state transition...")
+        print("PM5ManagerVM: ✅ All devices TERMINATE sent. Waiting 0.8s for PM5 internal state transition...")
         
-        // GoReady後のPM5内部状態遷移を待つ（0.8秒）
+        // Terminate後のPM5内部状態遷移を待つ（0.8秒）
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             guard let self = self else { return }
-            print("PM5ManagerVM: Post-GoReady delay complete. Sending pending workout.")
+            print("PM5ManagerVM: Post-Terminate delay complete. Sending pending workout.")
             
             if let dist = pending.distance {
                 self.setWorkoutDistance(meters: dist)
             } else if let t = pending.time {
                 self.setWorkoutTime(seconds: t)
             }
-        }
-    }
-    
-    private var terminationPollingTimer: Timer?
-    
-    private func startTerminationPolling() {
-        terminationPollingTimer?.invalidate()
-        print("PM5ManagerVM: Starting 2.0s silent delay before termination polling.")
-        
-        // 2000ms silent delay before starting polling
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self = self else { return }
-            print("PM5ManagerVM: Silent delay complete. Starting slow termination polling (0x80) every 1.0s to detect Ready state (0x01).")
-            
-            // Slow polling: every 1.0s
-            self.terminationPollingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-                guard let self = self else { return }
-                let getStatusFrame = Data([0xF1, 0x80, 0x80, 0xF2])
-                
-                // ポーリングもキュー経由で順次送信
-                let waitingDevices = self.connectedDevices.filter {
-                    self.devicesWaitingForReset.contains($0.identifier)
-                }
-                if !waitingDevices.isEmpty {
-                    self.enqueueToAllDevices(
-                        frame: getStatusFrame,
-                        label: "POLL_STATUS",
-                        devices: waitingDevices
-                    )
-                }
-            }
-            // Fire immediately after the 2.0s delay
-            self.terminationPollingTimer?.fire()
-        }
-    }
-    
-    private func stopTerminationPolling() {
-        if terminationPollingTimer != nil {
-            print("PM5ManagerVM: Stopping termination polling.")
-            terminationPollingTimer?.invalidate()
-            terminationPollingTimer = nil
         }
     }
     
@@ -787,9 +744,7 @@ extension PM5ManagerViewModel: CBPeripheralDelegate {
             }
         }
         
-        if characteristic.uuid == C2_CHAR_DATA_POINT {
-            parseManagerCSAFEStatus(data, for: deviceID)
-        } else if characteristic.uuid == C2_CHAR_GENERAL_STATUS {
+        if characteristic.uuid == C2_CHAR_GENERAL_STATUS {
             parseManagerGeneralStatus(data, for: deviceID)
         } else if characteristic.uuid == C2_CHAR_ROWING_STATUS_0x32 {
             parseManagerRowingStatus0x32(data, for: deviceID)
@@ -817,63 +772,6 @@ extension PM5ManagerViewModel: CBPeripheralDelegate {
 // MARK: - BLE Data Parsing (per-device)
 extension PM5ManagerViewModel {
     
-    /// Data Point (0x22): 解析 (CSAFE Status)
-    private func parseManagerCSAFEStatus(_ data: Data, for deviceID: UUID) {
-        var statusByte: UInt8 = 0
-        if let first = data.first {
-            if first == 0xF1 && data.count > 1 {
-                statusByte = data[1]
-            } else {
-                statusByte = first
-            }
-        } else { return }
-        
-        let stateValue = statusByte & 0x0F
-        
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, let metrics = self.deviceMetrics[deviceID] else { return }
-            
-            // Check if we reached exactly Ready (0x01) during termination handshake
-            if self.devicesWaitingForReset.contains(deviceID) && stateValue == 1 {
-                self.devicesWaitingForReset.remove(deviceID)
-                let isLast = self.devicesWaitingForReset.isEmpty
-                
-                print("PM5ManagerVM: Termination Complete (State is \(stateValue)) for \(metrics.name). Sending GoReady (0x82) via queue. (isLast: \(isLast))")
-                
-                if isLast {
-                    self.stopTerminationPolling()
-                }
-                
-                // GoReady もキュー経由で送信（他デバイスとの競合を防止）
-                let goReadyFrame = Data([0xF1, 0x82, 0x82, 0xF2])
-                if let controlChar = self.controlCharacteristics[deviceID],
-                   let peripheral = self.connectedDevices.first(where: { $0.identifier == deviceID }) {
-                    let cmd = CSAFECommandQueue.Command(
-                        peripheral: peripheral,
-                        characteristic: controlChar,
-                        frame: goReadyFrame,
-                        label: isLast ? "GO_READY_LAST" : "GO_READY"
-                    )
-                    self.commandQueue.enqueueSequential([cmd]) { [weak self] in
-                        if isLast {
-                            // 全デバイスの GoReady 送信が実際に完了してからイベントを発火
-                            self?.onAllDevicesReadyAfterReset()
-                        }
-                    }
-                }
-                
-                // メトリクスを初期化
-                metrics.distance = 0
-                metrics.elapsedTime = 0
-                metrics.pace500m = 0
-                metrics.power = 0
-                metrics.strokeRate = 0
-                metrics.lastStrokeCount = -1
-                
-                self.objectWillChange.send()
-            }
-        }
-    }
     
     /// General Status (0x31): 距離と経過時間をパース
     private func parseManagerGeneralStatus(_ data: Data, for deviceID: UUID) {
