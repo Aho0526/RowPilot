@@ -458,27 +458,65 @@ class TideManager: ObservableObject {
     }
     
     private func calculateTideType(date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        // Base New Moon: 2024-01-11
-        guard let baseNewMoon = formatter.date(from: "2024-01-11") else { return "" }
+        // 日本時間基準
+        let jst = TimeZone(identifier: "Asia/Tokyo")!
+    
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = jst
+    
+        // 2024/01/11 20:57 JST（実際の新月時刻）
+        var components = DateComponents()
+        components.year = 2024
+        components.month = 1
+        components.day = 11
+        components.hour = 20
+        components.minute = 57
+        components.timeZone = jst
+    
+        guard let baseNewMoon = calendar.date(from: components) else {
+            return ""
+        }
+
+        // 平均朔望月
+        let synodicMonth = 29.530588853
+    
+        // 秒差 → 日数
+        let seconds = date.timeIntervalSince(baseNewMoon)
+        let daysPassed = seconds / 86400.0
+    
+        // 月齢
+        var moonAge = daysPassed.truncatingRemainder(dividingBy: synodicMonth)
+    
+        if moonAge < 0 {
+            moonAge += synodicMonth
+        }
+    
+        // 潮名判定（実務寄りに境界を少し広め）
+        switch moonAge {
+        case 0.0..<2.5,
+             13.5..<17.0,
+             28.0..<29.6:
+            return "大潮"
         
-        let components = Calendar.current.dateComponents([.day], from: baseNewMoon, to: date)
-        guard let daysPassed = components.day else { return "" }
+        case 2.5..<6.0,
+             11.0..<13.5,
+             17.0..<20.0,
+             26.0..<28.0:
+            return "中潮"
         
-        let cycle = 29.53059
-        let moonAge = Double(daysPassed).truncatingRemainder(dividingBy: cycle)
-        let adjustedAge = moonAge >= 0 ? moonAge : moonAge + cycle
+        case 6.0..<10.0,
+             20.0..<23.0:
+            return "小潮"
         
-        let ageInt = Int(round(adjustedAge)) % 30
+        case 10.0..<11.0,
+             23.0..<24.0:
+            return "長潮"
         
-        switch ageInt {
-        case 0, 1, 2, 14, 15, 16, 29: return "大潮"
-        case 3, 4, 5, 12, 13, 17, 18, 19, 27, 28: return "中潮"
-        case 6, 7, 8, 9, 20, 21, 22: return "小潮"
-        case 10, 23: return "長潮"
-        case 11, 24: return "若潮"
-        default: return ""
+        case 24.0..<26.0:
+          return "若潮"
+        
+        default:
+            return "中潮"
         }
     }
 }

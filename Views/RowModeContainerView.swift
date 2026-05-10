@@ -1,4 +1,5 @@
 import SwiftUI
+import MessageUI
 
 /// RowModeタブ専用のコンテナビュー
 /// GeometryReaderでwidth > heightを判定し、縦横画面を切り替える
@@ -11,6 +12,10 @@ struct RowModeContainerView: View {
     private var isIPad: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
     }
+    
+    // SOS UI State in Container
+    @State private var showingSOSMessage = false
+    @State private var currentSOSMessage = ""
     
     var body: some View {
         ZStack {
@@ -33,6 +38,20 @@ struct RowModeContainerView: View {
                     if !newValue && app.landscapeLocked {
                         app.unlockLandscape()
                     }
+                }
+            }
+            .sheet(isPresented: $showingSOSMessage) {
+                if MFMessageComposeViewController.canSendText() {
+                    MessageComposeView(recipients: [SettingsManager.shared.settings.sosContactPhone], body: currentSOSMessage)
+                } else {
+                    Text("SMS is not available")
+                }
+            }
+            .onChange(of: app.pendingSOSMessage) { _, newValue in
+                if let msg = newValue {
+                    currentSOSMessage = msg
+                    showingSOSMessage = true
+                    app.pendingSOSMessage = nil
                 }
             }
             

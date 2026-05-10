@@ -18,8 +18,10 @@ struct ManagerWorkoutDashboardView: View {
     @State private var showBackAlert = false
     @State private var showModeSettings = false
     @State private var showEditSheet = false
+    @State private var showZoomSettings = false
     
     @AppStorage("pm5GridColumns") private var pm5GridColumns: Int = 2
+    @State private var isLandscapeMode: Bool = false
     
     var body: some View {
         GeometryReader { geo in
@@ -35,7 +37,8 @@ struct ManagerWorkoutDashboardView: View {
                         viewModel: viewModel,
                         showRepeatAlert: $showRepeatAlert,
                         showModeSettings: $showModeSettings,
-                        showEditSheet: $showEditSheet
+                        showEditSheet: $showEditSheet,
+                        showZoomSettings: $showZoomSettings
                     )
                 } else {
                     // MARK: - Portrait Card Dashboard
@@ -91,37 +94,66 @@ struct ManagerWorkoutDashboardView: View {
                     }
                 }
             }
+            .onAppear { isLandscapeMode = geo.size.width > geo.size.height }
+            .onChange(of: geo.size) { newSize in isLandscapeMode = newSize.width > newSize.height }
         }
-        .navigationTitle("Dashboard".localized)
+        .navigationTitle(isLandscapeMode ? "Race View".localized : "Dashboard".localized)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: {
-                    if viewModel.isSaved {
-                        viewModel.resetAllDevices()
-                        dismiss()
-                    } else {
-                        showBackAlert = true
-                    }
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                        Text("Back".localized)
+            if isLandscapeMode {
+                // MARK: - Landscape Toolbar
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button(action: { showZoomSettings = true }) {
+                            Label("レースズーム", systemImage: "ruler")
+                        }
+                        Button(action: { showRepeatAlert = true }) {
+                            Label("もう一度", systemImage: "arrow.counterclockwise")
+                        }
+                        Button(action: { showModeSettings = true }) {
+                            Label("モード設定", systemImage: "gearshape.fill")
+                        }
+                        Button(action: { showEditSheet = true }) {
+                            Label("PM5編集", systemImage: "pencil.and.list.clipboard")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(Theme.accent)
                     }
                 }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    showSaveAlert = true
-                }) {
-                    Text("Save".localized)
-                        .fontWeight(.bold)
+            } else {
+                // MARK: - Portrait Toolbar
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
+                        if viewModel.isSaved {
+                            viewModel.resetAllDevices()
+                            dismiss()
+                        } else {
+                            showBackAlert = true
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text("Back".localized)
+                        }
+                    }
                 }
-                .disabled(viewModel.isSaved)
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        showSaveAlert = true
+                    }) {
+                        Text("Save".localized)
+                            .fontWeight(.bold)
+                    }
+                    .disabled(viewModel.isSaved)
+                }
             }
         }
+        .toolbar(isLandscapeMode ? .hidden : .visible, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(isLandscapeMode ? .hidden : .visible, for: .tabBar)
         .navigationDestination(isPresented: $showWorkoutSetup) {
             ManagerWorkoutSetupView(viewModel: viewModel)
         }
@@ -341,83 +373,116 @@ struct PM5MetricsCardView: View {
             .padding(.vertical, 6)
             .background(isDisconnected ? Color.gray.opacity(0.12) : Color.green.opacity(0.08))
             
-            // Metrics (compact 2x2 grid)
-            HStack(spacing: 6) {
-                // 左カラム: 残距離/残時間 + ペース
-                VStack(spacing: 4) {
-                    if let targetDist = targetDistance {
-                        let remaining = max(Double(targetDist) - metrics.distance, 0)
-                        CompactMetricView(
-                            label: "Remaining".localized,
-                            value: String(format: "%.0fm", remaining),
-                            icon: "flag.fill",
-                            color: remaining > 0 ? Theme.accent : .green,
-                            isDisconnected: isDisconnected,
-                            labelFontSize: baseFontSize - 4,
-                            valueFontSize: valueFontSize
-                        )
-                    } else if let targetSec = targetTime {
-                        let remaining = max(Double(targetSec) - metrics.elapsedTime, 0)
-                        CompactMetricView(
-                            label: "Remaining".localized,
-                            value: formatCompactTime(seconds: Int(remaining)),
-                            icon: "clock",
-                            color: remaining > 0 ? Theme.accent : .green,
-                            isDisconnected: isDisconnected,
-                            labelFontSize: baseFontSize - 4,
-                            valueFontSize: valueFontSize
-                        )
+            // Metrics (compact 2x2 grid) or Syncing Status
+            ZStack {
+                HStack(spacing: 6) {
+                    // 左カラム: 残距離/残時間 + ペース
+                    VStack(spacing: 4) {
+                        if let targetDist = targetDistance {
+                            let remaining = max(Double(targetDist) - metrics.distance, 0)
+                            CompactMetricView(
+                                label: "Remaining".localized,
+                                value: String(format: "%.0fm", remaining),
+                                icon: "flag.fill",
+                                color: remaining > 0 ? Theme.accent : .green,
+                                isDisconnected: isDisconnected,
+                                labelFontSize: baseFontSize - 4,
+                                valueFontSize: valueFontSize
+                            )
+                        } else if let targetSec = targetTime {
+                            let remaining = max(Double(targetSec) - metrics.elapsedTime, 0)
+                            CompactMetricView(
+                                label: "Remaining".localized,
+                                value: formatCompactTime(seconds: Int(remaining)),
+                                icon: "clock",
+                                color: remaining > 0 ? Theme.accent : .green,
+                                isDisconnected: isDisconnected,
+                                labelFontSize: baseFontSize - 4,
+                                valueFontSize: valueFontSize
+                            )
+                        }
+                        
+                        if pm5ShowPace {
+                            CompactMetricView(
+                                label: "Pace".localized,
+                                value: formatPace(seconds: metrics.pace500m),
+                                icon: "speedometer",
+                                color: .orange,
+                                isDisconnected: isDisconnected,
+                                labelFontSize: baseFontSize - 4,
+                                valueFontSize: valueFontSize
+                            )
+                        }
                     }
                     
-                    if pm5ShowPace {
-                        CompactMetricView(
-                            label: "Pace".localized,
-                            value: formatPace(seconds: metrics.pace500m),
-                            icon: "speedometer",
-                            color: .orange,
-                            isDisconnected: isDisconnected,
-                            labelFontSize: baseFontSize - 4,
-                            valueFontSize: valueFontSize
-                        )
+                    // 右カラム: 経過時間 + ワット
+                    VStack(spacing: 4) {
+                        if targetTime != nil {
+                            // 単一時間設定の時は「進んだ距離」を表示
+                            CompactMetricView(
+                                label: "Distance".localized,
+                                value: String(format: "%.0fm", metrics.distance),
+                                icon: "figure.outdoor.rowing",
+                                color: .white,
+                                isDisconnected: isDisconnected,
+                                labelFontSize: baseFontSize - 4,
+                                valueFontSize: valueFontSize
+                            )
+                        } else {
+                            CompactMetricView(
+                                label: "Duration".localized,
+                                value: formatElapsedWithMs(seconds: metrics.elapsedTime),
+                                icon: "timer",
+                                color: .white,
+                                isDisconnected: isDisconnected,
+                                labelFontSize: baseFontSize - 4,
+                                valueFontSize: valueFontSize
+                            )
+                        }
+                        
+                        if pm5ShowWatts {
+                            CompactMetricView(
+                                label: "Watts",
+                                value: "\(metrics.power)W",
+                                icon: "bolt.fill",
+                                color: .yellow,
+                                isDisconnected: isDisconnected,
+                                labelFontSize: baseFontSize - 4,
+                                valueFontSize: valueFontSize
+                            )
+                        }
                     }
                 }
+                .opacity(metrics.configStatus == .ready ? 1.0 : 0.2)
+                .blur(radius: metrics.configStatus == .ready ? 0 : 3)
                 
-                // 右カラム: 経過時間 + ワット
-                VStack(spacing: 4) {
-                    if targetTime != nil {
-                        // 単一時間設定の時は「進んだ距離」を表示
-                        CompactMetricView(
-                            label: "Distance".localized,
-                            value: String(format: "%.0fm", metrics.distance),
-                            icon: "figure.outdoor.rowing",
-                            color: .white,
-                            isDisconnected: isDisconnected,
-                            labelFontSize: baseFontSize - 4,
-                            valueFontSize: valueFontSize
-                        )
-                    } else {
-                        CompactMetricView(
-                            label: "Duration".localized,
-                            value: formatElapsedWithMs(seconds: metrics.elapsedTime),
-                            icon: "timer",
-                            color: .white,
-                            isDisconnected: isDisconnected,
-                            labelFontSize: baseFontSize - 4,
-                            valueFontSize: valueFontSize
-                        )
+                // 送信中オーバーレイ
+                if metrics.configStatus != .ready {
+                    VStack(spacing: 8) {
+                        switch metrics.configStatus {
+                        case .resetting:
+                            ProgressView()
+                                .tint(Theme.accent)
+                            Text("Resetting...".localized)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Theme.textSecondary)
+                        case .configuring:
+                            ProgressView()
+                                .tint(.orange)
+                            Text("Configuring...".localized)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.orange)
+                        case .error(let msg):
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                            Text(msg)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.red)
+                        default:
+                            EmptyView()
+                        }
                     }
-                    
-                    if pm5ShowWatts {
-                        CompactMetricView(
-                            label: "Watts",
-                            value: "\(metrics.power)W",
-                            icon: "bolt.fill",
-                            color: .yellow,
-                            isDisconnected: isDisconnected,
-                            labelFontSize: baseFontSize - 4,
-                            valueFontSize: valueFontSize
-                        )
-                    }
+                    .transition(.opacity)
                 }
             }
             .padding(.horizontal, 8)

@@ -32,6 +32,12 @@ struct UserSettings: Codable {
     // ヘルプ表示設定
     var showHelpButtons: Bool
     
+    // SOS設定
+    var sosContactName: String
+    var sosContactPhone: String
+    var sosUserName: String
+    var sosMapSelection: SOSMapSelection
+    
     init(
         soundEnabled: Bool = true,
         voiceFeedbackEnabled: Bool = false,
@@ -47,7 +53,11 @@ struct UserSettings: Codable {
         distanceUnit: DistanceUnit = .meters,
         speedUnit: SpeedUnit = .kilometersPerHour,
         language: AppLanguage = .japanese,
-        showHelpButtons: Bool = true
+        showHelpButtons: Bool = true,
+        sosContactName: String = "",
+        sosContactPhone: String = "",
+        sosUserName: String = "",
+        sosMapSelection: SOSMapSelection = .both
     ) {
         self.soundEnabled = soundEnabled
         self.voiceFeedbackEnabled = voiceFeedbackEnabled
@@ -64,10 +74,19 @@ struct UserSettings: Codable {
         self.speedUnit = speedUnit
         self.language = language
         self.showHelpButtons = showHelpButtons
+        self.sosContactName = sosContactName
+        self.sosContactPhone = sosContactPhone
+        self.sosUserName = sosUserName
+        self.sosMapSelection = sosMapSelection
     }
 }
 
 // MARK: - Enums
+enum SOSMapSelection: String, Codable, CaseIterable {
+    case appleMaps = "Apple Maps"
+    case googleMaps = "Google Maps"
+    case both = "Apple Maps & Google Maps"
+}
 enum ColorSchemePreference: String, Codable, CaseIterable {
     case light = "ライト"
     case dark = "ダーク"

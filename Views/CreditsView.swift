@@ -42,6 +42,18 @@ struct CreditsView: View {
                             }
                         }
                     }
+
+                     CreditSection(title: "バージョン履歴") {
+                        NavigationLink(destination: VersionHistoryView()) {
+                            HStack {
+                                Text("アップデート情報")
+                                    .foregroundColor(Theme.textMain)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                        }
+                    }
                     
                     CreditSection(title: "Development Environment".localized) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -115,6 +127,85 @@ struct AIAssistantView: View {
             }
         }
         .navigationTitle("AI Assistant")
+    }
+}
+
+//MARK: - Version View
+struct VersionHistoryView: View {
+    var body: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 20) {
+                    CreditSection(title: "5/10") {
+                        Text("レースビューの変更")
+                        Text("Comminucation Architecture v3.1の適用")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "5/9") {
+                        Text("マネージャーモードにおける通信アーキテクチャを規定化し刷新")
+                        Text("Comminucation Architecture v2の適用")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "5/6") {
+                        Text("マネージャーモードにおける通信の不安定さを低減")
+                        Text("Comminucation Architecture v1の作成")
+                    .foregroundColor(Theme.textMain)
+                    }
+
+                    CreditSection(title: "4/30") {
+                        Text("Pro,Manager,Team,MAXの課金プランを追加")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "4/29") {
+                        Text("レースビューの追加。")
+                        Text("PM5の名前/順番の変更が可能に。")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "4/26") {
+                        Text("潮汐データ取得地点を9地点から239地点へ。")
+                        Text("気象庁の提供する地点全てを取得可能に。")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "4/25") {
+                        Text("バックアップから復元。")
+                        Text("ForceCurveの実装。")
+                        .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "3/5") {
+                        Text("マネージャーモードのUI追加")
+                        Text("業界初('26/3/5時点)となるBLEで複数台のライブデータ取得に成功")
+                    .foregroundColor(Theme.textMain)
+                    }
+                     CreditSection(title: "3/3") {
+                        Text("マネージャーモード(複数台通信機能)の追加")
+                        Text("複数台のPM5にデータの送信ができるように")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "2/14") {
+                        Text("任意の距離・時間を指定して送信できるように")
+                        Text("データ送信中のUIを変更")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "2/12") {
+                        Text("PM5にデータ送信成功")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "2/9") {
+                        Text("RowModeの横向き制御機構を更新")
+                        Text("TideViewの横向き対応")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "2/8") {
+                        Text("RowPilot内の文字を英語に変更できるように")
+                        Text("SOS機能の追加・利用規約の作成")
+                    .foregroundColor(Theme.textMain)
+                    }
+                }
+                .padding()
+            }
+        }
+        .navigationTitle("バージョン履歴")
     }
 }
 

@@ -11,6 +11,10 @@ class AppViewModel: ObservableObject {
     
     // Landscape Lock: ×ボタン押下後にLandscapeへの遷移を禁止
     @Published var landscapeLocked: Bool = false
+    
+    // SOS Shared State
+    @Published var pendingSOSMessage: String?
+    @Published var showSOSFromLandscape: Bool = false
 
     // 共有ViewModels
     let motionManager = MotionManager()
@@ -43,6 +47,9 @@ class AppViewModel: ObservableObject {
                 self?.tideManager.findNearestStation(location: location)
             }
             .store(in: &cancellables)
+            
+        // バッテリー監視を有効化
+        UIDevice.current.isBatteryMonitoringEnabled = true
     }
     
     // MARK: - Landscape Lock

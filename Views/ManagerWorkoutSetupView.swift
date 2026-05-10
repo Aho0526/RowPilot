@@ -158,7 +158,7 @@ struct ManagerDistanceSetupView: View {
                 
                 Button(action: {
                     if let d = Int(distance) {
-                        viewModel.setWorkoutDistance(meters: d)
+                        viewModel.resetAndStartWorkout(distance: d)
                     }
                 }) {
                     Text("Send to all PM5s".localized)
@@ -225,7 +225,7 @@ struct ManagerTimeSetupView: View {
                 
                 Button(action: {
                     if totalSeconds >= 20 {
-                        viewModel.setWorkoutTime(seconds: totalSeconds)
+                        viewModel.resetAndStartWorkout(time: totalSeconds)
                     }
                 }) {
                     Text("Send to all PM5s".localized)

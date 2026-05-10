@@ -9,9 +9,9 @@ struct ManagerRaceView: View {
     @Binding var showRepeatAlert: Bool
     @Binding var showModeSettings: Bool
     @Binding var showEditSheet: Bool
+    @Binding var showZoomSettings: Bool
     
     // MARK: - Zoom State
-    @State private var showZoomSettings = false
     @AppStorage("raceZoomEnabled") private var zoomEnabled: Bool = false
     @AppStorage("raceZoomDistanceBehind") private var zoomDistanceBehind: Double = 100  // 先頭から後方何mまで表示
     @AppStorage("raceZoomMaxBoats") private var zoomMaxBoats: Int = 10                   // 後方何人まで表示
@@ -68,27 +68,85 @@ struct ManagerRaceView: View {
     
     var body: some View {
         GeometryReader { geo in
+            let totalHeight = geo.size.height
+            let unit = totalHeight / 67.0
+            
             ZStack {
                 // 背景
                 Color(hex: "1A1A2E").ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // MARK: - Toolbar (上部)
-                    raceToolbar
-                        .padding(.horizontal, 12)
-                        .padding(.top, 6)
-                        .padding(.bottom, 4)
+                    // MARK: - Header (0 to 10/67)
+                    HStack(spacing: 0) {
+                        // 左: レースズーム概要（有効時のみ）
+                        HStack(spacing: 4) {
+                            if zoomEnabled {
+                                Image(systemName: "scope")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("\(Int(zoomDistanceBehind))m / \(zoomMaxBoats)艇")
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            }
+                        }
+                        .foregroundColor(Color(hex: "4FC3F7"))
+                        .frame(width: 120, alignment: .leading)
+                        .padding(.leading, 12)
+                        
+                        Spacer()
+                        
+                        // 中央: レースビュー
+                        Text("Race View".localized)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white.opacity(0.9))
+                        
+                        Spacer()
+                        
+                        // 右: 4つのアクションボタン
+                        HStack(spacing: 16) {
+                            Button(action: { showZoomSettings = true }) {
+                                Image(systemName: "ruler")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(zoomEnabled ? Color(hex: "4FC3F7") : .white.opacity(0.6))
+                            }
+                            .popover(isPresented: $showZoomSettings) {
+                                ZoomSettingsView()
+                            }
+                            
+                            Button(action: { showRepeatAlert = true }) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                            
+                            Button(action: { showModeSettings = true }) {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                            
+                            Button(action: { showEditSheet = true }) {
+                                Image(systemName: "pencil.and.list.clipboard")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                        }
+                        .padding(.trailing, 16)
+                    }
+                    .frame(height: 10 * unit)
+                    .background(Color(white: 0.12)) // シックなグレー
                     
-                    // MARK: - Distance Scale Header
+                    // MARK: - Distance Scale Header (10/67 to 16/67)
                     raceScaleHeader(width: geo.size.width)
-                        .padding(.bottom, 2)
+                        .frame(height: 6 * unit)
                     
-                    // MARK: - Separator
-                    Rectangle()
-                        .fill(Color.white.opacity(0.15))
-                        .frame(height: 1)
+                    // MARK: - Separator Area (16/67 to 18/67)
+                    ZStack(alignment: .top) {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.15))
+                            .frame(height: 1)
+                    }
+                    .frame(height: 2 * unit)
                     
-                    // MARK: - Race Rows
+                    // MARK: - Race Rows (18/67 onwards)
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 0) {
                             ForEach(Array(visibleDevices.enumerated()), id: \.element.peripheral.identifier) { index, entry in
@@ -123,157 +181,10 @@ struct ManagerRaceView: View {
         }
     }
     
-    // MARK: - Top Toolbar
-    private var raceToolbar: some View {
-        HStack {
-            // ズームインジケーター（有効時のみ）
-            if zoomEnabled {
-                HStack(spacing: 4) {
-                    Image(systemName: "scope")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("\(Int(zoomDistanceBehind))m / \(zoomMaxBoats)艇")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                }
-                .foregroundColor(Color(hex: "4FC3F7"))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(hex: "4FC3F7").opacity(0.15))
-                .cornerRadius(6)
-            }
-            
-            Spacer()
-            
-            HStack(spacing: 10) {
-                // ズーム設定
-                Button(action: { showZoomSettings.toggle() }) {
-                    Image(systemName: "ruler")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(zoomEnabled ? Color(hex: "4FC3F7") : .white.opacity(0.7))
-                        .frame(width: 34, height: 34)
-                        .background(zoomEnabled ? Color(hex: "4FC3F7").opacity(0.2) : Color.white.opacity(0.1))
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle()
-                                .stroke(zoomEnabled ? Color(hex: "4FC3F7").opacity(0.5) : Color.clear, lineWidth: 1.5)
-                        )
-                }
-                .popover(isPresented: $showZoomSettings) {
-                    zoomSettingsPopover
-                }
-                
-                // もう一度
-                Button(action: { showRepeatAlert = true }) {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.7))
-                        .frame(width: 34, height: 34)
-                        .background(Color.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
-                
-                // モード設定
-                Button(action: { showModeSettings = true }) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.7))
-                        .frame(width: 34, height: 34)
-                        .background(Color.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
-                
-                // PM5編集
-                Button(action: { showEditSheet = true }) {
-                    Image(systemName: "pencil.and.list.clipboard")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.7))
-                        .frame(width: 34, height: 34)
-                        .background(Color.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
-            }
-        }
-    }
+
     
-    // MARK: - Zoom Settings Popover
-    private var zoomSettingsPopover: some View {
-        VStack(spacing: 16) {
-            // ヘッダー
-            HStack {
-                Image(systemName: "ruler")
-                    .foregroundColor(Color(hex: "4FC3F7"))
-                Text("レースズーム")
-                    .font(.system(size: 16, weight: .bold))
-                Spacer()
-            }
-            
-            // ON/OFF トグル
-            Toggle(isOn: $zoomEnabled) {
-                HStack(spacing: 6) {
-                    Image(systemName: zoomEnabled ? "scope" : "arrow.left.and.right")
-                        .foregroundColor(zoomEnabled ? Color(hex: "4FC3F7") : .secondary)
-                    Text(zoomEnabled ? "ズーム有効" : "全体表示")
-                        .font(.system(size: 14, weight: .medium))
-                }
-            }
-            .tint(Color(hex: "4FC3F7"))
-            
-            if zoomEnabled {
-                Divider()
-                
-                // 後方距離
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("表示範囲（先頭からの距離）")
-                            .font(.system(size: 13, weight: .medium))
-                        Spacer()
-                        Text("\(Int(zoomDistanceBehind))m")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundColor(Color(hex: "4FC3F7"))
-                    }
-                    Slider(value: $zoomDistanceBehind, in: 20...500, step: 10)
-                        .tint(Color(hex: "4FC3F7"))
-                    HStack {
-                        Text("20m")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("500m")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                // 最大表示人数
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("最大表示人数")
-                            .font(.system(size: 13, weight: .medium))
-                        Spacer()
-                        Text("\(zoomMaxBoats)艇")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundColor(Color(hex: "4FC3F7"))
-                    }
-                    Slider(value: Binding(
-                        get: { Double(zoomMaxBoats) },
-                        set: { zoomMaxBoats = Int($0) }
-                    ), in: 2...10, step: 1)
-                        .tint(Color(hex: "4FC3F7"))
-                    HStack {
-                        Text("2艇")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("10艇")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-        }
-        .padding(16)
-        .frame(width: 320)
-        .presentationCompactAdaptation(.popover)
-    }
+    // MARK: - Zoom Settings Popover View is now a separate struct
+
     
     // MARK: - Distance Scale Header
     private func raceScaleHeader(width: CGFloat) -> some View {
@@ -314,17 +225,13 @@ struct ManagerRaceView: View {
         }
         
         return HStack(spacing: 0) {
-            // 名前列の空白
             Color.clear.frame(width: nameColumnWidth)
             
-            // スケールバー
             ZStack(alignment: .leading) {
-                // 背景線
                 Rectangle()
                     .fill(Color.white.opacity(0.1))
                     .frame(height: 2)
                 
-                // 目盛り
                 ForEach(Array(markers.enumerated()), id: \.offset) { _, dist in
                     let remaining = targetDistance - dist
                     let normalizedProgress: CGFloat = zoomEnabled
@@ -346,7 +253,6 @@ struct ManagerRaceView: View {
             }
             .frame(width: trackWidth, height: 28)
             
-            // 右情報列の空白
             Color.clear.frame(width: rightInfoWidth)
         }
         .padding(.horizontal, 8)
@@ -440,51 +346,75 @@ struct RaceRowView: View {
                     .fill(Color.white.opacity(0.04))
                     .frame(height: 28)
                 
-                // ボートとテキスト
-                let maxBoatX = barTrackWidth - 22
-                let boatX = max(maxBoatX * CGFloat(displayProgress), 0)
-                
-                ZStack {
-                    // ゴールタイム
-                    if progress >= 1.0 {
-                        Text(formatFinishTime(seconds: metrics.elapsedTime))
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                            .position(x: boatX - 28, y: 14)
-                    }
+                if metrics.configStatus == .ready {
+                    // ボートとテキスト
+                    let maxBoatX = barTrackWidth - 22
+                    let boatX = max(maxBoatX * CGFloat(displayProgress), 0)
                     
-                    // ボート
-                    BoatShape()
-                        .fill(boatColor)
-                        .frame(width: 22, height: 12)
-                        .shadow(color: boatColor.opacity(0.4), radius: 2, x: 0, y: 0)
-                        .position(x: boatX + 11, y: 10)
-                    
-                    // 差分
-                    if rank > 1 && gapToLeader > 0 && progress < 1.0 {
-                        Text(zoomEnabled ? String(format: "%.1fm", gapToLeader) : "\(Int(gapToLeader))m")
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.7))
-                            .position(x: boatX + 22 + 16, y: 10)
+                    ZStack {
+                        // ゴールタイム
+                        if progress >= 1.0 {
+                            Text(formatFinishTime(seconds: metrics.elapsedTime))
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                                .position(x: boatX - 28, y: 14)
+                        }
+                        
+                        // ボート
+                        BoatShape()
+                            .fill(boatColor)
+                            .frame(width: 22, height: 12)
+                            .shadow(color: boatColor.opacity(0.4), radius: 2, x: 0, y: 0)
+                            .position(x: boatX + 11, y: 10)
+                        
+                        // 差分
+                        if rank > 1 && gapToLeader > 0 && progress < 1.0 {
+                            Text(zoomEnabled ? String(format: "%.1fm", gapToLeader) : "\(Int(gapToLeader))m")
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundColor(Color.white.opacity(0.7))
+                                .position(x: boatX + 22 + 16, y: 10)
+                        }
                     }
+                    .animation(.easeInOut(duration: 0.5), value: displayProgress)
+                } else {
+                    // 送信中ステータス
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                            .tint(Theme.accent)
+                        Text(metrics.configStatus == .resetting ? "Resetting...".localized : "Configuring...".localized)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .padding(.leading, 10)
                 }
-                .animation(.easeInOut(duration: 0.5), value: displayProgress)
             }
             .frame(width: barTrackWidth, height: 28)
             
             // MARK: - Right: SPM + Pace
             HStack(spacing: 8) {
-                // SPM
-                Text("\(metrics.strokeRate)")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundColor(isDisconnected ? .gray : .white)
-                    .frame(width: 28, alignment: .trailing)
-                
-                // 500m Pace
-                Text(formatPace(seconds: metrics.pace500m))
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundColor(isDisconnected ? .gray : .white)
-                    .frame(width: 44, alignment: .trailing)
+                if metrics.configStatus == .ready {
+                    // SPM
+                    Text("\(metrics.strokeRate)")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(isDisconnected ? .gray : .white)
+                        .frame(width: 28, alignment: .trailing)
+                    
+                    // 500m Pace
+                    Text(formatPace(seconds: metrics.pace500m))
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(isDisconnected ? .gray : .white)
+                        .frame(width: 44, alignment: .trailing)
+                } else {
+                    Text("--")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(.gray)
+                        .frame(width: 28, alignment: .trailing)
+                    Text("-:--")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(.gray)
+                        .frame(width: 44, alignment: .trailing)
+                }
             }
             .frame(width: rightInfoWidth, alignment: .trailing)
         }
@@ -535,5 +465,92 @@ struct BoatShape: Shape {
         path.closeSubpath()
         
         return path
+    }
+}
+
+// MARK: - Zoom Settings View
+struct ZoomSettingsView: View {
+    @AppStorage("raceZoomEnabled") private var zoomEnabled: Bool = false
+    @AppStorage("raceZoomDistanceBehind") private var zoomDistanceBehind: Double = 100
+    @AppStorage("raceZoomMaxBoats") private var zoomMaxBoats: Int = 10
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // ヘッダー
+            HStack {
+                Image(systemName: "ruler")
+                    .foregroundColor(Color(hex: "4FC3F7"))
+                Text("レースズーム")
+                    .font(.system(size: 16, weight: .bold))
+                Spacer()
+            }
+            
+            // ON/OFF トグル
+            Toggle(isOn: $zoomEnabled) {
+                HStack(spacing: 6) {
+                    Image(systemName: zoomEnabled ? "scope" : "arrow.left.and.right")
+                        .foregroundColor(zoomEnabled ? Color(hex: "4FC3F7") : .secondary)
+                    Text(zoomEnabled ? "ズーム有効" : "全体表示")
+                        .font(.system(size: 14, weight: .medium))
+                }
+            }
+            .tint(Color(hex: "4FC3F7"))
+            
+            if zoomEnabled {
+                Divider()
+                
+                // 後方距離
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("表示範囲（先頭からの距離）")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        Text("\(Int(zoomDistanceBehind))m")
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .foregroundColor(Color(hex: "4FC3F7"))
+                    }
+                    Slider(value: $zoomDistanceBehind, in: 20...500, step: 10)
+                        .tint(Color(hex: "4FC3F7"))
+                    HStack {
+                        Text("20m")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("500m")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                // 最大表示人数
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("最大表示人数")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        Text("\(zoomMaxBoats)艇")
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .foregroundColor(Color(hex: "4FC3F7"))
+                    }
+                    Slider(value: Binding(
+                        get: { Double(zoomMaxBoats) },
+                        set: { zoomMaxBoats = Int($0) }
+                    ), in: 2...10, step: 1)
+                        .tint(Color(hex: "4FC3F7"))
+                    HStack {
+                        Text("2艇")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("10艇")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
+        .presentationCompactAdaptation(.popover)
     }
 }

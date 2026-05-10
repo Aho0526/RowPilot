@@ -65,6 +65,19 @@ class LocalizationManager: ObservableObject {
         "Terms of Service": [.japanese: "利用規約", .english: "Terms of Service"],
         "Credits": [.japanese: "クレジット", .english: "Credits"],
         "Color Theme": [.japanese: "カラーテーマを選択", .english: "Select Color Theme"],
+        "SOS Settings": [.japanese: "緊急連絡先設定", .english: "SOS Settings"],
+        "Contact Name": [.japanese: "連絡先氏名", .english: "Contact Name"],
+        "Phone Number": [.japanese: "電話番号", .english: "Phone Number"],
+        "User Name": [.japanese: "使用者の名前", .english: "User Name"],
+        "Emergency Contact": [.japanese: "緊急連絡先", .english: "Emergency Contact"],
+        "SOS Message Hint": [.japanese: "緊急時に現在地、時刻、バッテリー残量を指定の連絡先へ送信します。", .english: "Sends location, time, and battery level to your emergency contact in case of an emergency."],
+        "Location Info": [.japanese: "位置情報", .english: "Location Info"],
+        "Battery": [.japanese: "バッテリー", .english: "Battery"],
+        "No response. Please check.": [.japanese: "SOS信号が発信されました。確認してください。", .english: "An SOS signal has been sent. Please check."],
+        "Map Type": [.japanese: "マップの種類", .english: "Map Type"],
+        "Apple Maps": [.japanese: "Apple Maps", .english: "Apple Maps"],
+        "Google Maps": [.japanese: "Google Maps", .english: "Google Maps"],
+        "Apple Maps & Google Maps": [.japanese: "両方 (Apple & Google)", .english: "Both (Apple & Google)"],
         
         // MARK: - Subscription / Billing
         "RowPilot Premium": [.japanese: "RowPilot プレミアム", .english: "RowPilot Premium"],
@@ -94,8 +107,9 @@ class LocalizationManager: ObservableObject {
         "Save Message": [.japanese: "この練習記録を保存しますか？", .english: "Save this session?"],
         "Save": [.japanese: "保存", .english: "Save"],
         "Discard": [.japanese: "破棄", .english: "Discard"],
-        "SOS_Press": [.japanese: "長押しで緊急アラーム", .english: "Hold for Alarm"],
+        "SOS_Press": [.japanese: "長押しで緊急連絡", .english: "Hold for SOS"],
         "SOS_Hold_2s": [.japanese: "2秒間長押し", .english: "Hold for 2s"],
+        "SOS_Hold_1_5s": [.japanese: "長押しで緊急連絡", .english: "Hold for SOS"],
         
         "Count": [.japanese: "回数", .english: "Count"],
         "Stop": [.japanese: "停止", .english: "Stop"],
@@ -135,7 +149,7 @@ class LocalizationManager: ObservableObject {
         "Duration": [.japanese: "時間", .english: "Duration"],
         
         // MARK: - Terms View
-        "Terms_LastUpdated": [.japanese: "最終更新日: 2026年2月8日", .english: "Last Updated: Feb 8, 2026"],
+        "Terms_LastUpdated": [.japanese: "最終更新日: 2026年5月10日", .english: "Last Updated: May 10, 2026"],
         "Term_1_Title": [.japanese: "1. はじめに", .english: "1. Introduction"],
         "Term_1_Content": [.japanese: """
         本利用規約（以下「本規約」といいます。）は、RowPilot（以下「本アプリ」といいます。）の利用条件を定めるものです。
@@ -171,12 +185,14 @@ class LocalizationManager: ObservableObject {
         •  時刻・経過時間
         •  端末情報（OS種別等、動作確認のため）
         取得する情報は、本アプリの機能提供に必要な範囲に限られます。
+        また、これらの情報は全て本アプリ内で処理されるため外部に送信されることはありません。
         """, .english: """
         The App may collect the following information:
         • Location (GPS): For recording and displaying distance, speed, pace, and routes.
         • Time and elapsed time.
         • Device info (OS type, etc., for operation verification).
         Information collected is limited to what is necessary for the App's functions.
+        In addition, since all of this information is processed within this app, it is never sent to external sources.
         """],
         "Term_5_Title": [.japanese: "5. 位置情報の取り扱い", .english: "5. Handling of Location Information"],
         "Term_5_Content": [.japanese: """
@@ -271,6 +287,7 @@ class LocalizationManager: ObservableObject {
         "Sending CSAFE...": [.japanese: "CSAFEコマンド送信中...", .english: "Sending CSAFE Commands..."],
         "Reconnecting": [.japanese: "再接続中...", .english: "Reconnecting..."],
         "Dashboard": [.japanese: "ダッシュボード", .english: "Dashboard"],
+        "Race View": [.japanese: "レースビュー", .english: "Race View"],
         "Target Distance": [.japanese: "目標距離", .english: "Target Distance"],
         "Target Time": [.japanese: "目標時間", .english: "Target Time"],
         "Elapsed": [.japanese: "経過時間", .english: "Elapsed"],

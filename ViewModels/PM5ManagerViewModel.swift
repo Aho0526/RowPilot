@@ -16,6 +16,16 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
     @Published var strokeRate: Int = 0            // SPM
     @Published var workoutState: UInt8 = 0       // index 8 of 0x31
     
+    /// ワークアウト送信ステータス
+    enum ConfigStatus: Equatable {
+        case idle
+        case resetting
+        case configuring
+        case ready
+        case error(String)
+    }
+    @Published var configStatus: ConfigStatus = .idle
+    
     // Debug Data
     @Published var lastStrokeDataBytes: String = ""
     
@@ -343,12 +353,13 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     }
     
     /// 全接続デバイスに対するCSAFEコマンド配列を構築しキューに投入する
-    /// - Parameters:
-    ///   - frame: 送信するCSAFEフレーム (F1...F2)
-    ///   - label: デバッグ用ラベル
-    ///   - devices: 送信先のデバイス一覧（省略時は全接続デバイス）
-    ///   - completion: 全デバイスへの送信完了後に呼ばれるコールバック
-    private func enqueueToAllDevices(frame: Data, label: String, devices: [CBPeripheral]? = nil, completion: (() -> Void)? = nil) {
+    private func enqueueToAllDevices(
+        frame: Data,
+        label: String,
+        devices: [CBPeripheral]? = nil,
+        perDeviceStatus: PM5DeviceMetrics.ConfigStatus? = nil,
+        completion: (() -> Void)? = nil
+    ) {
         let targets = devices ?? connectedDevices
         var commands: [CSAFECommandQueue.Command] = []
         
@@ -357,6 +368,14 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 print("PM5ManagerVM: Control Point未発見 → \(device.name ?? "Unknown") (\(label))")
                 continue
             }
+            
+            // 送信開始時にステータスを更新
+            if let initialStatus = perDeviceStatus {
+                DispatchQueue.main.async {
+                    self.deviceMetrics[device.identifier]?.configStatus = initialStatus
+                }
+            }
+            
             commands.append(CSAFECommandQueue.Command(
                 peripheral: device,
                 characteristic: char,
@@ -370,7 +389,20 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             return
         }
         
-        commandQueue.enqueueSequential(commands, completion: completion)
+        commandQueue.enqueueSequential(commands, perDeviceCompletion: { [weak self] peripheral, isSuccess in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                if let metrics = self.deviceMetrics[peripheral.identifier] {
+                    // Phaseに応じて適切な完了ステータスへ遷移させるためのフック
+                    // (ここでは簡易的に成功時はそのまま、失敗時はエラーを表示)
+                    if !isSuccess {
+                        metrics.configStatus = .error("Timeout")
+                    } else if label.contains("WORKOUT") {
+                        metrics.configStatus = .ready
+                    }
+                }
+            }
+        }, completion: completion)
     }
     
     /// ワークアウトコマンドを生成
@@ -421,8 +453,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         return fullCommand
     }
     
-    /// 距離ワークアウトを全PM5に送信（シリアライズキュー経由）
-    func setWorkoutDistance(meters: Int) {
+    /// 距離ワークアウトを全PM5に送信（Phase 2: CONFIG）
+    private func setWorkoutDistance(meters: Int) {
         let limitedMeters = min(max(meters, 100), 60000)
         
         // 楽観的UI更新: 送信開始時にダッシュボードを即座に表示
@@ -432,36 +464,29 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         workoutStartTime = Date()
         initializeAllMetrics()
         
-        let terminateFrame = Data([0xF1, 0x76, 0x04, 0x13, 0x02, 0x01, 0x02, 0x60, 0xF2])
+        guard let workoutFrame = buildCSAFEFrame(payload: generateWorkoutCommand(distanceMeters: limitedMeters)) else {
+            print("PM5ManagerVM: ⛔ Workout frame construction failed")
+            isSending = false
+            return
+        }
         
-        // Phase 1: Terminate を全デバイスに順次送信
-        enqueueToAllDevices(frame: terminateFrame, label: "TERMINATE") { [weak self] in
-            guard let self = self else { return }
-            print("PM5ManagerVM: Phase 1 complete (TERMINATE). Waiting 0.8s for PM5 state transition...")
-            
-            // Phase 2: PM5の状態遷移を待機
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                guard let workoutFrame = self.buildCSAFEFrame(payload: self.generateWorkoutCommand(distanceMeters: limitedMeters)) else {
-                    print("PM5ManagerVM: ⛔ Workout frame construction failed")
-                    self.isSending = false
-                    return
-                }
-                
-                // Phase 3: ワークアウト設定を全デバイスに順次送信
-                self.enqueueToAllDevices(frame: workoutFrame, label: "WORKOUT_DIST_\(limitedMeters)m") {
-                    DispatchQueue.main.async {
-                        self.isSending = false
-                        self.showDashboard = true
-                        self.isSaved = false
-                        print("PM5ManagerVM: ✅ 距離ワークアウト \(limitedMeters)m を全PM5に送信完了")
-                    }
-                }
+        // ワークアウト設定を全デバイスに送信 (並行)
+        enqueueToAllDevices(
+            frame: workoutFrame,
+            label: "WORKOUT_DIST_\(limitedMeters)m",
+            perDeviceStatus: .configuring
+        ) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isSending = false
+                self.isSaved = false
+                print("PM5ManagerVM: ✅ 距離ワークアウト \(limitedMeters)m を全PM5に送信完了")
             }
         }
     }
     
-    /// 時間ワークアウトを全PM5に送信（シリアライズキュー経由）
-    func setWorkoutTime(seconds: Int) {
+    /// 時間ワークアウトを全PM5に送信（Phase 2: CONFIG）
+    private func setWorkoutTime(seconds: Int) {
         let limitedSeconds = min(max(seconds, 20), 36000)
         
         // 楽観的UI更新: 送信開始時にダッシュボードを即座に表示
@@ -471,30 +496,23 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         workoutStartTime = Date()
         initializeAllMetrics()
         
-        let terminateFrame = Data([0xF1, 0x76, 0x04, 0x13, 0x02, 0x01, 0x02, 0x60, 0xF2])
+        guard let workoutFrame = buildCSAFEFrame(payload: generateWorkoutCommand(timeSeconds: limitedSeconds)) else {
+            print("PM5ManagerVM: ⛔ Workout frame construction failed")
+            isSending = false
+            return
+        }
         
-        // Phase 1: Terminate を全デバイスに順次送信
-        enqueueToAllDevices(frame: terminateFrame, label: "TERMINATE") { [weak self] in
-            guard let self = self else { return }
-            print("PM5ManagerVM: Phase 1 complete (TERMINATE). Waiting 0.8s for PM5 state transition...")
-            
-            // Phase 2: PM5の状態遷移を待機
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                guard let workoutFrame = self.buildCSAFEFrame(payload: self.generateWorkoutCommand(timeSeconds: limitedSeconds)) else {
-                    print("PM5ManagerVM: ⛔ Workout frame construction failed")
-                    self.isSending = false
-                    return
-                }
-                
-                // Phase 3: ワークアウト設定を全デバイスに順次送信
-                self.enqueueToAllDevices(frame: workoutFrame, label: "WORKOUT_TIME_\(limitedSeconds)s") {
-                    DispatchQueue.main.async {
-                        self.isSending = false
-                        self.showDashboard = true
-                        self.isSaved = false
-                        print("PM5ManagerVM: ✅ 時間ワークアウト \(limitedSeconds)s を全PM5に送信完了")
-                    }
-                }
+        // ワークアウト設定を全デバイスに送信 (並行)
+        enqueueToAllDevices(
+            frame: workoutFrame,
+            label: "WORKOUT_TIME_\(limitedSeconds)s",
+            perDeviceStatus: .configuring
+        ) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isSending = false
+                self.isSaved = false
+                print("PM5ManagerVM: ✅ 時間ワークアウト \(limitedSeconds)s を全PM5に送信完了")
             }
         }
     }
@@ -531,8 +549,12 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             }
         }
         
-        // Terminate を全デバイスに順次送信
-        enqueueToAllDevices(frame: terminateFrame, label: "TERMINATE_RESET") { [weak self] in
+        // Terminate を全デバイスに並行送信
+        enqueueToAllDevices(
+            frame: terminateFrame,
+            label: "TERMINATE_RESET",
+            perDeviceStatus: .resetting
+        ) { [weak self] in
             print("PM5ManagerVM: TERMINATE sent to all devices.")
             self?.onAllDevicesReadyAfterReset()
         }
@@ -548,12 +570,25 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// リセットした後に同じ設定でワークアウトを再開する（イベント駆動）
     /// GoReady完了後に1秒待機してからワークアウトを送信
     func resetAndStartWorkout(distance: Int? = nil, time: Int? = nil) {
-        print("PM5ManagerVM: Resetting and queuing new workout (event-driven, waiting for GoReady completion)")
+        print("PM5ManagerVM: Resetting and queuing new workout (Immediate transition to dashboard)")
         
-        // 1. ペンディングワークアウトを保存（GoReady完了後に使用）
+        // 1. 即座にダッシュボードへ遷移
+        isSending = true
+        showDashboard = true
+        workoutDistance = distance
+        workoutTime = time
+        workoutStartTime = Date()
+        initializeAllMetrics()
+        
+        // 全デバイスのステータスを初期化
+        for device in connectedDevices {
+            deviceMetrics[device.identifier]?.configStatus = .resetting
+        }
+        
+        // 2. ペンディングワークアウトを保存（GoReady完了後に使用）
         pendingWorkoutAfterReset = (distance: distance, time: time)
         
-        // 2. リセット送信 → ポーリング → GoReady → onAllDevicesReadyAfterReset()
+        // 3. リセット送信
         resetAllDevices()
     }
     

@@ -1,4 +1,5 @@
 import SwiftUI
+import MessageUI
 
 struct PortraitView: View {
     @EnvironmentObject var app: AppViewModel
@@ -13,6 +14,15 @@ struct PortraitView: View {
 
     @State private var showingSaveAlert = false
     @State private var showingHelp = false
+    
+    // SOS State
+    @State private var isSOSPressing = false
+    @State private var sosProgress: CGFloat = 0.0
+    @State private var sosTimer: Timer?
+    @State private var showSOSOverlay = false
+    @State private var sosMessage: String = "" // Keep this for local generation
+    @State private var showingMessageCompose = false // Remove local usage but keep for now or clean up later
+    @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     
     // セッション状態はAppViewModelから取得
     private var isRunning: Bool { app.isSessionActive }
@@ -49,7 +59,7 @@ struct PortraitView: View {
                             height: geometry.size.height * 0.32
                         )
                         
-                        // GPS Indicator
+                        // GPS Indicator (Top Left)
                         if SettingsManager.shared.settings.showGPSAccuracy {
                             HStack(spacing: 6) {
                                 Image(systemName: "location.fill")
@@ -69,15 +79,28 @@ struct PortraitView: View {
                             .padding(.top, 16)
                         }
                         
-                        // Help Button (Top Right)
+                        // Help & SOS Buttons (Top Right)
                         if SettingsManager.shared.settings.showHelpButtons {
-                            HStack {
+                            HStack(spacing: 12) {
                                 Spacer()
+                                
+                                // SOS Entry Button
+                                Button(action: {
+                                    withAnimation { showSOSOverlay = true }
+                                }) {
+                                    Image(systemName: "sos")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .frame(width: 38, height: 38)
+                                        .background(Color.red)
+                                        .clipShape(Circle())
+                                }
+                                
                                 HelpCircleButton {
                                     showingHelp = true
                                 }
-                                .padding(16)
                             }
+                            .padding(16)
                         }
                     }
                     
@@ -144,9 +167,63 @@ struct PortraitView: View {
                     }
                     .frame(height: geometry.size.height * 0.22) // Increased slightly
                     .background(Theme.cardBackground)
-                    .ignoresSafeArea(edges: .bottom) // Ensure it fills the area under tab bar if needed (though TabView usually handles this, we want the color to persist)
+                    .ignoresSafeArea(edges: .bottom)
+                }
+                
+                // SOS Overlay
+                if showSOSOverlay {
+                    ZStack {
+                        Color.black.opacity(0.8)
+                            .ignoresSafeArea()
+                            .onTapGesture {
+                                withAnimation { showSOSOverlay = false }
+                            }
+                        
+                        VStack(spacing: 20) {
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.gray.opacity(0.3), lineWidth: 8)
+                                    .frame(width: 160, height: 160)
+                                
+                                Circle()
+                                    .trim(from: 0, to: sosProgress)
+                                    .stroke(Color.red, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                                    .frame(width: 160, height: 160)
+                                    .rotationEffect(.degrees(-90))
+                                
+                                Button(action: {}) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color.red)
+                                            .frame(width: 140, height: 140)
+                                        
+                                        Text("SOS")
+                                            .font(.system(size: 36, weight: .bold))
+                                            .foregroundColor(.white)
+                                    }
+                                }
+                                .simultaneousGesture(
+                                    DragGesture(minimumDistance: 0)
+                                        .onChanged { _ in
+                                            if !isSOSPressing { startSOSPress() }
+                                        }
+                                        .onEnded { _ in cancelSOSPress() }
+                                )
+                            }
+                            
+                            Text(isSOSPressing ? "SOS_Press".localized : "SOS_Hold_1_5s".localized)
+                                .font(.headline)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .zIndex(100)
                 }
             }
+        }
+        // Removed local sheet as it's now in ContainerView
+        // Removed onChange as it's now in ContainerView
+        .onAppear {
+            batteryLevel = UIDevice.current.batteryLevel
         }
         .onDisappear {
             // ...
@@ -236,6 +313,91 @@ struct PortraitView: View {
         let speedMps = locationManager.currentSpeed / LocationConstants.metersPerSecondToKmPerHour
         return LocationConstants.paceReferenceDistance / speedMps
     }
+    
+    private func batteryIcon(level: Float) -> String {
+        if level <= 0.2 { return "battery.25" }
+        if level <= 0.5 { return "battery.50" }
+        if level <= 0.75 { return "battery.75" }
+        return "battery.100"
+    }
+    
+    private func batteryColor(level: Float) -> Color {
+        if level <= 0.2 { return .red }
+        if level <= 0.5 { return .yellow }
+        return .green
+    }
+    
+    // MARK: - SOS Logic
+    private func startSOSPress() {
+        isSOSPressing = true
+        sosProgress = 0.0
+        SoundManager.shared.startPressingSound()
+        sosTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
+            sosProgress += 0.05 / 1.5 // Match landscape duration
+            if sosProgress >= 1.0 {
+                timer.invalidate()
+                activateSOS()
+            }
+        }
+    }
+    
+    private func cancelSOSPress() {
+        isSOSPressing = false
+        sosProgress = 0.0
+        sosTimer?.invalidate()
+        sosTimer = nil
+        SoundManager.shared.stopPressingSound()
+    }
+    
+    private func activateSOS() {
+        SoundManager.shared.playSOSTone()
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.error)
+        
+        let settings = SettingsManager.shared.settings
+        let userName = settings.sosUserName.isEmpty ? "RowPilot User" : settings.sosUserName
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        let timeStr = formatter.string(from: Date())
+        let level = UIDevice.current.batteryLevel
+        let batteryStr = level >= 0 ? "\(Int(level * 100))%" : "Unknown"
+        
+        var locationStr = "Unknown"
+        if let loc = locationManager.previousLocation {
+            let lat = loc.coordinate.latitude
+            let lon = loc.coordinate.longitude
+            
+            let appleMapsURL = "https://maps.apple.com/?q=SOS+地点&ll=\(lat),\(lon)"
+            let googleMapsURL = "https://www.google.com/maps/search/?api=1&query=\(lat),\(lon)"
+            
+            switch settings.sosMapSelection {
+            case .appleMaps:
+                locationStr = appleMapsURL
+            case .googleMaps:
+                locationStr = googleMapsURL
+            case .both:
+                locationStr = """
+                
+                Apple Maps: \(appleMapsURL)
+                Google Maps: \(googleMapsURL)
+                """
+            }
+        }
+        
+        sosMessage = """
+        RowPilot SOS
+        \("User Name".localized): \(userName)
+        \("Location Info".localized): \(locationStr)
+        \("Time".localized): \(timeStr)
+        \("Battery".localized): \(batteryStr)
+        \("No response. Please check.".localized)
+        """
+        
+        if !settings.sosContactPhone.isEmpty {
+            app.pendingSOSMessage = sosMessage
+            withAnimation { showSOSOverlay = false }
+        }
+    }
 }
 
 // Styled Metric Cell
@@ -277,3 +439,4 @@ struct MetricCell: View {
         .background(Theme.cardBackground)
     }
 }
+

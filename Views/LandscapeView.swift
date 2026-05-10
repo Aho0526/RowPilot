@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import MessageUI
 
 struct LandscapeView: View {
     @EnvironmentObject var app: AppViewModel
@@ -24,6 +25,8 @@ struct LandscapeView: View {
     @State private var sosProgress: CGFloat = 0.0
     @State private var sosTimer: Timer?
     @State private var showSOSOverlay = false
+    @State private var showingMessageCompose = false
+    @State private var sosMessage: String = ""
     
     // セッション状態はAppViewModelから取得
     private var isRunning: Bool { app.isRecording }
@@ -203,12 +206,13 @@ struct LandscapeView: View {
                             )
                         }
                         
-                        Text(isSOSPressing ? "SOS_Press".localized : "SOS_Hold_2s".localized)
+                        Text(isSOSPressing ? "SOS_Press".localized : "SOS_Hold_1_5s".localized)
                             .font(.title2)
                             .foregroundColor(.white)
                     }
                 } // SOS Overlay end
             } // ZStack end
+            // Removed local sheet as it's now in ContainerView
             .onAppear {
                 UIDevice.current.isBatteryMonitoringEnabled = true
                 updateStatusInfo()
@@ -219,7 +223,6 @@ struct LandscapeView: View {
             .onDisappear {
                 statusTimer?.invalidate()
                 statusTimer = nil
-                UIDevice.current.isBatteryMonitoringEnabled = false
                 SoundManager.shared.stopSOS() // Safety
             }
             .id(themeManager.currentPreset)
@@ -371,9 +374,9 @@ struct LandscapeView: View {
         SoundManager.shared.startPressingSound()
         
         // Update progress every 0.05s
-        // Total 2.0s needed
+        // Total 1.5s needed
         sosTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
-            sosProgress += 0.05 / 2.0
+            sosProgress += 0.05 / 1.5
             if sosProgress >= 1.0 {
                 timer.invalidate()
                 activateSOS()
@@ -400,5 +403,56 @@ struct LandscapeView: View {
         SoundManager.shared.playSOSTone()
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.error)
+        
+        // Prepare Message
+        let settings = SettingsManager.shared.settings
+        let userName = settings.sosUserName.isEmpty ? "RowPilot User" : settings.sosUserName
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        let timeStr = formatter.string(from: Date())
+        
+        let level = UIDevice.current.batteryLevel
+        let batteryStr = level >= 0 ? "\(Int(level * 100))%" : "Unknown"
+        
+        var locationStr = "Unknown"
+        if let loc = locationManager.previousLocation {
+            let lat = loc.coordinate.latitude
+            let lon = loc.coordinate.longitude
+            
+            let appleMapsURL = "https://maps.apple.com/?q=SOS+地点&ll=\(lat),\(lon)"
+            let googleMapsURL = "https://www.google.com/maps/search/?api=1&query=\(lat),\(lon)"
+            
+            switch settings.sosMapSelection {
+            case .appleMaps:
+                locationStr = appleMapsURL
+            case .googleMaps:
+                locationStr = googleMapsURL
+            case .both:
+                locationStr = """
+                
+                Apple Maps: \(appleMapsURL)
+                Google Maps: \(googleMapsURL)
+                """
+            }
+        }
+        
+        sosMessage = """
+        RowPilot SOS
+        \("User Name".localized): \(userName)
+        \("Location Info".localized): \(locationStr)
+        \("Time".localized): \(timeStr)
+        \("Battery".localized): \(batteryStr)
+        \("No response. Please check.".localized)
+        """
+        
+        if !settings.sosContactPhone.isEmpty {
+            // Pass message to ContainerView via shared state
+            // ContainerView will show the sheet, which persists even if user rotates phone
+            app.pendingSOSMessage = sosMessage
+            
+            // Clean up landscape overlay
+            withAnimation { showSOSOverlay = false }
+        }
     }
 }

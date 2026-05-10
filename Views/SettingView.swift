@@ -93,6 +93,27 @@ struct SettingView: View {
                  }
             }
             
+            // SOS設定
+            SettingsSection(title: "Emergency Contact".localized, icon: "sos") {
+                NavigationLink(destination: SOSSettingsView()) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("SOS Settings".localized)
+                                .foregroundColor(Theme.textMain)
+                            if !settingsManager.settings.sosContactName.isEmpty {
+                                Text(settingsManager.settings.sosContactName)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                }
+            }
+            
             // 音声設定
             SettingsSection(title: "Voice Feedback".localized, icon: "speaker.wave.3.fill") {
                 SettingsToggleRow(title: "Sound Effects".localized, isOn: $settingsManager.settings.soundEnabled)
