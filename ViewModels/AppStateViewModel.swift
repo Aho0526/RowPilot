@@ -168,4 +168,57 @@ class AppViewModel: ObservableObject {
         
         print("AppViewModel: Full reset completed.")
     }
+    
+    // MARK: - SOS Logic
+    
+    func triggerSOS() {
+        SoundManager.shared.playSOSTone()
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.error)
+        
+        let settings = SettingsManager.shared.settings
+        let userName = settings.sosUserName.isEmpty ? "RowPilot User" : settings.sosUserName
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        let timeStr = formatter.string(from: Date())
+        
+        let level = UIDevice.current.batteryLevel
+        let batteryStr = level >= 0 ? "\(Int(level * 100))%" : "Unknown"
+        
+        var locationStr = "Unknown"
+        if let loc = locationManager.previousLocation {
+            let lat = loc.coordinate.latitude
+            let lon = loc.coordinate.longitude
+            
+            let appleMapsURL = "https://maps.apple.com/?q=SOS+地点&ll=\(lat),\(lon)"
+            let googleMapsURL = "https://www.google.com/maps/search/?api=1&query=\(lat),\(lon)"
+            
+            switch settings.sosMapSelection {
+            case .appleMaps:
+                locationStr = appleMapsURL
+            case .googleMaps:
+                locationStr = googleMapsURL
+            case .both:
+                locationStr = """
+                
+                Apple Maps: \(appleMapsURL)
+                Google Maps: \(googleMapsURL)
+                """
+            }
+        }
+        
+        let message = """
+        RowPilot SOS
+        \("User Name".localized): \(userName)
+        \("Location Info".localized): \(locationStr)
+        \("Time".localized): \(timeStr)
+        \("Battery".localized): \(batteryStr)
+        \("No response. Please check.".localized)
+        """
+        
+        if !settings.sosContactPhone.isEmpty {
+            self.pendingSOSMessage = message
+        }
+    }
 }

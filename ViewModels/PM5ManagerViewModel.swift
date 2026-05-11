@@ -102,6 +102,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// ワークアウト設定値
     @Published var workoutDistance: Int? = nil  // メートル
     @Published var workoutTime: Int? = nil      // 秒
+    @Published var workoutSplitDistance: Int? = nil // スプリット距離
+    @Published var workoutSplitTime: Int? = nil     // スプリット時間
     
     /// ダッシュボード表示フラグ
     @Published var showDashboard: Bool = false
@@ -125,7 +127,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     private var lastHaltTime: Date? = nil
     
     /// GoReady完了後に送信するワークアウト設定（イベント駆動用）
-    private var pendingWorkoutAfterReset: (distance: Int?, time: Int?)? = nil
+    private var pendingWorkoutAfterReset: (distance: Int?, time: Int?, split: Int?)? = nil
     
     // MARK: - Computed Properties
     
@@ -406,7 +408,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     }
     
     /// ワークアウトコマンドを生成
-    private func generateWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil) -> Data {
+    private func generateWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, splitMeters: Int? = nil, splitSeconds: Int? = nil) -> Data {
         var payload = Data()
         
         func appendUInt32(_ value: UInt32) {
@@ -432,10 +434,12 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         payload.append(contentsOf: [0x05, 0x05])
         if let dm = distanceMeters {
             payload.append(0x80)
-            appendUInt32(UInt32(dm))
+            let splitValue = splitMeters ?? dm
+            appendUInt32(UInt32(splitValue))
         } else if let tm = timeSeconds {
             payload.append(0x00)
-            appendUInt32(UInt32(max(tm / 2, 1) * 100))
+            let splitValue = splitSeconds ?? (tm / 2)
+            appendUInt32(UInt32(max(splitValue, 1) * 100))
         }
         
         // 4. CSAFE_PM_CONFIGURE_WORKOUT
@@ -454,17 +458,20 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     }
     
     /// 距離ワークアウトを全PM5に送信（Phase 2: CONFIG）
-    private func setWorkoutDistance(meters: Int) {
+    private func setWorkoutDistance(meters: Int, split: Int? = nil) {
         let limitedMeters = min(max(meters, 100), 60000)
+        let limitedSplit = split != nil ? min(max(split!, 50), limitedMeters) : limitedMeters
         
         // 楽観的UI更新: 送信開始時にダッシュボードを即座に表示
         isSending = true
         workoutDistance = limitedMeters
+        workoutSplitDistance = limitedSplit
         workoutTime = nil
+        workoutSplitTime = nil
         workoutStartTime = Date()
         initializeAllMetrics()
         
-        guard let workoutFrame = buildCSAFEFrame(payload: generateWorkoutCommand(distanceMeters: limitedMeters)) else {
+        guard let workoutFrame = buildCSAFEFrame(payload: generateWorkoutCommand(distanceMeters: limitedMeters, splitMeters: limitedSplit)) else {
             print("PM5ManagerVM: ⛔ Workout frame construction failed")
             isSending = false
             return
@@ -480,23 +487,26 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 guard let self = self else { return }
                 self.isSending = false
                 self.isSaved = false
-                print("PM5ManagerVM: ✅ 距離ワークアウト \(limitedMeters)m を全PM5に送信完了")
+                print("PM5ManagerVM: ✅ 距離ワークアウト \(limitedMeters)m (Split: \(limitedSplit)m) を全PM5に送信完了")
             }
         }
     }
     
     /// 時間ワークアウトを全PM5に送信（Phase 2: CONFIG）
-    private func setWorkoutTime(seconds: Int) {
+    private func setWorkoutTime(seconds: Int, split: Int? = nil) {
         let limitedSeconds = min(max(seconds, 20), 36000)
+        let limitedSplit = split != nil ? min(max(split!, 10), limitedSeconds) : (limitedSeconds / 2)
         
         // 楽観的UI更新: 送信開始時にダッシュボードを即座に表示
         isSending = true
         workoutTime = limitedSeconds
+        workoutSplitTime = limitedSplit
         workoutDistance = nil
+        workoutSplitDistance = nil
         workoutStartTime = Date()
         initializeAllMetrics()
         
-        guard let workoutFrame = buildCSAFEFrame(payload: generateWorkoutCommand(timeSeconds: limitedSeconds)) else {
+        guard let workoutFrame = buildCSAFEFrame(payload: generateWorkoutCommand(timeSeconds: limitedSeconds, splitSeconds: limitedSplit)) else {
             print("PM5ManagerVM: ⛔ Workout frame construction failed")
             isSending = false
             return
@@ -512,7 +522,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 guard let self = self else { return }
                 self.isSending = false
                 self.isSaved = false
-                print("PM5ManagerVM: ✅ 時間ワークアウト \(limitedSeconds)s を全PM5に送信完了")
+                print("PM5ManagerVM: ✅ 時間ワークアウト \(limitedSeconds)s (Split: \(limitedSplit)s) を全PM5に送信完了")
             }
         }
     }
@@ -567,16 +577,16 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         enqueueToAllDevices(frame: terminateFrame, label: "TERMINATE", completion: completion)
     }
     
-    /// リセットした後に同じ設定でワークアウトを再開する（イベント駆動）
-    /// GoReady完了後に1秒待機してからワークアウトを送信
-    func resetAndStartWorkout(distance: Int? = nil, time: Int? = nil) {
+    func resetAndStartWorkout(distance: Int? = nil, time: Int? = nil, split: Int? = nil) {
         print("PM5ManagerVM: Resetting and queuing new workout (Immediate transition to dashboard)")
         
         // 1. 即座にダッシュボードへ遷移
         isSending = true
         showDashboard = true
         workoutDistance = distance
+        workoutSplitDistance = distance != nil ? split : nil
         workoutTime = time
+        workoutSplitTime = time != nil ? split : nil
         workoutStartTime = Date()
         initializeAllMetrics()
         
@@ -586,7 +596,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         }
         
         // 2. ペンディングワークアウトを保存（GoReady完了後に使用）
-        pendingWorkoutAfterReset = (distance: distance, time: time)
+        pendingWorkoutAfterReset = (distance: distance, time: time, split: split)
         
         // 3. リセット送信
         resetAllDevices()
@@ -608,9 +618,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             print("PM5ManagerVM: Post-Terminate delay complete. Sending pending workout.")
             
             if let dist = pending.distance {
-                self.setWorkoutDistance(meters: dist)
+                self.setWorkoutDistance(meters: dist, split: pending.split)
             } else if let t = pending.time {
-                self.setWorkoutTime(seconds: t)
+                self.setWorkoutTime(seconds: t, split: pending.split)
             }
         }
     }

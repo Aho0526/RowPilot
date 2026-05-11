@@ -170,13 +170,15 @@ struct ManagerWorkoutDashboardView: View {
                 viewModel.saveAllRecords(recordManager: appViewModel.recordManager)
                 viewModel.resetAndStartWorkout(
                     distance: viewModel.workoutDistance,
-                    time: viewModel.workoutTime
+                    time: viewModel.workoutTime,
+                    split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : viewModel.workoutSplitTime
                 )
             }
             Button("Discard and Repeat".localized, role: .destructive) {
                 viewModel.resetAndStartWorkout(
                     distance: viewModel.workoutDistance,
-                    time: viewModel.workoutTime
+                    time: viewModel.workoutTime,
+                    split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : viewModel.workoutSplitTime
                 )
             }
             Button("Cancel".localized, role: .cancel) {}

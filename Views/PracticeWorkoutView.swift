@@ -114,13 +114,15 @@ struct PracticeWorkoutView: View {
             Button("Save and Repeat".localized) {
                 let dist = ergManager.targetDistance
                 let time = ergManager.targetTime
+                let split = dist != nil ? ergManager.targetSplitDistance : ergManager.targetSplitTime
                 saveCurrentRecord()
-                ergManager.resetAndStartWorkout(distance: dist, time: time)
+                ergManager.resetAndStartWorkout(distance: dist, time: time, split: split)
             }
             Button("Discard and Repeat".localized, role: .destructive) {
                 let dist = ergManager.targetDistance
                 let time = ergManager.targetTime
-                ergManager.resetAndStartWorkout(distance: dist, time: time)
+                let split = dist != nil ? ergManager.targetSplitDistance : ergManager.targetSplitTime
+                ergManager.resetAndStartWorkout(distance: dist, time: time, split: split)
             }
             Button("Cancel".localized, role: .cancel) {}
         } message: {

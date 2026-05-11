@@ -54,6 +54,8 @@ class RowErgManager: NSObject, ObservableObject {
     // Target Values (Workout Setup)
     @Published var targetDistance: Double? = nil
     @Published var targetTime: Double? = nil
+    @Published var targetSplitDistance: Int? = nil
+    @Published var targetSplitTime: Int? = nil
     @Published var showingWorkoutExecution: Bool = false
     
     /// ワークアウトが終了したかどうかを判定
@@ -739,14 +741,13 @@ class RowErgManager: NSObject, ObservableObject {
         payload.append(contentsOf: [0x05, 0x05])
         if let dm = distanceMeters {
             payload.append(0x80) // Distance Split Type
-            // 指示に基づき、未指定時はトータル距離を設定（Single Split）
-            let sVal = splitMeters.map { min($0, dm) } ?? dm
+            // Ensure minimum 50m split and not exceeding total distance
+            let sVal = splitMeters.map { min(max($0, 50), dm) } ?? dm
             appendUInt32(UInt32(sVal))
         } else if let tm = timeSeconds {
-            payload.append(0x00) // Time Split Type (Strict PM5 Positive Example)
-            // 指示に基づき、未指定時はトータル時間の半分を設定（2 Splits）
-            // 0 よりも安定し、PM5 の構成エラー (64-1/161-1) を回避します。
-            let sVal = splitSeconds.map { min($0, tm - 1) } ?? (tm / 2)
+            payload.append(0x00) // Time Split Type
+            // Ensure minimum 10s split and not exceeding total time
+            let sVal = splitSeconds.map { min(max($0, 10), tm - 1) } ?? (tm / 2)
             appendUInt32(UInt32(max(sVal, 1) * 100)) // centi-seconds
         }
         
@@ -772,11 +773,14 @@ class RowErgManager: NSObject, ObservableObject {
 
     func setWorkoutDistance(meters: Int, split: Int? = nil) {
         let limitedMeters = min(max(meters, 100), 60000)
-        print("RowErgManager: Setting workout distance to \(limitedMeters)m (Split: \(split?.description ?? "None"))")
+        let limitedSplit = split != nil ? min(max(split!, 50), limitedMeters) : limitedMeters
+        print("RowErgManager: Setting workout distance to \(limitedMeters)m (Split: \(limitedSplit)m)")
         
         DispatchQueue.main.async {
             self.targetDistance = Double(limitedMeters)
+            self.targetSplitDistance = limitedSplit
             self.targetTime = nil
+            self.targetSplitTime = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = [] // 新しいワークアウト開始時に前回のデータを消去
         }
@@ -784,7 +788,7 @@ class RowErgManager: NSObject, ObservableObject {
         // ワークアウト変更・開始前に強制終了コマンドを送信
         sendTerminateWorkout()
         
-        let cmd = generateWorkoutCommand(distanceMeters: limitedMeters, splitMeters: split)
+        let cmd = generateWorkoutCommand(distanceMeters: limitedMeters, splitMeters: limitedSplit)
         // PM5の処理待ちのため遅延させて送信（Terminateからの状態遷移を待つ）
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.sendCSAFESingle(payload: cmd) {
@@ -795,11 +799,14 @@ class RowErgManager: NSObject, ObservableObject {
     
     func setWorkoutTime(seconds: Int, split: Int? = nil) {
         let limitedSeconds = min(max(seconds, 20), 36000)
-        print("RowErgManager: Setting workout time to \(limitedSeconds)s (Split: \(split?.description ?? "None"))")
+        let limitedSplit = split != nil ? min(max(split!, 10), limitedSeconds) : (limitedSeconds / 2)
+        print("RowErgManager: Setting workout time to \(limitedSeconds)s (Split: \(limitedSplit)s)")
         
         DispatchQueue.main.async {
             self.targetTime = Double(limitedSeconds)
+            self.targetSplitTime = limitedSplit
             self.targetDistance = nil
+            self.targetSplitDistance = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = [] // 新しいワークアウト開始時に前回のデータを消去
         }
@@ -807,7 +814,7 @@ class RowErgManager: NSObject, ObservableObject {
         // ワークアウト変更・開始前に強制終了コマンドを送信
         sendTerminateWorkout()
         
-        let cmd = generateWorkoutCommand(timeSeconds: limitedSeconds, splitSeconds: split)
+        let cmd = generateWorkoutCommand(timeSeconds: limitedSeconds, splitSeconds: limitedSplit)
         // PM5の処理待ちのため遅延させて送信（Terminateからの状態遷移を待つ）
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.sendCSAFESingle(payload: cmd) {
@@ -821,7 +828,7 @@ class RowErgManager: NSObject, ObservableObject {
     }
     
     /// ワークアウトを保存/破棄後に同じ設定で再開する
-    func resetAndStartWorkout(distance: Double?, time: Double?) {
+    func resetAndStartWorkout(distance: Double?, time: Double?, split: Int? = nil) {
         print("RowErgManager: Resetting and queuing new workout with 1s delay")
         
         // リセット送信し、数値をゼロに戻す (targetDistance/Timeは一旦nilになる)
@@ -830,9 +837,9 @@ class RowErgManager: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self = self else { return }
             if let dist = distance {
-                self.setWorkoutDistance(meters: Int(dist))
+                self.setWorkoutDistance(meters: Int(dist), split: split)
             } else if let t = time {
-                self.setWorkoutTime(seconds: Int(t))
+                self.setWorkoutTime(seconds: Int(t), split: split)
             }
         }
     }

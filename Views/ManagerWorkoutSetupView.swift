@@ -125,6 +125,7 @@ struct ManagerWorkoutButton: View {
 struct ManagerDistanceSetupView: View {
     @ObservedObject var viewModel: PM5ManagerViewModel
     @State private var distance: String = ""
+    @State private var splitDistance: String = ""
     @State private var navigateToDashboard: Bool = false
     
     var body: some View {
@@ -146,6 +147,26 @@ struct ManagerDistanceSetupView: View {
                         .cornerRadius(12)
                         .foregroundColor(.white)
                         .font(.title)
+                        .onChange(of: distance) { _, newValue in
+                            if let d = Int(newValue) {
+                                // 距離が入力されたら、自動でその1/5をスプリットに設定
+                                let autoSplit = d / 5
+                                splitDistance = "\(max(autoSplit, 50))"
+                            }
+                        }
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Split Distance".localized + " (m)")
+                        .foregroundColor(Theme.textSecondary)
+                    TextField("Min 50m", text: $splitDistance)
+                        .keyboardType(.numberPad)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(12)
+                        .foregroundColor(.white)
+                        .font(.title2)
                 }
                 
                 Text("Distance Range".localized)
@@ -157,8 +178,8 @@ struct ManagerDistanceSetupView: View {
                     .foregroundColor(Theme.accent)
                 
                 Button(action: {
-                    if let d = Int(distance) {
-                        viewModel.resetAndStartWorkout(distance: d)
+                    if let d = Int(distance), let s = Int(splitDistance) {
+                        viewModel.resetAndStartWorkout(distance: d, split: s)
                     }
                 }) {
                     Text("Send to all PM5s".localized)
@@ -194,7 +215,11 @@ struct ManagerTimeSetupView: View {
     @State private var hours: Int = 0
     @State private var minutes: Int = 2
     @State private var seconds: Int = 0
+    @State private var splitMinutes: Int = 0
+    @State private var splitSeconds: Int = 30
     @State private var navigateToDashboard: Bool = false
+    
+    @State private var isAutoSplit: Bool = true
     
     private var totalSeconds: Int {
         hours * 3600 + minutes * 60 + seconds
@@ -218,6 +243,42 @@ struct ManagerTimeSetupView: View {
                 .padding()
                 .background(Color.white.opacity(0.05))
                 .cornerRadius(16)
+                .onChange(of: totalSeconds) { _, newValue in
+                    if isAutoSplit {
+                        let autoSplit = newValue / 5
+                        splitMinutes = autoSplit / 60
+                        splitSeconds = autoSplit % 60
+                    }
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Split Time".localized)
+                            .foregroundColor(Theme.textSecondary)
+                        Spacer()
+                        Button(action: { isAutoSplit.toggle() }) {
+                            Text(isAutoSplit ? "Auto (1/5)".localized : "Manual".localized)
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(isAutoSplit ? Theme.accent.opacity(0.2) : Color.gray.opacity(0.2))
+                                .foregroundColor(isAutoSplit ? Theme.accent : .gray)
+                                .cornerRadius(8)
+                        }
+                    }
+                    
+                    HStack(spacing: 0) {
+                        TimePickerColumn(value: $splitMinutes, range: 0...59, label: "mm")
+                            .disabled(isAutoSplit)
+                        Text(":").font(.title).foregroundColor(.white).offset(y: -10)
+                        TimePickerColumn(value: $splitSeconds, range: 0...59, label: "ss")
+                            .disabled(isAutoSplit)
+                    }
+                    .padding()
+                    .background(Color.white.opacity(0.05))
+                    .cornerRadius(16)
+                    .opacity(isAutoSplit ? 0.6 : 1.0)
+                }
                 
                 Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
                     .font(.subheadline)
@@ -225,7 +286,8 @@ struct ManagerTimeSetupView: View {
                 
                 Button(action: {
                     if totalSeconds >= 20 {
-                        viewModel.resetAndStartWorkout(time: totalSeconds)
+                        let split = splitMinutes * 60 + splitSeconds
+                        viewModel.resetAndStartWorkout(time: totalSeconds, split: split)
                     }
                 }) {
                     Text("Send to all PM5s".localized)

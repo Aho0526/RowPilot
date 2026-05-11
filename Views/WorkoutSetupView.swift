@@ -66,6 +66,7 @@ struct LargeWorkoutButton: View {
 struct SingleDistanceSetupView: View {
     @ObservedObject var ergManager: RowErgManager
     @State private var distance: String = ""
+    @State private var splitDistance: String = ""
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -87,6 +88,25 @@ struct SingleDistanceSetupView: View {
                         .cornerRadius(12)
                         .foregroundColor(.white)
                         .font(.title)
+                        .onChange(of: distance) { _, newValue in
+                            if let d = Int(newValue) {
+                                let autoSplit = d / 5
+                                splitDistance = "\(max(autoSplit, 50))"
+                            }
+                        }
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Split Distance".localized + " (m)")
+                        .foregroundColor(Theme.textSecondary)
+                    TextField("Min 50m", text: $splitDistance)
+                        .keyboardType(.numberPad)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(12)
+                        .foregroundColor(.white)
+                        .font(.title2)
                 }
                 
                 Text("Distance Range".localized)
@@ -94,8 +114,8 @@ struct SingleDistanceSetupView: View {
                     .foregroundColor(Theme.textSecondary)
                 
                 Button(action: {
-                    if let d = Int(distance) {
-                        ergManager.setWorkoutDistance(meters: d)
+                    if let d = Int(distance), let s = Int(splitDistance) {
+                        ergManager.setWorkoutDistance(meters: d, split: s)
                         dismiss()
                     }
                 }) {
@@ -122,7 +142,14 @@ struct SingleTimeSetupView: View {
     @State private var hours: Int = 0
     @State private var minutes: Int = 2
     @State private var seconds: Int = 0
+    @State private var splitMinutes: Int = 0
+    @State private var splitSeconds: Int = 30
+    @State private var isAutoSplit: Bool = true
     @Environment(\.dismiss) var dismiss
+    
+    private var totalSeconds: Int {
+        (hours * 3600) + (minutes * 60) + seconds
+    }
     
     var body: some View {
         ZStack {
@@ -142,11 +169,48 @@ struct SingleTimeSetupView: View {
                 .padding()
                 .background(Color.white.opacity(0.05))
                 .cornerRadius(16)
+                .onChange(of: totalSeconds) { _, newValue in
+                    if isAutoSplit {
+                        let autoSplit = newValue / 5
+                        splitMinutes = autoSplit / 60
+                        splitSeconds = autoSplit % 60
+                    }
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Split Time".localized)
+                            .foregroundColor(Theme.textSecondary)
+                        Spacer()
+                        Button(action: { isAutoSplit.toggle() }) {
+                            Text(isAutoSplit ? "Auto (1/5)".localized : "Manual".localized)
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(isAutoSplit ? Theme.accent.opacity(0.2) : Color.gray.opacity(0.2))
+                                .foregroundColor(isAutoSplit ? Theme.accent : .gray)
+                                .cornerRadius(8)
+                        }
+                    }
+                    
+                    HStack(spacing: 0) {
+                        TimePickerColumn(value: $splitMinutes, range: 0...59, label: "mm")
+                            .disabled(isAutoSplit)
+                        Text(":").font(.title).foregroundColor(.white).offset(y: -10)
+                        TimePickerColumn(value: $splitSeconds, range: 0...59, label: "ss")
+                            .disabled(isAutoSplit)
+                    }
+                    .padding()
+                    .background(Color.white.opacity(0.05))
+                    .cornerRadius(16)
+                    .opacity(isAutoSplit ? 0.6 : 1.0)
+                }
                 
                 Button(action: {
                     let totalSeconds = (hours * 3600) + (minutes * 60) + seconds
                     if totalSeconds >= 20 {
-                        ergManager.setWorkoutTime(seconds: totalSeconds)
+                        let split = splitMinutes * 60 + splitSeconds
+                        ergManager.setWorkoutTime(seconds: totalSeconds, split: split)
                         dismiss()
                     }
                 }) {

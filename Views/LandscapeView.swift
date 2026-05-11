@@ -20,13 +20,7 @@ struct LandscapeView: View {
     @State private var showingSaveAlert = false
     @State private var showingHelp = false
     
-    // SOS State
-    @State private var isSOSPressing = false
-    @State private var sosProgress: CGFloat = 0.0
-    @State private var sosTimer: Timer?
     @State private var showSOSOverlay = false
-    @State private var showingMessageCompose = false
-    @State private var sosMessage: String = ""
     
     // セッション状態はAppViewModelから取得
     private var isRunning: Bool { app.isRecording }
@@ -164,52 +158,10 @@ struct LandscapeView: View {
                 
                 // SOS Overlay
                 if showSOSOverlay {
-                    Color.black.opacity(0.8)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation { showSOSOverlay = false }
-                        }
-                    
-                    VStack(spacing: 20) {
-                        ZStack {
-                            Circle()
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 10)
-                                .frame(width: 200, height: 200)
-                            
-                            Circle()
-                                .trim(from: 0, to: sosProgress)
-                                .stroke(Color.red, style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                                .frame(width: 200, height: 200)
-                                .rotationEffect(.degrees(-90))
-                            
-                            Button(action: {}) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.red)
-                                        .frame(width: 180, height: 180)
-                                    
-                                    Text("SOS")
-                                        .font(.system(size: 48, weight: .bold))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .simultaneousGesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { _ in
-                                        if !isSOSPressing {
-                                            startSOSPress()
-                                        }
-                                    }
-                                    .onEnded { _ in
-                                        cancelSOSPress()
-                                    }
-                            )
-                        }
-                        
-                        Text(isSOSPressing ? "SOS_Press".localized : "SOS_Hold_1_5s".localized)
-                            .font(.title2)
-                            .foregroundColor(.white)
+                    SOSOverlayView(isPresented: $showSOSOverlay) {
+                        app.triggerSOS()
                     }
+                    .zIndex(100)
                 } // SOS Overlay end
             } // ZStack end
             // Removed local sheet as it's now in ContainerView
@@ -365,94 +317,5 @@ struct LandscapeView: View {
         return .green
     }
     
-    // MARK: - SOS Logic
-    private func startSOSPress() {
-        isSOSPressing = true
-        sosProgress = 0.0
-        
-        // Play warning beeps
-        SoundManager.shared.startPressingSound()
-        
-        // Update progress every 0.05s
-        // Total 1.5s needed
-        sosTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
-            sosProgress += 0.05 / 1.5
-            if sosProgress >= 1.0 {
-                timer.invalidate()
-                activateSOS()
-            }
-        }
-    }
     
-    private func cancelSOSPress() {
-        isSOSPressing = false
-        sosProgress = 0.0
-        sosTimer?.invalidate()
-        sosTimer = nil
-        
-        // Stop warning beeps
-        SoundManager.shared.stopPressingSound()
-        
-        // If SOS was active, stop it
-        if SoundManager.shared.isSOSActive {
-            SoundManager.shared.stopSOS()
-        }
-    }
-    
-    private func activateSOS() {
-        SoundManager.shared.playSOSTone()
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.error)
-        
-        // Prepare Message
-        let settings = SettingsManager.shared.settings
-        let userName = settings.sosUserName.isEmpty ? "RowPilot User" : settings.sosUserName
-        
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        let timeStr = formatter.string(from: Date())
-        
-        let level = UIDevice.current.batteryLevel
-        let batteryStr = level >= 0 ? "\(Int(level * 100))%" : "Unknown"
-        
-        var locationStr = "Unknown"
-        if let loc = locationManager.previousLocation {
-            let lat = loc.coordinate.latitude
-            let lon = loc.coordinate.longitude
-            
-            let appleMapsURL = "https://maps.apple.com/?q=SOS+地点&ll=\(lat),\(lon)"
-            let googleMapsURL = "https://www.google.com/maps/search/?api=1&query=\(lat),\(lon)"
-            
-            switch settings.sosMapSelection {
-            case .appleMaps:
-                locationStr = appleMapsURL
-            case .googleMaps:
-                locationStr = googleMapsURL
-            case .both:
-                locationStr = """
-                
-                Apple Maps: \(appleMapsURL)
-                Google Maps: \(googleMapsURL)
-                """
-            }
-        }
-        
-        sosMessage = """
-        RowPilot SOS
-        \("User Name".localized): \(userName)
-        \("Location Info".localized): \(locationStr)
-        \("Time".localized): \(timeStr)
-        \("Battery".localized): \(batteryStr)
-        \("No response. Please check.".localized)
-        """
-        
-        if !settings.sosContactPhone.isEmpty {
-            // Pass message to ContainerView via shared state
-            // ContainerView will show the sheet, which persists even if user rotates phone
-            app.pendingSOSMessage = sosMessage
-            
-            // Clean up landscape overlay
-            withAnimation { showSOSOverlay = false }
-        }
-    }
 }
