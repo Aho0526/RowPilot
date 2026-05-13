@@ -16,15 +16,33 @@ struct ManagerRaceView: View {
     @AppStorage("raceZoomDistanceBehind") private var zoomDistanceBehind: Double = 100  // 先頭から後方何mまで表示
     @AppStorage("raceZoomMaxBoats") private var zoomMaxBoats: Int = 10                   // 後方何人まで表示
     
-    /// ソート済みの選手データ（距離の多い順 = 先行順）
+    // MARK: - Lane Lock & Pacemaker State
+    @AppStorage("raceLaneLockEnabled") private var laneLockEnabled: Bool = false
+    @AppStorage("racePacemakerEnabled") private var pacemakerEnabled: Bool = false
+    @AppStorage("racePacemakerPaceString") private var paceString: String = "2:00.0"
+    
+    @State private var showPaceSettings = false
+    @State private var raceStartTime: Date? = nil
+    
+    /// ソート済みの選手データ（距離の多い順 = 先行順、またはレーン固定順）
     private var rankedDevices: [(peripheral: CBPeripheral, metrics: PM5DeviceMetrics, rank: Int)] {
         let devices = viewModel.connectedDevices.compactMap { device -> (CBPeripheral, PM5DeviceMetrics)? in
             guard let m = viewModel.deviceMetrics[device.identifier] else { return nil }
             return (device, m)
         }
-        let sorted = devices.sorted { $0.1.distance > $1.1.distance }
-        return sorted.enumerated().map { (index, pair) in
-            (peripheral: pair.0, metrics: pair.1, rank: index + 1)
+        
+        if laneLockEnabled {
+            let sorted = devices.sorted {
+                (viewModel.deviceNumbers[$0.0.identifier] ?? Int.max) < (viewModel.deviceNumbers[$1.0.identifier] ?? Int.max)
+            }
+            return sorted.enumerated().map { (index, pair) in
+                (peripheral: pair.0, metrics: pair.1, rank: index + 1)
+            }
+        } else {
+            let sorted = devices.sorted { $0.1.distance > $1.1.distance }
+            return sorted.enumerated().map { (index, pair) in
+                (peripheral: pair.0, metrics: pair.1, rank: index + 1)
+            }
         }
     }
     
@@ -33,8 +51,33 @@ struct ManagerRaceView: View {
         return rankedDevices.prefix(zoomMaxBoats).map { $0 }
     }
     
+    private func getSmoothPacemakerDistance(at date: Date) -> Double {
+        let maxObservedTime = viewModel.deviceMetrics.values.map { $0.elapsedTime }.max() ?? 0
+        guard maxObservedTime > 0, let startTime = raceStartTime else { return 0 }
+        
+        let elapsed = date.timeIntervalSince(startTime)
+        let pace = pacemakerPaceSeconds
+        guard pace > 0 else { return 0 }
+        let distancePerSecond = 500.0 / pace
+        return elapsed * distancePerSecond
+    }
+    
+    private var pacemakerPaceSeconds: Double {
+        let cleanStr = paceString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = cleanStr.split(separator: ":")
+        if parts.count == 2,
+           let min = Double(parts[0]),
+           let sec = Double(parts[1]) {
+            return min * 60.0 + sec
+        } else if parts.count == 1, let sec = Double(parts[0]) {
+            return sec
+        } else {
+            return 120.0
+        }
+    }
+    
     private var leaderDistance: Double {
-        rankedDevices.first?.metrics.distance ?? 0
+        viewModel.deviceMetrics.values.map { $0.distance }.max() ?? 0
     }
     
     private var targetDistance: Double {
@@ -67,11 +110,14 @@ struct ManagerRaceView: View {
     }
     
     var body: some View {
-        GeometryReader { geo in
-            let totalHeight = geo.size.height
-            let unit = totalHeight / 67.0
-            
-            ZStack {
+        TimelineView(.animation) { timeline in
+            GeometryReader { geo in
+                let totalHeight = geo.size.height
+                let unit = totalHeight / 67.0
+                
+                let currentPacemakerDistance = getSmoothPacemakerDistance(at: timeline.date)
+                
+                ZStack {
                 // 背景
                 Color(hex: "1A1A2E").ignoresSafeArea()
                 
@@ -100,8 +146,17 @@ struct ManagerRaceView: View {
                         
                         Spacer()
                         
-                        // 右: 4つのアクションボタン
+                        // 右: アクションボタン
                         HStack(spacing: 16) {
+                            Button(action: { showPaceSettings = true }) {
+                                Image(systemName: "timer")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(pacemakerEnabled ? Color(hex: "4FC3F7") : .white.opacity(0.6))
+                            }
+                            .popover(isPresented: $showPaceSettings) {
+                                PacemakerSettingsView()
+                            }
+                            
                             Button(action: { showZoomSettings = true }) {
                                 Image(systemName: "ruler")
                                     .font(.system(size: 18))
@@ -162,7 +217,10 @@ struct ManagerRaceView: View {
                                         isDisconnected: viewModel.disconnectedDeviceIDs.contains(entry.peripheral.identifier),
                                         zoomEnabled: zoomEnabled,
                                         visibleRangeStart: visibleDistanceRange.start,
-                                        visibleRangeEnd: visibleDistanceRange.end
+                                        visibleRangeEnd: visibleDistanceRange.end,
+                                        laneLockEnabled: laneLockEnabled,
+                                        pacemakerEnabled: pacemakerEnabled,
+                                        pacemakerDistance: currentPacemakerDistance
                                     )
                                     .zIndex(Double(visibleDevices.count - index))
                                     
@@ -177,9 +235,19 @@ struct ManagerRaceView: View {
                         .animation(.easeInOut(duration: 0.8), value: visibleDevices.map { $0.peripheral.identifier })
                     }
                 }
-            }
-        }
-    }
+                .onChange(of: viewModel.deviceMetrics.values.map { $0.elapsedTime }.max() ?? 0) { oldValue, newValue in
+                    if newValue > 0 && raceStartTime == nil {
+                        // 実走開始時刻を同期（現在時刻 - PM5が報告した経過時間）
+                        raceStartTime = Date().addingTimeInterval(-newValue)
+                    } else if newValue == 0 && oldValue > 0 {
+                        // ワークアウトのリセットを検知してリセット
+                        raceStartTime = nil
+                    }
+                }
+                }   // ZStack
+            }       // GeometryReader
+        }           // TimelineView
+    }               // body
     
 
     
@@ -272,6 +340,9 @@ struct RaceRowView: View {
     var zoomEnabled: Bool = false
     var visibleRangeStart: Double = 0
     var visibleRangeEnd: Double = 0
+    var laneLockEnabled: Bool = false
+    var pacemakerEnabled: Bool = false
+    var pacemakerDistance: Double = 0
     
     private let nameColumnWidth: CGFloat = 120
     private let rightInfoWidth: CGFloat = 100
@@ -299,6 +370,7 @@ struct RaceRowView: View {
     
     /// ボートの色（1位は金色、2位は銀色、3位は銅色、4位以下は標準色）
     private var boatColor: Color {
+        if laneLockEnabled { return Color(hex: "4FC3F7") }
         switch rank {
         case 1: return Color(hex: "FFD700")   // Gold
         case 2: return Color(hex: "C0C0C0")   // Silver
@@ -309,6 +381,7 @@ struct RaceRowView: View {
     
     /// ランクのバッジ色
     private var rankBadgeColor: Color {
+        if laneLockEnabled { return Color.white.opacity(0.3) }
         switch rank {
         case 1: return Color(hex: "FFD700")
         case 2: return Color(hex: "A0A0A0")
@@ -326,7 +399,7 @@ struct RaceRowView: View {
                 // ランクバッジ
                 Text("\(rank)")
                     .font(.system(size: 12, weight: .black, design: .rounded))
-                    .foregroundColor(rank <= 3 ? .black : .white)
+                    .foregroundColor((rank <= 3 && !laneLockEnabled) ? .black : .white)
                     .frame(width: 22, height: 22)
                     .background(rankBadgeColor)
                     .cornerRadius(4)
@@ -345,6 +418,29 @@ struct RaceRowView: View {
                 Rectangle()
                     .fill(Color.white.opacity(0.04))
                     .frame(height: 28)
+                
+                // ペースメーカー線
+                if pacemakerEnabled {
+                    let paceProgress = zoomEnabled
+                        ? ((visibleRangeEnd - visibleRangeStart) > 0 ? (pacemakerDistance - visibleRangeStart) / (visibleRangeEnd - visibleRangeStart) : 0)
+                        : (targetDistance > 0 ? pacemakerDistance / targetDistance : 0)
+                    
+                    if paceProgress >= 0 && paceProgress <= 1.0 {
+                        let paceX = barTrackWidth * CGFloat(paceProgress)
+                        Rectangle()
+                            .fill(Color.gray)
+                            .frame(width: 2, height: 29)
+                            .position(x: paceX, y: 14.5)
+                            .zIndex(0)
+                    } else if paceProgress > 1.0 {
+                        let paceX = barTrackWidth
+                        Rectangle()
+                            .fill(Color.gray)
+                            .frame(width: 2, height: 29)
+                            .position(x: paceX, y: 14.5)
+                            .zIndex(0)
+                    }
+                }
                 
                 if metrics.configStatus == .ready {
                     // ボートとテキスト
@@ -420,7 +516,7 @@ struct RaceRowView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(rank == 1 ? Color(hex: "FFD700").opacity(0.06) : Color.clear)
+        .background((rank == 1 && !laneLockEnabled) ? Color(hex: "FFD700").opacity(0.06) : Color.clear)
         .opacity(isDisconnected ? 0.5 : 1.0)
     }
     
@@ -474,16 +570,31 @@ struct ZoomSettingsView: View {
     @AppStorage("raceZoomDistanceBehind") private var zoomDistanceBehind: Double = 100
     @AppStorage("raceZoomMaxBoats") private var zoomMaxBoats: Int = 10
     
+    @AppStorage("raceLaneLockEnabled") private var laneLockEnabled: Bool = false
+    
     var body: some View {
         VStack(spacing: 16) {
             // ヘッダー
             HStack {
                 Image(systemName: "ruler")
                     .foregroundColor(Color(hex: "4FC3F7"))
-                Text("レースズーム")
+                Text("レースズーム設定")
                     .font(.system(size: 16, weight: .bold))
                 Spacer()
             }
+            
+            // レーン固定 トグル
+            Toggle(isOn: $laneLockEnabled) {
+                HStack(spacing: 6) {
+                    Image(systemName: laneLockEnabled ? "lock.fill" : "lock.open.fill")
+                        .foregroundColor(laneLockEnabled ? Color(hex: "4FC3F7") : .secondary)
+                    Text("レーン固定")
+                        .font(.system(size: 14, weight: .medium))
+                }
+            }
+            .tint(Color(hex: "4FC3F7"))
+            
+            Divider()
             
             // ON/OFF トグル
             Toggle(isOn: $zoomEnabled) {
@@ -551,6 +662,59 @@ struct ZoomSettingsView: View {
         }
         .padding(16)
         .frame(width: 320)
+        .presentationCompactAdaptation(.popover)
+    }
+}
+
+// MARK: - Pacemaker Settings View
+struct PacemakerSettingsView: View {
+    @AppStorage("racePacemakerEnabled") private var pacemakerEnabled: Bool = false
+    @AppStorage("racePacemakerPaceString") private var paceString: String = "2:00.0"
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Image(systemName: "timer")
+                    .foregroundColor(Color(hex: "4FC3F7"))
+                Text("ペースメーカー設定")
+                    .font(.system(size: 16, weight: .bold))
+                Spacer()
+            }
+            
+            Toggle(isOn: $pacemakerEnabled) {
+                HStack(spacing: 6) {
+                    Image(systemName: "timer")
+                        .foregroundColor(pacemakerEnabled ? Color(hex: "4FC3F7") : .secondary)
+                    Text(pacemakerEnabled ? "有効" : "無効")
+                        .font(.system(size: 14, weight: .medium))
+                }
+            }
+            .tint(Color(hex: "4FC3F7"))
+            
+            if pacemakerEnabled {
+                Divider()
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("ペース入力")
+                        .font(.system(size: 13, weight: .medium))
+                    
+                    HStack {
+                        TextField("m:ss.ms", text: $paceString)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .keyboardType(.numbersAndPunctuation)
+                            .frame(width: 80)
+                        
+                        Text("/500m")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 280)
         .presentationCompactAdaptation(.popover)
     }
 }

@@ -509,7 +509,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// 距離ワークアウトを全PM5に送信（Phase 2: CONFIG）
     private func setWorkoutDistance(meters: Int, split: Int? = nil) {
         let limitedMeters = min(max(meters, 100), 60000)
-        let limitedSplit = split != nil ? min(max(split!, 50), limitedMeters) : limitedMeters
+        let limitedSplit = split != nil ? min(max(split!, 100), limitedMeters) : limitedMeters
         
         // 楽観的UI更新: 送信開始時にダッシュボードを即座に表示
         isSending = true
@@ -721,7 +721,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         
         logV4(deviceID: deviceID, phase: "POLLING", retry: 0, state: "Start", message: "Polling Machine Status (v4 State-Aware)...")
         
-        let timeoutLimit: TimeInterval = 5.0
+        let timeoutLimit: TimeInterval = 9.0
         var deadline = Date().addingTimeInterval(timeoutLimit)
         var lastObservedState = metrics.machineState
         var isReady = false

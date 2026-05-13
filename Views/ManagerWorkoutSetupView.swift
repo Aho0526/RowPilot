@@ -151,7 +151,7 @@ struct ManagerDistanceSetupView: View {
                             if let d = Int(newValue) {
                                 // 距離が入力されたら、自動でその1/5をスプリットに設定
                                 let autoSplit = d / 5
-                                splitDistance = "\(max(autoSplit, 50))"
+                                splitDistance = "\(max(autoSplit, 100))"
                             }
                         }
                 }
@@ -159,7 +159,7 @@ struct ManagerDistanceSetupView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Split Distance".localized + " (m)")
                         .foregroundColor(Theme.textSecondary)
-                    TextField("Min 50m", text: $splitDistance)
+                    TextField("Min 100m", text: $splitDistance)
                         .keyboardType(.numberPad)
                         .textFieldStyle(.plain)
                         .padding()
@@ -179,7 +179,7 @@ struct ManagerDistanceSetupView: View {
                 
                 Button(action: {
                     if let d = Int(distance), let s = Int(splitDistance) {
-                        viewModel.resetAndStartWorkout(distance: d, split: s)
+                        viewModel.resetAndStartWorkout(distance: d, split: max(s, 100))
                     }
                 }) {
                     Text("Send to all PM5s".localized)
