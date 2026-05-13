@@ -20,11 +20,46 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
     enum ConfigStatus: Equatable {
         case idle
         case resetting
+        case polling
         case configuring
         case ready
+        case degraded(String)
         case error(String)
     }
     @Published var configStatus: ConfigStatus = .idle
+    
+    /// CSAFE State Machine State (Table 9 - Response Status Byte Bit-Mapping)
+    /// Status byte bits 3-0 から取得される PM5 の状態
+    enum PM5MachineState: UInt8 {
+        case error = 0x00
+        case ready = 0x01
+        case idle = 0x02
+        case haveID = 0x03
+        case inUse = 0x05
+        case pause = 0x06
+        case finish = 0x07
+        case manual = 0x08
+        case offline = 0x09
+        case unknown = 0xFF
+        
+        var description: String {
+            switch self {
+            case .error: return "Error"
+            case .ready: return "Ready"
+            case .idle: return "Idle"
+            case .haveID: return "HaveID"
+            case .inUse: return "InUse"
+            case .pause: return "Pause"
+            case .finish: return "Finish"
+            case .manual: return "Manual"
+            case .offline: return "Offline"
+            case .unknown: return "Unknown"
+            }
+        }
+    }
+    @Published var machineState: PM5MachineState = .unknown
+    @Published var isMachineBusy: Bool = false
+
     
     // Debug Data
     @Published var lastStrokeDataBytes: String = ""
@@ -313,13 +348,17 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     }
     
     /// フレーム送信前に意図しない SET_SCREENSTATE (ScreenType=3) を検出
+    /// v4: Extended frame (F0) にも対応
     private func validateCSAFEFrame(_ frame: Data) -> Bool {
         let bytes = [UInt8](frame)
-        guard bytes.first == 0xF1, bytes.last == 0xF2 else {
+        guard (bytes.first == 0xF0 || bytes.first == 0xF1), bytes.last == 0xF2 else {
             print("PM5ManagerVM: 🚨 Invalid CSAFE frame: Missing start/end flags")
             return false
         }
-        let payload = Array(bytes.dropFirst().dropLast())
+        // Extended frame の場合、アドレス2バイトをスキップしてペイロードを検査
+        let skipCount = (bytes.first == 0xF0) ? 3 : 1  // F0 + Dest + Src vs F1
+        let payload = Array(bytes.dropFirst(skipCount).dropLast())
+        guard payload.count >= 4 else { return true }
         for i in 0..<(payload.count - 3) {
             if payload[i] == 0x13 && payload[i+1] == 0x02 {
                 let param1 = payload[i+2]
@@ -334,19 +373,29 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         return true
     }
     
-    /// ペイロードからバイトスタッフィング＋バリデーション済みの完全なCSAFEフレームを構築
+    /// v4: Extended CSAFE Frame を構築 (Concept2仕様 Figure 2)
+    /// Structure: F0 [Dest] [Src] [Stuffed(Frame Contents + Checksum)] F2
+    /// - Checksum: Frame Contents のみの XOR (アドレスを含まない)
+    /// - Byte Stuffing: アドレス + Frame Contents + Checksum に適用
+    /// - Dest: 0xFD (Default secondary), Src: 0x00 (Host)
     private func buildCSAFEFrame(payload: Data) -> Data? {
+        // 1. Checksum = XOR of frame contents only
         let checksum = calculateCSAFEChecksum(for: payload)
-        var checksummedPayload = Data()
-        checksummedPayload.append(payload)
-        checksummedPayload.append(checksum)
         
-        let stuffed = byteStuff(checksummedPayload)
+        // 2. Byte stuffing 対象: [Dest][Src][FrameContents][Checksum]
+        var stuffingTarget = Data()
+        stuffingTarget.append(0xFD)  // Destination: Default secondary address
+        stuffingTarget.append(0x00)  // Source: Host
+        stuffingTarget.append(payload)
+        stuffingTarget.append(checksum)
         
+        let stuffed = byteStuff(stuffingTarget)
+        
+        // 3. 完全なフレーム: F0 [Stuffed data] F2
         var frame = Data()
-        frame.append(0xF1)
+        frame.append(0xF0)  // Extended Start Flag
         frame.append(stuffed)
-        frame.append(0xF2)
+        frame.append(0xF2)  // Stop Flag
         
         guard validateCSAFEFrame(frame) else {
             return nil
@@ -538,12 +587,15 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         }
     }
     
-    /// 全デバイスに終了・リセットシーケンスを開始（シリアライズキュー経由）
+    /// 全デバイスに終了・リセットシーケンスを開始（一括）
     func resetAllDevices() {
         print("PM5ManagerVM: Resetting all devices (Unconditional STOP)")
         lastHaltTime = Date()
         
-        let terminateFrame = Data([0xF1, 0x76, 0x04, 0x13, 0x02, 0x01, 0x02, 0x60, 0xF2])
+        guard let terminateFrame = buildTerminateExtendedFrame() else {
+            print("PM5ManagerVM: ⛔ Failed to build TERMINATE frame")
+            return
+        }
         
         // 全デバイスのメトリクスをクリア
         for device in connectedDevices {
@@ -555,6 +607,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                     metrics.power = 0
                     metrics.strokeRate = 0
                     metrics.lastStrokeCount = -1
+                    metrics.configStatus = .resetting
                 }
             }
         }
@@ -564,23 +617,43 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             frame: terminateFrame,
             label: "TERMINATE_RESET",
             perDeviceStatus: .resetting
-        ) { [weak self] in
-            print("PM5ManagerVM: TERMINATE sent to all devices.")
-            self?.onAllDevicesReadyAfterReset()
+        )
+    }
+    
+    /// TERMINATE コマンドの Extended Frame を構築
+    /// Concept2仕様: F1 76 04 13 02 01 02 [CS] F2 → Extended: F0 [Dest][Src] 76 04 13 02 01 02 [CS] F2
+    private func buildTerminateExtendedFrame() -> Data? {
+        // CSAFE_PM_SET_SCREENSTATE: ScreenType=WORKOUT(01), ScreenValue=TERMINATE(02)
+        let payload = Data([0x76, 0x04, 0x13, 0x02, 0x01, 0x02])
+        return buildCSAFEFrame(payload: payload)
+    }
+    
+    /// GETSTATUS コマンドの Extended Frame を構築
+    /// Standard: F1 80 80 F2 → Extended: F0 [Dest][Src] 80 80 F2
+    /// Short command (0x80) の checksum = 0x80
+    private func buildGetStatusExtendedFrame() -> Data {
+        // CSAFE_GETSTATUS_CMD (0x80) は short command
+        let payload = Data([0x80])
+        // buildCSAFEFrame を使用して extended frame を構築
+        // Checksum = 0x80, byte stuffing 適用
+        if let frame = buildCSAFEFrame(payload: payload) {
+            return frame
         }
+        // Fallback: 手動構築 (buildCSAFEFrame が nil を返すことは通常ない)
+        let checksum: UInt8 = 0x80
+        var stuffingTarget = Data([0xFD, 0x00, 0x80, checksum])
+        let stuffed = byteStuff(stuffingTarget)
+        var frame = Data([0xF0])
+        frame.append(stuffed)
+        frame.append(0xF2)
+        return frame
     }
     
-    /// 全接続済みデバイスに強制終了コマンドを順次送信（内部用）
-    private func sendTerminateToAllDevices(completion: (() -> Void)? = nil) {
-        let terminateFrame = Data([0xF1, 0x76, 0x04, 0x13, 0x02, 0x01, 0x02, 0x60, 0xF2])
-        print("PM5ManagerVM: Sending MANDATORY TERMINATE command to ALL connected devices (serialized)")
-        enqueueToAllDevices(frame: terminateFrame, label: "TERMINATE", completion: completion)
-    }
-    
+    /// v4 ワークフローを使用してワークアウトを開始
     func resetAndStartWorkout(distance: Int? = nil, time: Int? = nil, split: Int? = nil) {
-        print("PM5ManagerVM: Resetting and queuing new workout (Immediate transition to dashboard)")
+        print("PM5ManagerVM: Resetting and starting v4 workflow (Immediate transition to dashboard)")
         
-        // 1. 即座にダッシュボードへ遷移
+        // 1. 即座にダッシュボードへ遷移 (Optimistic UI)
         isSending = true
         showDashboard = true
         workoutDistance = distance
@@ -590,38 +663,179 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         workoutStartTime = Date()
         initializeAllMetrics()
         
-        // 全デバイスのステータスを初期化
-        for device in connectedDevices {
-            deviceMetrics[device.identifier]?.configStatus = .resetting
+        // 2. 各デバイスに対して独立した v4 ワークフローを並列実行
+        Task {
+            await withTaskGroup(of: Void.self) { group in
+                for device in connectedDevices {
+                    group.addTask {
+                        await self.runV4Workflow(for: device, workout: (distance: distance, time: time, split: split))
+                    }
+                }
+            }
+            
+            // 全体の完了（またはタイムアウト/エラーによる離脱）
+            DispatchQueue.main.async {
+                self.isSending = false
+                self.isSaved = false
+                print("PM5ManagerVM: v4 Workflow loop completed for all devices.")
+            }
         }
-        
-        // 2. ペンディングワークアウトを保存（GoReady完了後に使用）
-        pendingWorkoutAfterReset = (distance: distance, time: time, split: split)
-        
-        // 3. リセット送信
-        resetAllDevices()
     }
     
-    /// 全デバイスに終了コマンドが送信された後に呼ばれる
-    private func onAllDevicesReadyAfterReset() {
-        guard let pending = pendingWorkoutAfterReset else {
-            print("PM5ManagerVM: No pending workout after reset.")
+    // MARK: - v4 Architecture Core Logic
+    
+    private func logV4(deviceID: UUID, phase: String, retry: Int, state: String, message: String) {
+        let shortID = deviceID.uuidString.prefix(4)
+        print("[Device:\(shortID)][Phase:\(phase)][Retry:\(retry)][State:\(state)] \(message)")
+    }
+    
+    /// 特定のデバイスに対して v4 ワークフロー (TERMINATE -> POLL -> CONFIG) を実行
+    private func runV4Workflow(for peripheral: CBPeripheral, workout: (distance: Int?, time: Int?, split: Int?)) async {
+        let deviceID = peripheral.identifier
+        guard let char = controlCharacteristics[deviceID],
+              let metrics = deviceMetrics[deviceID] else { return }
+        
+        // PHASE 1: TERMINATE (Extended Frame)
+        guard let terminateFrame = buildTerminateExtendedFrame() else {
+            handleV4Failure(deviceID: deviceID, phase: "TERMINATE_GEN")
             return
         }
-        pendingWorkoutAfterReset = nil
+        let terminateCmd = CSAFECommandQueue.Command(peripheral: peripheral, characteristic: char, frame: terminateFrame, label: "TERMINATE")
         
-        print("PM5ManagerVM: ✅ All devices TERMINATE sent. Waiting 0.8s for PM5 internal state transition...")
+        updatePerDeviceStatus(deviceID, to: .resetting)
+        logV4(deviceID: deviceID, phase: "TERMINATE", retry: 0, state: "Start", message: "Sending mandatory reset (extended frame)...")
         
-        // Terminate後のPM5内部状態遷移を待つ（0.8秒）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            guard let self = self else { return }
-            print("PM5ManagerVM: Post-Terminate delay complete. Sending pending workout.")
-            
-            if let dist = pending.distance {
-                self.setWorkoutDistance(meters: dist, split: pending.split)
-            } else if let t = pending.time {
-                self.setWorkoutTime(seconds: t, split: pending.split)
+        let successTerminate = await executeWithRetry(command: terminateCmd, phase: "TERMINATE")
+        if !successTerminate {
+            handleV4Failure(deviceID: deviceID, phase: "TERMINATE")
+            return
+        }
+        
+        // BLE ACK ≠ PM5内部状態遷移完了。ACK は「packet accepted」を意味するのみ。
+        // そのため POLLING で実際の Machine Status を確認する。
+        
+        // PHASE 2: POLLING (Machine Status による状態同期, Extended Frame)
+        updatePerDeviceStatus(deviceID, to: .polling)
+        let pollFrame = buildGetStatusExtendedFrame()
+        let pollCmd = CSAFECommandQueue.Command(peripheral: peripheral, characteristic: char, frame: pollFrame, label: "POLL_STATUS")
+        
+        logV4(deviceID: deviceID, phase: "POLLING", retry: 0, state: "Start", message: "Polling Machine Status (v4 State-Aware)...")
+        
+        let timeoutLimit: TimeInterval = 5.0
+        var deadline = Date().addingTimeInterval(timeoutLimit)
+        var lastObservedState = metrics.machineState
+        var isReady = false
+        var communicationActive = true
+        
+        while Date() < deadline {
+            do {
+                try await commandQueue.writeAsync(command: pollCmd)
+                communicationActive = true
+                
+                // 応答パース待ち (Delegateからの更新を待つ)
+                try await Task.sleep(nanoseconds: 20_000_000)
+                
+                let currentState = metrics.machineState
+                let isBusy = metrics.isMachineBusy
+                
+                if currentState == .ready {
+                    isReady = true
+                    break
+                }
+                
+                // 1. 状態変化を検知した場合、カウントダウンをリセット
+                if currentState != lastObservedState {
+                    logV4(deviceID: deviceID, phase: "POLLING", retry: 0, state: "Progress", message: "State changed \(lastObservedState.description) -> \(currentState.description). Extending deadline.")
+                    deadline = Date().addingTimeInterval(timeoutLimit)
+                    lastObservedState = currentState
+                } 
+                // 2. 状態変化がなくても、PM5が「忙しい」状態（Busyフラグ or InUse/Finish/Pause）なら期限を延長
+                else if isBusy || currentState == .inUse || currentState == .finish || currentState == .pause {
+                    // PM5内部で処理が進行中とみなし、タイムアウトを2秒先送り
+                    let extensionDate = Date().addingTimeInterval(2.0)
+                    if extensionDate > deadline {
+                        deadline = extensionDate
+                    }
+                }
+            } catch {
+                // BLEレベルの無応答
+                communicationActive = false
+                logV4(deviceID: deviceID, phase: "POLLING", retry: 0, state: "NoResponse", message: "BLE write failed. Dead limit: \(Int(deadline.timeIntervalSinceNow))s")
             }
+            
+            // 4Hz polling interval
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        
+        if !isReady {
+            let reason = communicationActive ? "State stagnation at \(metrics.machineState.description)" : "Communication failure"
+            logV4(deviceID: deviceID, phase: "POLLING", retry: 0, state: "Timeout", message: "Failed to reach Ready state. \(reason)")
+            handleV4Failure(deviceID: deviceID, phase: "POLLING")
+            return
+        }
+        
+        logV4(deviceID: deviceID, phase: "POLLING", retry: 0, state: "Ready", message: "Synchronized. Proceeding to CONFIG.")
+        
+        // PHASE 3: CONFIG
+        updatePerDeviceStatus(deviceID, to: .configuring)
+        let configPayload: Data
+        if let dist = workout.distance {
+            configPayload = generateWorkoutCommand(distanceMeters: dist, splitMeters: workout.split)
+        } else if let time = workout.time {
+            configPayload = generateWorkoutCommand(timeSeconds: time, splitSeconds: workout.split)
+        } else {
+            return
+        }
+        
+        guard let configFrame = buildCSAFEFrame(payload: configPayload) else {
+            handleV4Failure(deviceID: deviceID, phase: "CONFIG_GEN")
+            return
+        }
+        
+        let configCmd = CSAFECommandQueue.Command(peripheral: peripheral, characteristic: char, frame: configFrame, label: "CONFIG")
+        
+        let successConfig = await executeWithRetry(command: configCmd, phase: "CONFIG")
+        if successConfig {
+            updatePerDeviceStatus(deviceID, to: .ready)
+            logV4(deviceID: deviceID, phase: "WORKFLOW", retry: 0, state: "Success", message: "Ready to row.")
+        } else {
+            handleV4Failure(deviceID: deviceID, phase: "CONFIG")
+        }
+    }
+    
+    /// 指数バックオフ付きリトライ実行
+    private func executeWithRetry(command: CSAFECommandQueue.Command, phase: String) async -> Bool {
+        let deviceID = command.peripheral.identifier
+        let maxRetries = 2
+        
+        for attempt in 0...maxRetries {
+            if attempt > 0 {
+                // 指数バックオフ: 100ms, 200ms
+                let backoffMs = pow(2.0, Double(attempt - 1)) * 100
+                logV4(deviceID: deviceID, phase: phase, retry: attempt, state: "Backoff", message: "Waiting \(Int(backoffMs))ms...")
+                try? await Task.sleep(nanoseconds: UInt64(backoffMs * 1_000_000))
+            }
+            
+            do {
+                try await commandQueue.writeAsync(command: command)
+                return true
+            } catch {
+                logV4(deviceID: deviceID, phase: phase, retry: attempt, state: "Error", message: "Write failed: \(error.localizedDescription)")
+            }
+        }
+        return false
+    }
+    
+    private func updatePerDeviceStatus(_ deviceID: UUID, to status: PM5DeviceMetrics.ConfigStatus) {
+        DispatchQueue.main.async {
+            self.deviceMetrics[deviceID]?.configStatus = status
+        }
+    }
+    
+    private func handleV4Failure(deviceID: UUID, phase: String) {
+        logV4(deviceID: deviceID, phase: phase, retry: 0, state: "Failed", message: "Marking as Degraded.")
+        DispatchQueue.main.async {
+            self.deviceMetrics[deviceID]?.configStatus = .degraded("Failed at \(phase)")
         }
     }
     
@@ -795,6 +1009,8 @@ extension PM5ManagerViewModel: CBPeripheralDelegate {
             parseManagerRowingStatus0x32(data, for: deviceID)
         } else if characteristic.uuid == C2_CHAR_STROKE_DATA {
             parseManagerStrokeData(data, for: deviceID)
+        } else if characteristic.uuid == C2_CHAR_DATA_POINT {
+            parseManagerDataPoint(data, for: deviceID)
         } else if characteristic.uuid == C2_CHAR_ADDITIONAL_STROKE_DATA_0x36 {
             parseManagerStrokeData0x36(data, for: deviceID)
         }
@@ -889,6 +1105,42 @@ extension PM5ManagerViewModel {
             guard let metrics = self?.deviceMetrics[deviceID] else { return }
             metrics.power = watts
             self?.objectWillChange.send()
+        }
+    }
+    
+    /// Data Point (0x22): CSAFE 応答をパースして Machine Status を更新
+    /// v4: Extended frame response にも対応
+    /// Response format:
+    ///   Standard: F1 [Status] [CmdResponse...] [Checksum] F2
+    ///   Extended: F0 [Src] [Dest] [Status] [CmdResponse...] [Checksum] F2
+    ///   Raw contents: [Status] [CmdResponse...] (framing stripped by BLE stack)
+    private func parseManagerDataPoint(_ data: Data, for deviceID: UUID) {
+        guard !data.isEmpty else { return }
+        
+        let bytes = [UInt8](data)
+        let statusByte: UInt8
+        
+        if bytes[0] == 0xF0 && bytes.count >= 4 {
+            // Extended frame response: F0 [Src] [Dest] [Status] ...
+            statusByte = bytes[3]
+        } else if bytes[0] == 0xF1 && bytes.count >= 2 {
+            // Standard frame response: F1 [Status] ...
+            statusByte = bytes[1]
+        } else {
+            // Raw frame contents (BLE stack がフレーミングを除去済み)
+            statusByte = bytes[0]
+        }
+        
+        let stateValue = statusByte & 0x0F
+        let busyFlag = (statusByte & 0x20) != 0
+        
+        if let state = PM5DeviceMetrics.PM5MachineState(rawValue: stateValue) {
+            DispatchQueue.main.async { [weak self] in
+                if let metrics = self?.deviceMetrics[deviceID] {
+                    metrics.machineState = state
+                    metrics.isMachineBusy = busyFlag
+                }
+            }
         }
     }
 }

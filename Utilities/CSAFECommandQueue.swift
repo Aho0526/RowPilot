@@ -1,15 +1,52 @@
 import Foundation
 import CoreBluetooth
 
-/// BLE CSAFE コマンドのフォールトトレラント・キュー
-/// デバイスごとの直列化（Actor）と、デバイス間の並行処理（TaskGroup）を組み合わせることで、
-/// 1台の通信失敗が全体のワークアウト送信をブロックしないようにします。
+// MARK: - Global BLE Write Limiter
+/// CoreBluetooth internal queue collapse 防止のための同時書き込み数制限
+/// 多台数接続時に同時 BLE write が集中するのを防ぐ
+actor GlobalWriteLimiter {
+    private let maxConcurrent: Int
+    private var activeCount: Int = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    
+    init(maxConcurrent: Int) {
+        self.maxConcurrent = maxConcurrent
+    }
+    
+    func acquire() async {
+        if activeCount < maxConcurrent {
+            activeCount += 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+    
+    func release() {
+        if !waiters.isEmpty {
+            // スロットを次の waiter に直接譲渡（activeCount は変わらない）
+            let next = waiters.removeFirst()
+            next.resume()
+        } else {
+            activeCount -= 1
+        }
+    }
+}
+
+/// BLE CSAFE コマンドのフォールトトレラント・キュー (v4)
+/// デバイスごとの直列化（Actor）と、デバイス間の並行処理（TaskGroup）を組み合わせ、
+/// 1台の通信失敗が全体のワークアウト送信をブロックしないようにする。
+///
+/// v4 変更点:
+/// - Minimum inter-frame gap: 50ms (Concept2仕様 Table 10 準拠)
+/// - Global write limiter: maxConcurrentWrites = 3 (CoreBluetooth queue collapse 防止)
 class CSAFECommandQueue {
     
     struct Command {
         let peripheral: CBPeripheral
         let characteristic: CBCharacteristic
-        let frame: Data          // 完全な CSAFE フレーム (F1...F2)
+        let frame: Data          // 完全な CSAFE フレーム (F0...F2 extended)
         let label: String        // デバッグ用ラベル
     }
     
@@ -25,8 +62,11 @@ class CSAFECommandQueue {
     /// タイムアウト値（秒） - 8台接続時などを考慮して余裕を持たせる
     private let timeoutDuration: TimeInterval = 2.0
     
-    /// BLE write後の最小待機時間
-    private let interWriteDelayNanoseconds: UInt64 = 30_000_000 // 30ms
+    /// Concept2仕様 Table 10: Minimum Inter-frame Gap = 50 msec
+    private let interFrameGapNanoseconds: UInt64 = 50_000_000 // 50ms
+    
+    /// 同時 BLE write 数制限 (CoreBluetooth internal queue collapse 防止)
+    private let writeLimiter = GlobalWriteLimiter(maxConcurrent: 3)
     
     // Per-Device Queue Actor (デバイス固有の直列化を保証)
     actor DeviceQueue {
@@ -84,8 +124,13 @@ class CSAFECommandQueue {
     }
     
     /// 非同期でBLE Writeを実行し、タイムアウトと競合させる
-    fileprivate func writeAsync(command: Command) async throws {
+    /// Global write limiter により同時書き込み数を制限
+    func writeAsync(command: Command) async throws {
         let peripheralID = command.peripheral.identifier
+        
+        // Global write limiter: 同時 BLE write 数を制限
+        await writeLimiter.acquire()
+        defer { Task { await writeLimiter.release() } }
         
         // タイムアウト付きのタスクグループ
         try await withThrowingTaskGroup(of: Void.self) { group in
@@ -124,11 +169,12 @@ class CSAFECommandQueue {
         continuations.removeValue(forKey: peripheralID)
         lock.unlock()
         
-        // フレーム破壊防止のための規定間隔
-        try? await Task.sleep(nanoseconds: interWriteDelayNanoseconds)
+        // Concept2仕様準拠: Minimum Inter-frame Gap = 50ms
+        try? await Task.sleep(nanoseconds: interFrameGapNanoseconds)
     }
     
     /// コマンド配列をキューに追加し、全デバイスに対して【並行】で送信する。
+    /// Global write limiter により同時に実行される BLE write は最大3つに制限される。
     func enqueueSequential(_ commands: [Command], perDeviceCompletion: ((CBPeripheral, Bool) -> Void)? = nil, completion: (() -> Void)? = nil) {
         guard !commands.isEmpty else {
             completion?()
