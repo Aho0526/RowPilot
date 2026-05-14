@@ -1,5 +1,5 @@
 # RowPilot PM5 Communication Architecture v4
-Overview
+### Overview
 v4では、従来の「固定時間待機」に依存した通信方式を廃止し、
  PM5の実際の状態（Machine Status）を監視しながら進行する
  “State-Synchronized Architecture” を採用している。
