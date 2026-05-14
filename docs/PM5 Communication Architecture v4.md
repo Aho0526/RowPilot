@@ -26,7 +26,7 @@ Byte Stuffing
 を payload 内で検出した場合、
  CSAFE仕様に基づき byte stuffing を実施。
 
-
+---
 
 ## 2. Transmission Architecture
 CSAFECommandQueue
@@ -34,18 +34,18 @@ BLE通信の不安定化を防ぐため、
  全送信を専用 queue で管理。
 
 
-### Global Write Limiter
+### Global Write Limiter 
 CoreBluetooth内部queueの詰まりを防ぐため、
  同時BLE write数を制限。
 maxConcurrentWrites = 3
 
-
+---
 ### Inter-frame Gap
 CSAFE仕様準拠のため、
  全フレーム送信間に minimum 50ms gap を挿入。
 interFrameGap = 50ms
 
-
+---
 ### Parallel / Sequential Hybrid
 #### Device内部
 Sequential
@@ -55,6 +55,7 @@ Sequential
 Parallel
 複数PM5を並列制御。
 
+---
 
 ## 3. v4 Workflow
 ### Phase 1 — TERMINATE
@@ -81,7 +82,7 @@ baseTimeout = 9.0s
 - InUse
 - Finish
 - state transition
-→ deadline を自動延長。
+##### → deadline を自動延長。
 
 
 ### Purpose
@@ -101,7 +102,7 @@ Ready同期完了後、
 - Split
 - Screen State
 
-
+---
 
 ## 4. Fault Tolerance
 Healthy / Degraded Separation
@@ -116,6 +117,7 @@ Degraded
 - UI停止
 を発生させない。
 
+---
 
 ## 5. Data Acquisition
 ### General Status (0x31)
@@ -133,6 +135,7 @@ Pace /500m
 - CSAFE responses
 - Machine Status
 
+---
 
 ## 6. UI / UX Philosophy
 v4では optimistic UI を採用。
@@ -144,6 +147,7 @@ v4では optimistic UI を採用。
 - 通信待機感の排除
 - 異常デバイスの個別可視化
 
+---
 
 ## 7. Design Philosophy
 v4は「研究用」ではなく、
