@@ -26,7 +26,7 @@ struct ManagerWorkoutDashboardView: View {
     var body: some View {
         GeometryReader { geo in
             let isLandscape = geo.size.width > geo.size.height
-            let isDistanceWorkout = viewModel.workoutDistance != nil
+            let isDistanceWorkout = viewModel.workoutDistance != nil && viewModel.workoutRestTime == nil
             
             ZStack {
                 Theme.background.ignoresSafeArea()
@@ -168,18 +168,26 @@ struct ManagerWorkoutDashboardView: View {
         .alert("Repeat Workout".localized, isPresented: $showRepeatAlert) {
             Button("Save and Repeat".localized) {
                 viewModel.saveAllRecords(recordManager: appViewModel.recordManager)
-                viewModel.resetAndStartWorkout(
-                    distance: viewModel.workoutDistance,
-                    time: viewModel.workoutTime,
-                    split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : viewModel.workoutSplitTime
-                )
+                if let rest = viewModel.workoutRestTime {
+                    viewModel.resetAndStartIntervalWorkout(distance: viewModel.workoutDistance, time: viewModel.workoutTime, rest: rest)
+                } else {
+                    viewModel.resetAndStartWorkout(
+                        distance: viewModel.workoutDistance,
+                        time: viewModel.workoutTime,
+                        split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : viewModel.workoutSplitTime
+                    )
+                }
             }
             Button("Discard and Repeat".localized, role: .destructive) {
-                viewModel.resetAndStartWorkout(
-                    distance: viewModel.workoutDistance,
-                    time: viewModel.workoutTime,
-                    split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : viewModel.workoutSplitTime
-                )
+                if let rest = viewModel.workoutRestTime {
+                    viewModel.resetAndStartIntervalWorkout(distance: viewModel.workoutDistance, time: viewModel.workoutTime, rest: rest)
+                } else {
+                    viewModel.resetAndStartWorkout(
+                        distance: viewModel.workoutDistance,
+                        time: viewModel.workoutTime,
+                        split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : viewModel.workoutSplitTime
+                    )
+                }
             }
             Button("Cancel".localized, role: .cancel) {}
         } message: {
@@ -227,6 +235,17 @@ struct ManagerWorkoutDashboardView: View {
                         Text("Target Time".localized)
                             .font(.system(size: 11))
                             .foregroundColor(Theme.textSecondary)
+                    }
+                    
+                    if let rest = viewModel.workoutRestTime {
+                        HStack(spacing: 4) {
+                            Image(systemName: "pause.circle.fill")
+                                .font(.caption2)
+                            Text("Rest: ".localized + formatTime(seconds: rest))
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.top, 2)
                     }
                 }
                 

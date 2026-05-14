@@ -2,6 +2,24 @@ import Foundation
 import CoreBluetooth
 import Combine
 
+// MARK: - Variable Interval Entry Model
+/// Variable Intervalの1インターバル設定
+struct VariableIntervalEntry: Identifiable, Equatable {
+    let id = UUID()
+    var distanceMeters: Int?    // 距離インターバル (m)
+    var timeSeconds: Int?       // 時間インターバル (秒)
+    var restSeconds: Int        // 休憩時間 (秒, Max 9:55 = 595)
+    var targetPace500mSeconds: Int? // ターゲットペース (秒/500m), nilで無設定
+    
+    static func distanceEntry(meters: Int, rest: Int, pace: Int? = nil) -> VariableIntervalEntry {
+        VariableIntervalEntry(distanceMeters: meters, timeSeconds: nil, restSeconds: min(rest, 595), targetPace500mSeconds: pace)
+    }
+    
+    static func timeEntry(seconds: Int, rest: Int, pace: Int? = nil) -> VariableIntervalEntry {
+        VariableIntervalEntry(distanceMeters: nil, timeSeconds: seconds, restSeconds: min(rest, 595), targetPace500mSeconds: pace)
+    }
+}
+
 // MARK: - Per-Device Metrics Model
 /// 各PM5デバイスのリアルタイムメトリクスを保持
 class PM5DeviceMetrics: ObservableObject, Identifiable {
@@ -139,6 +157,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     @Published var workoutTime: Int? = nil      // 秒
     @Published var workoutSplitDistance: Int? = nil // スプリット距離
     @Published var workoutSplitTime: Int? = nil     // スプリット時間
+    @Published var workoutRestTime: Int? = nil      // 休憩時間（秒）
     
     /// ダッシュボード表示フラグ
     @Published var showDashboard: Bool = false
@@ -378,8 +397,26 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// - Checksum: Frame Contents のみの XOR (アドレスを含まない)
     /// - Byte Stuffing: アドレス + Frame Contents + Checksum に適用
     /// - Dest: 0xFD (Default secondary), Src: 0x00 (Host)
-    private func buildCSAFEFrame(payload: Data) -> Data? {
-        // 1. Checksum = XOR of frame contents only
+    /// CSAFEフレームを構築（パディング、チェックサム、バイトスタッフィング）
+    /// - startFlag: 0xF0 (Standard) または 0xF1 (Extended)
+    /// - Byte Stuffing: アドレス + Frame Contents + Checksum に適用
+    /// - Dest: 0xFD (Default secondary), Src: 0x00 (Host)
+    private func buildCSAFEFrame(payload: Data, startFlag: UInt8 = 0xF0) -> Data? {
+        if startFlag == 0xF1 {
+            // F1 (Standard/Compact) Frame: F1 [FrameContents] [Checksum] F2
+            // 仕様書通り、アドレスバイト(FD 00)なし、payloadのみでチェックサムを計算
+            let checksum = calculateCSAFEChecksum(for: payload)
+            var frame = Data()
+            frame.append(0xF1)  // Standard Start Flag
+            frame.append(payload)
+            frame.append(checksum)
+            frame.append(0xF2)  // Stop Flag
+            guard validateCSAFEFrame(frame) else { return nil }
+            return frame
+        }
+        
+        // F0 (Extended) Frame: F0 [Dest] [Src] [FrameContents] [Checksum] F2
+        // 1. Checksum = XOR of frame contents only (アドレスを含まない)
         let checksum = calculateCSAFEChecksum(for: payload)
         
         // 2. Byte stuffing 対象: [Dest][Src][FrameContents][Checksum]
@@ -397,9 +434,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         frame.append(stuffed)
         frame.append(0xF2)  // Stop Flag
         
-        guard validateCSAFEFrame(frame) else {
-            return nil
-        }
+        guard validateCSAFEFrame(frame) else { return nil }
         return frame
     }
     
@@ -505,6 +540,225 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         
         return fullCommand
     }
+    
+    /// 不変インターバル（固定距離/時間）ワークアウトコマンドを生成
+    /// 公式ドキュメント (P91/92) に準拠したバイナリレベル・シリアライズ実装
+    private func generateIntervalWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, restSeconds: Int) -> Data {
+        var payload = Data()
+        
+        func appendUInt32(_ value: UInt32) {
+            let bytes = withUnsafeBytes(of: value.bigEndian) { Data($0) }
+            payload.append(bytes)
+        }
+        
+        // 1. CSAFE_PM_SET_WORKOUTTYPE
+        // 公式仕様: 0x06 = Fixed Time Interval, 0x07 = Fixed Distance Interval
+        payload.append(contentsOf: [0x01, 0x01])
+        payload.append(distanceMeters != nil ? 0x07 : 0x06)
+        
+        // 2. CSAFE_PM_SET_WORKOUTDURATION
+        // Byte 0x03, length=0x05: [Type(1)] + [Value(4, Big Endian)]
+        payload.append(contentsOf: [0x03, 0x05])
+        if let dist = distanceMeters {
+            payload.append(0x80) // Meters
+            appendUInt32(UInt32(dist))
+        } else if let time = timeSeconds {
+            payload.append(0x00) // Time (0.01s units)
+            appendUInt32(UInt32(time * 100))
+        }
+        
+        // 3. CSAFE_PM_SET_RESTDURATION
+        // 公式仕様: 0x04, length=0x02, [RestHigh][RestLow] (UInt16, Big Endian, 単位:秒)
+        // 誤: 0x04 0x03 0x00 XX XX (長づ3バイト)は不正。正しくは length=2
+        payload.append(0x04)
+        payload.append(0x02)
+        let rSec = UInt16(min(restSeconds, 595)) // Max 9:55
+        payload.append(UInt8((rSec >> 8) & 0xFF))
+        payload.append(UInt8(rSec & 0xFF))
+        
+        // 4. CSAFE_PM_CONFIGURE_WORKOUT
+        payload.append(contentsOf: [0x14, 0x01, 0x01])
+        
+        // 5. CSAFE_PM_SET_SCREENSTATE
+        payload.append(contentsOf: [0x13, 0x02, 0x01, 0x01])
+        
+        // Wrap in CSAFE_SETPMCFG_CMD (0x76): 0x76 [len] [payload]
+        // len = payload実サイズ（可変）→ 固定値不使用、必ず自動計算
+        var fullCommand = Data()
+        fullCommand.append(0x76)
+        fullCommand.append(UInt8(payload.count))
+        fullCommand.append(payload)
+        
+        let hexStr = fullCommand.map { String(format: "%02X", $0) }.joined(separator: " ")
+        print("PM5ManagerVM: [INTERVAL] CSAFE inner payload = \(hexStr)")
+        
+        return fullCommand
+    }
+    
+    // MARK: - Variable Interval (P93-96)
+    
+    /// Variable Interval 1インターバル分のCSAFEブロックを生成
+    /// 仕様書P93-96: WORKOUTINTERVALCOUNT + SET_INTERVALTYPE + WORKOUTDURATION + RESTDURATION + TARGETPACETIME + CONFIGURE_WORKOUT
+    private func buildVariableIntervalBlock(index: Int, entry: VariableIntervalEntry) -> Data {
+        var block = Data()
+        
+        func appendUInt32(_ v: UInt32, to data: inout Data) {
+            withUnsafeBytes(of: v.bigEndian) { data.append(contentsOf: $0) }
+        }
+        
+        // CSAFE_PM_WORKOUTINTERVALCOUNT (0x18): インターバル番号（0-indexed）
+        block.append(contentsOf: [0x18, 0x01, UInt8(index)])
+        
+        // CSAFE_PM_SET_INTERVALTYPE (0x17)
+        // 仕様書P94: INTERVALTYPE_DIST = 0x01, INTERVALTYPE_TIME = 0x00
+        block.append(contentsOf: [0x17, 0x01])
+        block.append(entry.distanceMeters != nil ? 0x01 : 0x00) // 0x01=DIST, 0x00=TIME
+        
+        // CSAFE_PM_SET_WORKOUTDURATION (0x03): 距離 or 時間
+        block.append(contentsOf: [0x03, 0x05])
+        if let dist = entry.distanceMeters {
+            block.append(0x80) // 距離識別子
+            appendUInt32(UInt32(dist), to: &block)
+        } else if let time = entry.timeSeconds {
+            block.append(0x00) // 時間識別子
+            appendUInt32(UInt32(time * 100), to: &block) // 0.01s単位
+        }
+        
+        // CSAFE_PM_SET_RESTDURATION (0x04): 休憩時間 (UInt16, 秒)
+        block.append(0x04)
+        block.append(0x02)
+        let rSec = UInt16(min(entry.restSeconds, 595))
+        block.append(UInt8((rSec >> 8) & 0xFF))
+        block.append(UInt8(rSec & 0xFF))
+        
+        // CSAFE_PM_SET_TARGETPACETIME (0x06): ターゲットペース (4バイト, 0.01s単位)
+        // ペース未設定時は0（PM5デフォルト）
+        block.append(contentsOf: [0x06, 0x04])
+        if let pace = entry.targetPace500mSeconds {
+            appendUInt32(UInt32(pace * 100), to: &block)
+        } else {
+            appendUInt32(0, to: &block)
+        }
+        
+        // CSAFE_PM_CONFIGURE_WORKOUT (0x14)
+        block.append(contentsOf: [0x14, 0x01, 0x01])
+        
+        return block
+    }
+    
+    /// Variable Interval ワークアウトの完全なCSAFEコマンドを生成
+    /// 仕様書P93: WorkoutType=0x08, 各インターバルを繰り返し定義
+    func generateVariableIntervalCommand(intervals: [VariableIntervalEntry]) -> Data {
+        var payload = Data()
+        
+        // 1. CSAFE_PM_SET_WORKOUTTYPE: 0x08 = WORKOUTTYPE_VARIABLE_INTERVAL
+        payload.append(contentsOf: [0x01, 0x01, 0x08])
+        
+        // 2. 各インターバルブロックを追加
+        for (i, entry) in intervals.enumerated() {
+            payload.append(buildVariableIntervalBlock(index: i, entry: entry))
+        }
+        
+        // 3. CSAFE_PM_CONFIGURE_WORKOUT（全体確定）
+        payload.append(contentsOf: [0x14, 0x01, 0x01])
+        
+        // 4. CSAFE_PM_SET_SCREENSTATE
+        payload.append(contentsOf: [0x13, 0x02, 0x01, 0x01])
+        
+        // Wrap in 0x76
+        var fullCommand = Data()
+        fullCommand.append(0x76)
+        fullCommand.append(UInt8(payload.count))
+        fullCommand.append(payload)
+        
+        let hexStr = fullCommand.map { String(format: "%02X", $0) }.joined(separator: " ")
+        print("PM5ManagerVM: [VAR_INTERVAL] CSAFE payload = \(hexStr)")
+        
+        return fullCommand
+    }
+    
+    /// Variable Interval ワークアウトを全PM5に開始
+    func resetAndStartVariableIntervalWorkout(intervals: [VariableIntervalEntry]) {
+        print("PM5ManagerVM: Starting Variable Interval workout (\(intervals.count) intervals)")
+        
+        isSending = true
+        showDashboard = true
+        workoutDistance = nil
+        workoutTime = nil
+        workoutRestTime = nil
+        workoutSplitDistance = nil
+        workoutSplitTime = nil
+        workoutStartTime = Date()
+        initializeAllMetrics()
+        
+        Task {
+            await withTaskGroup(of: Void.self) { group in
+                for device in connectedDevices {
+                    group.addTask {
+                        await self.runV4WorkflowVariable(for: device, intervals: intervals)
+                    }
+                }
+            }
+            DispatchQueue.main.async {
+                self.isSending = false
+                self.isSaved = false
+            }
+        }
+    }
+    
+    /// Variable Interval 専用 v4 ワークフロー
+    private func runV4WorkflowVariable(for peripheral: CBPeripheral, intervals: [VariableIntervalEntry]) async {
+        let deviceID = peripheral.identifier
+        guard let char = controlCharacteristics[deviceID],
+              let _ = deviceMetrics[deviceID] else { return }
+        
+        // PHASE 1: TERMINATE
+        guard let terminateFrame = buildTerminateExtendedFrame() else {
+            handleV4Failure(deviceID: deviceID, phase: "TERMINATE_GEN"); return
+        }
+        let terminateCmd = CSAFECommandQueue.Command(peripheral: peripheral, characteristic: char, frame: terminateFrame, label: "TERMINATE")
+        updatePerDeviceStatus(deviceID, to: .resetting)
+        let successTerminate = await executeWithRetry(command: terminateCmd, phase: "TERMINATE")
+        if !successTerminate { handleV4Failure(deviceID: deviceID, phase: "TERMINATE"); return }
+        
+        // PHASE 2: POLL
+        updatePerDeviceStatus(deviceID, to: .polling)
+        let pollFrame = buildGetStatusExtendedFrame()
+        let pollCmd = CSAFECommandQueue.Command(peripheral: peripheral, characteristic: char, frame: pollFrame, label: "POLL_STATUS")
+        
+        let timeoutLimit: TimeInterval = 9.0
+        var deadline = Date().addingTimeInterval(timeoutLimit)
+        var isReady = false
+        
+        while Date() < deadline {
+            do {
+                try await commandQueue.writeAsync(command: pollCmd)
+                try await Task.sleep(nanoseconds: 20_000_000)
+                if let m = deviceMetrics[deviceID], m.machineState == .ready {
+                    isReady = true; break
+                }
+            } catch {}
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            deadline = max(deadline, Date().addingTimeInterval(1.0))
+        }
+        if !isReady { handleV4Failure(deviceID: deviceID, phase: "POLLING"); return }
+        
+        // PHASE 3: CONFIG (F1 frame)
+        updatePerDeviceStatus(deviceID, to: .configuring)
+        let configPayload = generateVariableIntervalCommand(intervals: intervals)
+        guard let configFrame = buildCSAFEFrame(payload: configPayload, startFlag: 0xF1) else {
+            handleV4Failure(deviceID: deviceID, phase: "CONFIG_GEN"); return
+        }
+        let configCmd = CSAFECommandQueue.Command(peripheral: peripheral, characteristic: char, frame: configFrame, label: "CONFIG_VAR_INTERVAL")
+        let successConfig = await executeWithRetry(command: configCmd, phase: "CONFIG")
+        if successConfig {
+            updatePerDeviceStatus(deviceID, to: .ready)
+            logV4(deviceID: deviceID, phase: "WORKFLOW", retry: 0, state: "Success", message: "Variable Interval ready.")
+        } else {
+            handleV4Failure(deviceID: deviceID, phase: "CONFIG")
+        }
+    }
+
     
     /// 距離ワークアウトを全PM5に送信（Phase 2: CONFIG）
     private func setWorkoutDistance(meters: Int, split: Int? = nil) {
@@ -660,6 +914,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         workoutSplitDistance = distance != nil ? split : nil
         workoutTime = time
         workoutSplitTime = time != nil ? split : nil
+        workoutRestTime = nil
         workoutStartTime = Date()
         initializeAllMetrics()
         
@@ -668,16 +923,46 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             await withTaskGroup(of: Void.self) { group in
                 for device in connectedDevices {
                     group.addTask {
-                        await self.runV4Workflow(for: device, workout: (distance: distance, time: time, split: split))
+                        await self.runV4Workflow(for: device, workout: (distance: distance, time: time, split: split, rest: nil))
                     }
                 }
             }
             
-            // 全体の完了（またはタイムアウト/エラーによる離脱）
+            // 全体の完了
             DispatchQueue.main.async {
                 self.isSending = false
                 self.isSaved = false
                 print("PM5ManagerVM: v4 Workflow loop completed for all devices.")
+            }
+        }
+    }
+    
+    /// 不変インターバルワークアウトを開始
+    func resetAndStartIntervalWorkout(distance: Int? = nil, time: Int? = nil, rest: Int) {
+        print("PM5ManagerVM: Resetting and starting Interval workflow")
+        
+        isSending = true
+        showDashboard = true
+        workoutDistance = distance
+        workoutTime = time
+        workoutRestTime = rest
+        workoutSplitDistance = nil
+        workoutSplitTime = nil
+        workoutStartTime = Date()
+        initializeAllMetrics()
+        
+        Task {
+            await withTaskGroup(of: Void.self) { group in
+                for device in connectedDevices {
+                    group.addTask {
+                        await self.runV4Workflow(for: device, workout: (distance: distance, time: time, split: nil, rest: rest))
+                    }
+                }
+            }
+            
+            DispatchQueue.main.async {
+                self.isSending = false
+                self.isSaved = false
             }
         }
     }
@@ -690,7 +975,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     }
     
     /// 特定のデバイスに対して v4 ワークフロー (TERMINATE -> POLL -> CONFIG) を実行
-    private func runV4Workflow(for peripheral: CBPeripheral, workout: (distance: Int?, time: Int?, split: Int?)) async {
+    private func runV4Workflow(for peripheral: CBPeripheral, workout: (distance: Int?, time: Int?, split: Int?, rest: Int?)) async {
         let deviceID = peripheral.identifier
         guard let char = controlCharacteristics[deviceID],
               let metrics = deviceMetrics[deviceID] else { return }
@@ -779,7 +1064,11 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         // PHASE 3: CONFIG
         updatePerDeviceStatus(deviceID, to: .configuring)
         let configPayload: Data
-        if let dist = workout.distance {
+        
+        if let rest = workout.rest {
+            // Interval Workout
+            configPayload = generateIntervalWorkoutCommand(distanceMeters: workout.distance, timeSeconds: workout.time, restSeconds: rest)
+        } else if let dist = workout.distance {
             configPayload = generateWorkoutCommand(distanceMeters: dist, splitMeters: workout.split)
         } else if let time = workout.time {
             configPayload = generateWorkoutCommand(timeSeconds: time, splitSeconds: workout.split)
@@ -787,7 +1076,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             return
         }
         
-        guard let configFrame = buildCSAFEFrame(payload: configPayload) else {
+        
+        let startFlag: UInt8 = workout.rest != nil ? 0xF1 : 0xF0
+        guard let configFrame = buildCSAFEFrame(payload: configPayload, startFlag: startFlag) else {
             handleV4Failure(deviceID: deviceID, phase: "CONFIG_GEN")
             return
         }

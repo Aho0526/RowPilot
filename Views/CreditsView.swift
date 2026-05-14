@@ -137,6 +137,11 @@ struct VersionHistoryView: View {
             Theme.background.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 20) {
+                    CreditSection(title: "5/13") {
+                        Text("レースビューにおけるレーン固定やペースメーカーの追加")
+                        Text("Comminucation Architecture v4の適用")
+                    .foregroundColor(Theme.textMain)
+                    }
                     CreditSection(title: "5/11") {
                         Text("SOS機能の大幅追加")
                         Text("SplitMeterの指定が可能に")
