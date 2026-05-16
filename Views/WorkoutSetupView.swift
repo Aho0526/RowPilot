@@ -21,6 +21,14 @@ struct WorkoutSetupView: View {
                     LargeWorkoutButton(title: "Single Time".localized, icon: "clock.fill")
                 }
                 
+                NavigationLink(destination: FixedIntervalSetupView(ergManager: ergManager)) {
+                    LargeWorkoutButton(title: "Fixed Interval".localized, icon: "repeat")
+                }
+                
+                NavigationLink(destination: VariableIntervalSetupView(ergManager: ergManager)) {
+                    LargeWorkoutButton(title: "Variable Interval".localized, icon: "repeat.1")
+                }
+                
                 Spacer()
                 
                 if ergManager.isResearchWriteBusy {
@@ -56,7 +64,7 @@ struct LargeWorkoutButton: View {
         }
         .foregroundColor(.white)
         .frame(maxWidth: .infinity)
-        .frame(height: 100)
+        .frame(height: 80)
         .background(Theme.primaryGradient)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
@@ -236,24 +244,218 @@ struct SingleTimeSetupView: View {
     }
 }
 
-struct TimePickerColumn: View {
-    @Binding var value: Int
-    let range: ClosedRange<Int>
-    let label: String
+// MARK: - Fixed Interval Setup
+struct FixedIntervalSetupView: View {
+    @ObservedObject var ergManager: RowErgManager
+    @State private var intervalType: Int = 0 // 0: Distance, 1: Time
+    @State private var distance: String = ""
+    @State private var hours: Int = 0
+    @State private var minutes: Int = 2
+    @State private var seconds: Int = 0
+    @State private var restMinutes: Int = 1
+    @State private var restSeconds: Int = 0
+    @Environment(\.dismiss) var dismiss
+    
+    private var totalSeconds: Int { hours * 3600 + minutes * 60 + seconds }
+    private var totalRestSeconds: Int { min(restMinutes * 60 + restSeconds, 595) }
     
     var body: some View {
-        VStack {
-            Picker("", selection: $value) {
-                ForEach(range, id: \.self) { i in
-                    Text(String(format: "%02d", i)).tag(i)
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 24) {
+                    Text("Fixed Interval".localized)
+                        .font(Theme.headerFont())
+                        .foregroundColor(Theme.textMain)
+                    
+                    Picker("Interval Type", selection: $intervalType) {
+                        Text("Distance".localized).tag(0)
+                        Text("Time".localized).tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    
+                    if intervalType == 0 {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Interval Distance".localized + " (m)")
+                                .foregroundColor(Theme.textSecondary)
+                            TextField("100 - 60000", text: $distance)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.plain)
+                                .padding()
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(12)
+                                .foregroundColor(.white)
+                                .font(.title)
+                        }
+                    } else {
+                        VStack(spacing: 8) {
+                            Text("Interval Time".localized)
+                                .foregroundColor(Theme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack(spacing: 0) {
+                                TimePickerColumn(value: $hours, range: 0...9, label: "hh")
+                                Text(":").font(.title).foregroundColor(.white).offset(y: -10)
+                                TimePickerColumn(value: $minutes, range: 0...59, label: "mm")
+                                Text(":").font(.title).foregroundColor(.white).offset(y: -10)
+                                TimePickerColumn(value: $seconds, range: 0...59, label: "ss")
+                            }
+                            .padding()
+                            .background(Color.white.opacity(0.05))
+                            .cornerRadius(16)
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Rest Duration (Max 9:55)".localized)
+                            .foregroundColor(Theme.textSecondary)
+                        HStack(spacing: 0) {
+                            Spacer()
+                            TimePickerColumn(value: $restMinutes, range: 0...9, label: "mm")
+                            Text(":").font(.title).foregroundColor(.white).offset(y: -10)
+                            TimePickerColumn(value: $restSeconds, range: 0...59, label: "ss")
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(16)
+                    }
+                    
+                    Button(action: {
+                        if intervalType == 0 {
+                            if let d = Int(distance) {
+                                ergManager.setFixedIntervalDistance(meters: d, rest: totalRestSeconds)
+                                dismiss()
+                            }
+                        } else {
+                            if totalSeconds >= 20 {
+                                ergManager.setFixedIntervalTime(seconds: totalSeconds, rest: totalRestSeconds)
+                                dismiss()
+                            }
+                        }
+                    }) {
+                        Text("Send to PM5".localized)
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Theme.primaryGradient)
+                            .cornerRadius(12)
+                    }
+                    .disabled(intervalType == 0 ? (Int(distance) == nil) : (totalSeconds < 20))
+                    
+                    Spacer()
                 }
+                .padding()
             }
-            .pickerStyle(.wheel)
-            .frame(width: 70, height: 120)
-            .clipped()
-            Text(label)
-                .font(.caption)
-                .foregroundColor(Theme.textSecondary)
         }
+        .navigationTitle("Interval Setup".localized)
     }
 }
+
+// MARK: - Variable Interval Setup
+struct VariableIntervalSetupView: View {
+    @ObservedObject var ergManager: RowErgManager
+    @State private var intervals: [VariableIntervalEntry] = []
+    @State private var isShowingEditor = false
+    @State private var editingIndex: Int? = nil
+    @State private var hasPresentedInitialEditor = false
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Main List
+                List {
+                    ForEach(intervals.indices, id: \.self) { index in
+                        VariableIntervalRowView(
+                            index: index,
+                            entry: intervals[index],
+                            onCopy: {
+                                copyInterval(at: index)
+                            },
+                            onTap: {
+                                editingIndex = index
+                                isShowingEditor = true
+                            }
+                        )
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    }
+                    .onDelete(perform: deleteIntervals)
+                    .onMove(perform: moveIntervals)
+                    
+                    // Add Button
+                    Button(action: {
+                        editingIndex = nil
+                        isShowingEditor = true
+                    }) {
+                        Text("Add Next Interval".localized)
+                            .font(.headline)
+                            .foregroundColor(Theme.mainBackground)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(30)
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 24, leading: 40, bottom: 24, trailing: 40))
+                }
+                .listStyle(PlainListStyle())
+                .padding(.top, 16)
+                
+                Button(action: {
+                    ergManager.setVariableIntervalWorkout(intervals: intervals)
+                    dismiss()
+                }) {
+                    Text("Send to PM5".localized)
+                        .font(.headline)
+                        .foregroundColor(Theme.mainBackground)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Theme.accent)
+                        .cornerRadius(30)
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+                .disabled(intervals.isEmpty)
+                .opacity(intervals.isEmpty ? 0.5 : 1.0)
+            }
+        }
+        .navigationTitle("Variable Interval".localized)
+        .onAppear {
+            if intervals.isEmpty && !hasPresentedInitialEditor {
+                hasPresentedInitialEditor = true
+                isShowingEditor = true
+            }
+        }
+        .sheet(isPresented: $isShowingEditor) {
+            VariableIntervalEditorView(
+                entry: editingIndex != nil ? intervals[editingIndex!] : intervals.last
+            ) { newEntry in
+                if let index = editingIndex {
+                    intervals[index] = newEntry
+                } else {
+                    intervals.append(newEntry)
+                }
+            }
+        }
+    }
+    
+    private func copyInterval(at index: Int) {
+        let entryToCopy = intervals[index]
+        intervals.insert(entryToCopy, at: index + 1)
+    }
+    
+    private func deleteIntervals(at offsets: IndexSet) {
+        intervals.remove(atOffsets: offsets)
+    }
+    
+    private func moveIntervals(from source: IndexSet, to destination: Int) {
+        intervals.move(fromOffsets: source, toOffset: destination)
+    }
+}
+

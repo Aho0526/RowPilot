@@ -49,5 +49,16 @@ struct PortraitRootView: View {
         }
         .tint(Theme.accent)
         .id(themeManager.currentPreset)
+        .onChange(of: app.activeTab) { oldTab, newTab in
+            if oldTab == 3 {
+                app.lastPracticeTabLeaveTime = Date()
+            }
+            if newTab == 3 {
+                if let leaveTime = app.lastPracticeTabLeaveTime, Date().timeIntervalSince(leaveTime) > 300 {
+                    app.practiceNavigationPath = NavigationPath()
+                }
+                app.lastPracticeTabLeaveTime = nil
+            }
+        }
     }
 }

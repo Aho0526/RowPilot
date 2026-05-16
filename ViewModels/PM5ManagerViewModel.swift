@@ -2,24 +2,6 @@ import Foundation
 import CoreBluetooth
 import Combine
 
-// MARK: - Variable Interval Entry Model
-/// Variable Intervalの1インターバル設定
-struct VariableIntervalEntry: Identifiable, Equatable {
-    let id = UUID()
-    var distanceMeters: Int?    // 距離インターバル (m)
-    var timeSeconds: Int?       // 時間インターバル (秒)
-    var restSeconds: Int        // 休憩時間 (秒, Max 9:55 = 595)
-    var targetPace500mSeconds: Int? // ターゲットペース (秒/500m), nilで無設定
-    
-    static func distanceEntry(meters: Int, rest: Int, pace: Int? = nil) -> VariableIntervalEntry {
-        VariableIntervalEntry(distanceMeters: meters, timeSeconds: nil, restSeconds: min(rest, 595), targetPace500mSeconds: pace)
-    }
-    
-    static func timeEntry(seconds: Int, rest: Int, pace: Int? = nil) -> VariableIntervalEntry {
-        VariableIntervalEntry(distanceMeters: nil, timeSeconds: seconds, restSeconds: min(rest, 595), targetPace500mSeconds: pace)
-    }
-}
-
 // MARK: - Per-Device Metrics Model
 /// 各PM5デバイスのリアルタイムメトリクスを保持
 class PM5DeviceMetrics: ObservableObject, Identifiable {
@@ -646,35 +628,52 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         return block
     }
     
-    /// Variable Interval ワークアウトの完全なCSAFEコマンドを生成
-    /// 仕様書P93: WorkoutType=0x08, 各インターバルを繰り返し定義
-    func generateVariableIntervalCommand(intervals: [VariableIntervalEntry]) -> Data {
-        var payload = Data()
+    /// Variable Interval ワークアウトの複数CSAFEペイロードを生成
+    /// PM5 Stateful Builder検証: 最大2 interval ごとに frame を分割
+    func generateVariableIntervalPayloads(intervals: [VariableIntervalEntry]) -> [Data] {
+        var payloads: [Data] = []
+        let intervalsPerFrame = 2
         
-        // 1. CSAFE_PM_SET_WORKOUTTYPE: 0x08 = WORKOUTTYPE_VARIABLE_INTERVAL
-        payload.append(contentsOf: [0x01, 0x01, 0x08])
+        var currentPayload = Data()
+        var currentIntervalCount = 0
         
-        // 2. 各インターバルブロックを追加
         for (i, entry) in intervals.enumerated() {
-            payload.append(buildVariableIntervalBlock(index: i, entry: entry))
+            if i == 0 {
+                // 1. 先頭フレームのみ SET_WORKOUTTYPE: 0x08 = WORKOUTTYPE_VARIABLE_INTERVAL
+                currentPayload.append(contentsOf: [0x01, 0x01, 0x08])
+            }
+            
+            // 2. インターバルブロックを追加
+            currentPayload.append(buildVariableIntervalBlock(index: i, entry: entry))
+            currentIntervalCount += 1
+            
+            let isLastInterval = (i == intervals.count - 1)
+            
+            // 指定数に達したか、最後のインターバルならペイロードを確定
+            if currentIntervalCount == intervalsPerFrame || isLastInterval {
+                if isLastInterval {
+                    // 3. 最終フレームのみ SET_SCREENSTATE を追加
+                    currentPayload.append(contentsOf: [0x13, 0x02, 0x01, 0x01])
+                }
+                
+                // Wrap in 0x76 (CSAFE_SETPMCFG_CMD)
+                var fullCommand = Data()
+                fullCommand.append(0x76)
+                fullCommand.append(UInt8(currentPayload.count))
+                fullCommand.append(currentPayload)
+                
+                let hexStr = fullCommand.map { String(format: "%02X", $0) }.joined(separator: " ")
+                print("PM5ManagerVM: [VAR_INTERVAL] payload chunk = \(hexStr)")
+                
+                payloads.append(fullCommand)
+                
+                // 次のフレーム用にリセット
+                currentPayload = Data()
+                currentIntervalCount = 0
+            }
         }
         
-        // 3. CSAFE_PM_CONFIGURE_WORKOUT（全体確定）
-        payload.append(contentsOf: [0x14, 0x01, 0x01])
-        
-        // 4. CSAFE_PM_SET_SCREENSTATE
-        payload.append(contentsOf: [0x13, 0x02, 0x01, 0x01])
-        
-        // Wrap in 0x76
-        var fullCommand = Data()
-        fullCommand.append(0x76)
-        fullCommand.append(UInt8(payload.count))
-        fullCommand.append(payload)
-        
-        let hexStr = fullCommand.map { String(format: "%02X", $0) }.joined(separator: " ")
-        print("PM5ManagerVM: [VAR_INTERVAL] CSAFE payload = \(hexStr)")
-        
-        return fullCommand
+        return payloads
     }
     
     /// Variable Interval ワークアウトを全PM5に開始
@@ -743,20 +742,30 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         }
         if !isReady { handleV4Failure(deviceID: deviceID, phase: "POLLING"); return }
         
-        // PHASE 3: CONFIG (F1 frame)
+        // PHASE 3: CONFIG (F1 frames)
         updatePerDeviceStatus(deviceID, to: .configuring)
-        let configPayload = generateVariableIntervalCommand(intervals: intervals)
-        guard let configFrame = buildCSAFEFrame(payload: configPayload, startFlag: 0xF1) else {
-            handleV4Failure(deviceID: deviceID, phase: "CONFIG_GEN"); return
+        let configPayloads = generateVariableIntervalPayloads(intervals: intervals)
+        
+        for (index, payload) in configPayloads.enumerated() {
+            guard let configFrame = buildCSAFEFrame(payload: payload, startFlag: 0xF1) else {
+                handleV4Failure(deviceID: deviceID, phase: "CONFIG_GEN_\(index)"); return
+            }
+            let configCmd = CSAFECommandQueue.Command(peripheral: peripheral, characteristic: char, frame: configFrame, label: "CONFIG_VAR_\(index)")
+            let successConfig = await executeWithRetry(command: configCmd, phase: "CONFIG_\(index)")
+            
+            if !successConfig {
+                handleV4Failure(deviceID: deviceID, phase: "CONFIG_\(index)")
+                return
+            }
+            
+            // Frame間に遅延を挿入 (150ms)
+            if index < configPayloads.count - 1 {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+            }
         }
-        let configCmd = CSAFECommandQueue.Command(peripheral: peripheral, characteristic: char, frame: configFrame, label: "CONFIG_VAR_INTERVAL")
-        let successConfig = await executeWithRetry(command: configCmd, phase: "CONFIG")
-        if successConfig {
-            updatePerDeviceStatus(deviceID, to: .ready)
-            logV4(deviceID: deviceID, phase: "WORKFLOW", retry: 0, state: "Success", message: "Variable Interval ready.")
-        } else {
-            handleV4Failure(deviceID: deviceID, phase: "CONFIG")
-        }
+        
+        updatePerDeviceStatus(deviceID, to: .ready)
+        logV4(deviceID: deviceID, phase: "WORKFLOW", retry: 0, state: "Success", message: "Variable Interval ready (\(configPayloads.count) frames).")
     }
 
     

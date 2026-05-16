@@ -2,10 +2,10 @@ import SwiftUI
 
 struct PracticeView: View {
     @EnvironmentObject var ergManager: RowErgManager
-    @ObservedObject private var settingsManager = SettingsManager.shared
+    @EnvironmentObject var app: AppViewModel
     @State private var showingHelp = false    
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $app.practiceNavigationPath) {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 
@@ -184,12 +184,8 @@ struct PracticeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                if settingsManager.settings.showHelpButtons {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        HelpCircleButton {
-                            showingHelp = true
-                        }
-                    }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    PracticeHelpToolbarItem(showingHelp: $showingHelp)
                 }
             }
             .sheet(isPresented: $showingHelp) {
@@ -434,5 +430,20 @@ struct ActiveMetricBox: View {
         .padding()
         .background(Theme.cardBackground)
         .cornerRadius(16)
+    }
+}
+
+struct PracticeHelpToolbarItem: View {
+    @Binding var showingHelp: Bool
+    @ObservedObject private var settingsManager = SettingsManager.shared
+    
+    var body: some View {
+        if settingsManager.settings.showHelpButtons {
+            HelpCircleButton {
+                showingHelp = true
+            }
+        } else {
+            EmptyView()
+        }
     }
 }

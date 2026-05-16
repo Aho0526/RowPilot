@@ -475,51 +475,56 @@ struct ManagerIntervalSetupView: View {
 // MARK: - Variable Interval Setup
 struct ManagerVariableIntervalSetupView: View {
     @ObservedObject var viewModel: PM5ManagerViewModel
-    @State private var intervals: [VariableIntervalEntry] = [
-        VariableIntervalEntry.distanceEntry(meters: 500, rest: 60)
-    ]
+    @State private var intervals: [VariableIntervalEntry] = []
+    @State private var isShowingEditor = false
+    @State private var editingIndex: Int? = nil
+    @State private var hasPresentedInitialEditor = false
     @State private var navigateToDashboard: Bool = false
     
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
             VStack(spacing: 0) {
-                // ヘッダー
-                HStack {
-                    Text("Variable Interval".localized)
-                        .font(Theme.headerFont())
-                        .foregroundColor(Theme.textMain)
-                    Spacer()
-                    Button(action: addInterval) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(Theme.accent)
+                // Main List
+                List {
+                    ForEach(intervals.indices, id: \.self) { index in
+                        VariableIntervalRowView(
+                            index: index,
+                            entry: intervals[index],
+                            onCopy: {
+                                copyInterval(at: index)
+                            },
+                            onTap: {
+                                editingIndex = index
+                                isShowingEditor = true
+                            }
+                        )
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     }
+                    .onDelete(perform: deleteIntervals)
+                    .onMove(perform: moveIntervals)
+                    
+                    // Add Button
+                    Button(action: {
+                        editingIndex = nil
+                        isShowingEditor = true
+                    }) {
+                        Text("Add Next Interval".localized)
+                            .font(.headline)
+                            .foregroundColor(Theme.mainBackground)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(30)
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 24, leading: 40, bottom: 24, trailing: 40))
                 }
-                .padding(.horizontal)
+                .listStyle(PlainListStyle())
                 .padding(.top, 16)
-                .padding(.bottom, 8)
-                
-                Text("\(intervals.count) interval(s) configured")
-                    .font(.caption)
-                    .foregroundColor(Theme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(Array(intervals.enumerated()), id: \.element.id) { index, _ in
-                            VariableIntervalRowView(
-                                index: index,
-                                entry: $intervals[index],
-                                onDelete: intervals.count > 1 ? { deleteInterval(at: index) } : nil
-                            )
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.bottom, 16)
-                }
                 
                 // 送信ボタン
                 VStack(spacing: 8) {
@@ -532,14 +537,17 @@ struct ManagerVariableIntervalSetupView: View {
                     }) {
                         Text("Send to all PM5s".localized)
                             .font(.headline)
-                            .foregroundColor(.white)
+                            .foregroundColor(Theme.mainBackground)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Theme.primaryGradient)
-                            .cornerRadius(12)
+                            .background(Theme.accent)
+                            .cornerRadius(30)
                     }
+                    .disabled(intervals.isEmpty)
+                    .opacity(intervals.isEmpty ? 0.5 : 1.0)
                 }
-                .padding()
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
         }
         .navigationTitle("Variable Interval".localized)
@@ -549,159 +557,35 @@ struct ManagerVariableIntervalSetupView: View {
         .onChange(of: viewModel.showDashboard) { _, newValue in
             if newValue { navigateToDashboard = true; viewModel.showDashboard = false }
         }
-    }
-    
-    private func addInterval() {
-        let last = intervals.last ?? VariableIntervalEntry.distanceEntry(meters: 500, rest: 60)
-        intervals.append(VariableIntervalEntry(
-            distanceMeters: last.distanceMeters,
-            timeSeconds: last.timeSeconds,
-            restSeconds: last.restSeconds,
-            targetPace500mSeconds: last.targetPace500mSeconds
-        ))
-    }
-    
-    private func deleteInterval(at index: Int) {
-        intervals.remove(at: index)
-    }
-}
-
-// MARK: - Variable Interval Row
-struct VariableIntervalRowView: View {
-    let index: Int
-    @Binding var entry: VariableIntervalEntry
-    let onDelete: (() -> Void)?
-    
-    @State private var useDistance: Bool = true
-    @State private var distanceStr: String = ""
-    @State private var timeH: Int = 0
-    @State private var timeM: Int = 2
-    @State private var timeS: Int = 0
-    @State private var restM: Int = 1
-    @State private var restS: Int = 0
-    @State private var showPace: Bool = false
-    @State private var paceM: Int = 1
-    @State private var paceS: Int = 40
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // ヘッダー行
-            HStack {
-                Text("Interval \(index + 1)")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(Theme.accent)
-                Spacer()
-                Picker("", selection: $useDistance) {
-                    Text("Distance".localized).tag(true)
-                    Text("Time".localized).tag(false)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 160)
-                .onChange(of: useDistance) { _, _ in syncToEntry() }
-                
-                if let onDelete = onDelete {
-                    Button(action: onDelete) {
-                        Image(systemName: "minus.circle.fill")
-                            .foregroundColor(.red)
-                    }
-                    .padding(.leading, 4)
-                }
+        .onAppear {
+            if intervals.isEmpty && !hasPresentedInitialEditor {
+                hasPresentedInitialEditor = true
+                isShowingEditor = true
             }
-            
-            // 距離 or 時間入力
-            if useDistance {
-                TextField("meters (e.g. 500)", text: $distanceStr)
-                    .keyboardType(.numberPad)
-                    .textFieldStyle(.plain)
-                    .padding(8)
-                    .background(Color.white.opacity(0.1))
-                    .cornerRadius(8)
-                    .foregroundColor(.white)
-                    .onChange(of: distanceStr) { _, _ in syncToEntry() }
-            } else {
-                HStack(spacing: 0) {
-                    TimePickerColumn(value: $timeH, range: 0...9, label: "hh")
-                        .onChange(of: timeH) { _, _ in syncToEntry() }
-                    Text(":").foregroundColor(.white)
-                    TimePickerColumn(value: $timeM, range: 0...59, label: "mm")
-                        .onChange(of: timeM) { _, _ in syncToEntry() }
-                    Text(":").foregroundColor(.white)
-                    TimePickerColumn(value: $timeS, range: 0...59, label: "ss")
-                        .onChange(of: timeS) { _, _ in syncToEntry() }
-                }
-                .padding(4)
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(8)
-            }
-            
-            // 休憩時間
-            HStack {
-                Text("Rest:".localized)
-                    .font(.caption)
-                    .foregroundColor(Theme.textSecondary)
-                TimePickerColumn(value: $restM, range: 0...9, label: "mm")
-                    .onChange(of: restM) { _, _ in syncToEntry() }
-                Text(":").foregroundColor(.white)
-                TimePickerColumn(value: $restS, range: 0...59, label: "ss")
-                    .onChange(of: restS) { _, _ in syncToEntry() }
-            }
-            
-            // ターゲットペース（オプション）
-            HStack {
-                Toggle(isOn: $showPace) {
-                    Text("Target Pace".localized)
-                        .font(.caption)
-                        .foregroundColor(Theme.textSecondary)
-                }
-                .toggleStyle(.button)
-                .font(.caption)
-                .tint(Theme.accent.opacity(0.3))
-                .onChange(of: showPace) { _, _ in syncToEntry() }
-                
-                if showPace {
-                    Spacer()
-                    TimePickerColumn(value: $paceM, range: 1...9, label: "mm")
-                        .onChange(of: paceM) { _, _ in syncToEntry() }
-                    Text(":").foregroundColor(.white)
-                    TimePickerColumn(value: $paceS, range: 0...59, label: "ss")
-                        .onChange(of: paceS) { _, _ in syncToEntry() }
-                    Text("/500m")
-                        .font(.caption2)
-                        .foregroundColor(Theme.textSecondary)
+        }
+        .sheet(isPresented: $isShowingEditor) {
+            VariableIntervalEditorView(
+                entry: editingIndex != nil ? intervals[editingIndex!] : intervals.last
+            ) { newEntry in
+                if let index = editingIndex {
+                    intervals[index] = newEntry
+                } else {
+                    intervals.append(newEntry)
                 }
             }
         }
-        .padding(12)
-        .background(Color.white.opacity(0.06))
-        .cornerRadius(14)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Theme.accent.opacity(0.2), lineWidth: 1)
-        )
-        .onAppear { loadFromEntry() }
     }
     
-    private func loadFromEntry() {
-        useDistance = entry.distanceMeters != nil
-        distanceStr = entry.distanceMeters.map { "\($0)" } ?? ""
-        let total = entry.timeSeconds ?? 0
-        timeH = total / 3600; timeM = (total % 3600) / 60; timeS = total % 60
-        let r = entry.restSeconds
-        restM = r / 60; restS = r % 60
-        if let p = entry.targetPace500mSeconds {
-            showPace = true; paceM = p / 60; paceS = p % 60
-        }
+    private func copyInterval(at index: Int) {
+        let entryToCopy = intervals[index]
+        intervals.insert(entryToCopy, at: index + 1)
     }
     
-    private func syncToEntry() {
-        if useDistance {
-            entry.distanceMeters = Int(distanceStr)
-            entry.timeSeconds = nil
-        } else {
-            entry.timeSeconds = timeH * 3600 + timeM * 60 + timeS
-            entry.distanceMeters = nil
-        }
-        entry.restSeconds = min(restM * 60 + restS, 595)
-        entry.targetPace500mSeconds = showPace ? (paceM * 60 + paceS) : nil
+    private func deleteIntervals(at offsets: IndexSet) {
+        intervals.remove(atOffsets: offsets)
+    }
+    
+    private func moveIntervals(from source: IndexSet, to destination: Int) {
+        intervals.move(fromOffsets: source, toOffset: destination)
     }
 }

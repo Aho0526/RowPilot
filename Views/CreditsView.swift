@@ -137,6 +137,11 @@ struct VersionHistoryView: View {
             Theme.background.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 20) {
+                    CreditSection(title: "5/16") {
+                        Text("不変・可変インタビュー機能を追加")
+                        Text("Comminucation Architecture v4の適用")
+                    .foregroundColor(Theme.textMain)
+                    }
                     CreditSection(title: "5/13") {
                         Text("レースビューにおけるレーン固定やペースメーカーの追加")
                         Text("Comminucation Architecture v4の適用")

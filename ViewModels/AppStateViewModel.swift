@@ -12,6 +12,10 @@ class AppViewModel: ObservableObject {
     // Landscape Lock: ×ボタン押下後にLandscapeへの遷移を禁止
     @Published var landscapeLocked: Bool = false
     
+    // Navigation State
+    @Published var practiceNavigationPath = NavigationPath()
+    @Published var lastPracticeTabLeaveTime: Date?
+    
     // SOS Shared State
     @Published var pendingSOSMessage: String?
     @Published var showSOSFromLandscape: Bool = false

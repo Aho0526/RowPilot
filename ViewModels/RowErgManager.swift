@@ -827,6 +827,173 @@ class RowErgManager: NSObject, ObservableObject {
         setWorkoutTime(seconds: minutes * 60, split: splitMinutes.map { $0 * 60 })
     }
     
+    // MARK: - Interval Methods
+
+    private func generateIntervalWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, restSeconds: Int) -> Data {
+        var payload = Data()
+        func appendUInt32(_ value: UInt32) {
+            let val = value.bigEndian
+            withUnsafeBytes(of: val) { payload.append(contentsOf: $0) }
+        }
+
+        // 1. CSAFE_PM_SET_WORKOUTTYPE (0x01)
+        // Distance Interval -> 0x07, Time Interval -> 0x06
+        payload.append(contentsOf: [0x01, 0x01])
+        payload.append(distanceMeters != nil ? 0x07 : 0x06)
+        
+        // 2. CSAFE_PM_SET_WORKOUTDURATION (0x03)
+        payload.append(contentsOf: [0x03, 0x05])
+        if let dist = distanceMeters {
+            payload.append(0x80)
+            appendUInt32(UInt32(dist))
+        } else if let time = timeSeconds {
+            payload.append(0x00)
+            appendUInt32(UInt32(time * 100))
+        }
+        
+        // 3. CSAFE_PM_SET_RESTDURATION (0x04)
+        // [04, 02, B0, B1] (UInt16 seconds)
+        payload.append(0x04)
+        payload.append(0x02)
+        let rVal = UInt16(min(restSeconds, 595))
+        payload.append(UInt8((rVal >> 8) & 0xFF))
+        payload.append(UInt8(rVal & 0xFF))
+        
+        // 4. CSAFE_PM_CONFIGURE_WORKOUT (0x14)
+        payload.append(contentsOf: [0x14, 0x01, 0x01])
+        
+        // 5. CSAFE_PM_SET_SCREENSTATE (0x13)
+        payload.append(contentsOf: [0x13, 0x02, 0x01, 0x01])
+        
+        var fullCommand = Data()
+        fullCommand.append(0x76)
+        fullCommand.append(UInt8(payload.count))
+        fullCommand.append(payload)
+        return fullCommand
+    }
+
+    func setFixedIntervalDistance(meters: Int, rest: Int) {
+        let limitedMeters = min(max(meters, 100), 60000)
+        let limitedRest = min(max(rest, 0), 595)
+        
+        DispatchQueue.main.async {
+            self.targetDistance = Double(limitedMeters)
+            self.targetTime = nil
+            self.showingWorkoutExecution = true
+            self.completedForceCurve = []
+        }
+        
+        sendTerminateWorkout()
+        
+        let cmd = generateIntervalWorkoutCommand(distanceMeters: limitedMeters, restSeconds: limitedRest)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.sendCSAFESingle(payload: cmd)
+        }
+    }
+
+    func setFixedIntervalTime(seconds: Int, rest: Int) {
+        let limitedSeconds = min(max(seconds, 20), 36000)
+        let limitedRest = min(max(rest, 0), 595)
+        
+        DispatchQueue.main.async {
+            self.targetTime = Double(limitedSeconds)
+            self.targetDistance = nil
+            self.showingWorkoutExecution = true
+            self.completedForceCurve = []
+        }
+        
+        sendTerminateWorkout()
+        
+        let cmd = generateIntervalWorkoutCommand(timeSeconds: limitedSeconds, restSeconds: limitedRest)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.sendCSAFESingle(payload: cmd)
+        }
+    }
+
+    // MARK: - Variable Interval (Stateful Builder)
+
+    private func buildVariableIntervalBlock(index: Int, entry: VariableIntervalEntry) -> Data {
+        var block = Data()
+        func appendUInt32(_ v: UInt32) {
+            withUnsafeBytes(of: v.bigEndian) { block.append(contentsOf: $0) }
+        }
+        
+        block.append(contentsOf: [0x18, 0x01, UInt8(index)])
+        block.append(contentsOf: [0x17, 0x01])
+        block.append(entry.distanceMeters != nil ? 0x01 : 0x00)
+        
+        block.append(contentsOf: [0x03, 0x05])
+        if let dist = entry.distanceMeters {
+            block.append(0x80)
+            appendUInt32(UInt32(dist))
+        } else if let time = entry.timeSeconds {
+            block.append(0x00)
+            appendUInt32(UInt32(time * 100))
+        }
+        
+        block.append(0x04)
+        block.append(0x02)
+        let rSec = UInt16(min(entry.restSeconds, 595))
+        block.append(UInt8((rSec >> 8) & 0xFF))
+        block.append(UInt8(rSec & 0xFF))
+        
+        block.append(contentsOf: [0x06, 0x04])
+        if let pace = entry.targetPace500mSeconds {
+            appendUInt32(UInt32(pace * 100))
+        } else {
+            appendUInt32(0)
+        }
+        
+        block.append(contentsOf: [0x14, 0x01, 0x01])
+        return block
+    }
+
+    func generateVariableIntervalPayloads(intervals: [VariableIntervalEntry]) -> [Data] {
+        var payloads: [Data] = []
+        let intervalsPerFrame = 2
+        var currentPayload = Data()
+        var currentIntervalCount = 0
+        
+        for (i, entry) in intervals.enumerated() {
+            if i == 0 {
+                currentPayload.append(contentsOf: [0x01, 0x01, 0x08])
+            }
+            currentPayload.append(buildVariableIntervalBlock(index: i, entry: entry))
+            currentIntervalCount += 1
+            let isLastInterval = (i == intervals.count - 1)
+            
+            if currentIntervalCount == intervalsPerFrame || isLastInterval {
+                if isLastInterval {
+                    currentPayload.append(contentsOf: [0x13, 0x02, 0x01, 0x01])
+                }
+                var fullCommand = Data()
+                fullCommand.append(0x76)
+                fullCommand.append(UInt8(currentPayload.count))
+                fullCommand.append(currentPayload)
+                payloads.append(fullCommand)
+                currentPayload = Data()
+                currentIntervalCount = 0
+            }
+        }
+        return payloads
+    }
+
+    func setVariableIntervalWorkout(intervals: [VariableIntervalEntry]) {
+        DispatchQueue.main.async {
+            self.targetDistance = nil
+            self.targetTime = nil
+            self.showingWorkoutExecution = true
+            self.completedForceCurve = []
+        }
+        
+        sendTerminateWorkout()
+        
+        let payloads = generateVariableIntervalPayloads(intervals: intervals)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.sendCSAFEChunkedSequence(payloads: payloads)
+        }
+    }
+
     /// ワークアウトを保存/破棄後に同じ設定で再開する
     func resetAndStartWorkout(distance: Double?, time: Double?, split: Int? = nil) {
         print("RowErgManager: Resetting and queuing new workout with 1s delay")

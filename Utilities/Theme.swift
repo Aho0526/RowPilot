@@ -77,6 +77,10 @@ struct Theme {
         )
     }
     
+    static var mainBackground: Color {
+        current.backgroundColors.first ?? .black
+    }
+    
     static var cardBackground: Material {
         return .ultraThin
     }

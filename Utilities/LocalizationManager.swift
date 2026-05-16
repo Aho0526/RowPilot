@@ -129,7 +129,6 @@ class LocalizationManager: ObservableObject {
         
         // Record List
         "Records": [.japanese: "練習記録一覧", .english: "History"],
-        "History": [.japanese: "履歴", .english: "History"],
         "No Records": [.japanese: "記録がありません", .english: "No Records"],
         "Fetching information...": [.japanese: "情報取得中...", .english: "Fetching info..."],
         
@@ -321,8 +320,17 @@ class LocalizationManager: ObservableObject {
         "Workout Setup": [.japanese: "ワークアウト設定", .english: "Workout Setup"],
         "Distance Setup": [.japanese: "距離設定", .english: "Distance Setup"],
         "Time Setup": [.japanese: "時間設定", .english: "Time Setup"],
+        "Fixed Interval": [.japanese: "不変インターバル", .english: "Fixed Interval"],
+        "Variable Interval": [.japanese: "可変インターバル", .english: "Variable Interval"],
+        "Edit Interval": [.japanese: "インターバル編集", .english: "Edit Interval"],
+        "Add Interval": [.japanese: "インターバル追加", .english: "Add Interval"],
+        "Add Next Interval": [.japanese: "+次のインターバル", .english: "+ Add Next Interval"],
         "Set Distance": [.japanese: "設定距離 (m)", .english: "Set Distance (m)"],
         "Distance Range": [.japanese: "※ 対応レンジ: 100m 〜 60,000m", .english: "Range: 100m - 60,000m"],
+        "Interval Distance": [.japanese: "インターバル距離", .english: "Interval Distance"],
+        "Interval Time": [.japanese: "インターバル時間", .english: "Interval Time"],
+        "Rest Duration (Max 9:55)": [.japanese: "休憩時間 (最大 9:55)", .english: "Rest Duration (Max 9:55)"],
+        "Target Pace": [.japanese: "目標ペース", .english: "Target Pace"],
         "Send to PM5": [.japanese: "PM5に送信", .english: "Send to PM5"],
         "Send to all PM5s": [.japanese: "全PM5に送信", .english: "Send to all PM5s"],
         "Min Time Message": [.japanese: "※ 最短設定時間は20秒です", .english: "Min duration is 20s"],

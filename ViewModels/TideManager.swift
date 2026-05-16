@@ -491,7 +491,7 @@ class TideManager: ObservableObject {
             moonAge += synodicMonth
         }
     
-        // 潮名判定（実務寄りに境界を少し広め）
+        //MARK:潮名判定
         switch moonAge {
         case 0.0..<2.5,
              13.5..<17.0,
