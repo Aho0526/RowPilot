@@ -139,7 +139,7 @@ struct VersionHistoryView: View {
                 VStack(spacing: 20) {
                     CreditSection(title: "5/16") {
                         Text("不変・可変インタビュー機能を追加")
-                        Text("Comminucation Architecture v4の適用")
+                        Text("Variable Interval Communication Architecture v1の作成")
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "5/13") {

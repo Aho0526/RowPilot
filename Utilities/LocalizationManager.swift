@@ -97,7 +97,7 @@ class LocalizationManager: ObservableObject {
         "You are currently subscribed to this plan.": [.japanese: "現在このプランを契約中です。", .english: "You are currently subscribed to this plan."],
         "Included Features": [.japanese: "含まれる機能", .english: "Included Features"],
         "Current Plan": [.japanese: "現在のプラン", .english: "Current Plan"],
-
+        
         // MARK: - Landscape View / Metrics
         "Distance_M": [.japanese: "距離", .english: "Dist"],
         "Time": [.japanese: "時間", .english: "Time"],
@@ -360,7 +360,17 @@ class LocalizationManager: ObservableObject {
         "Architecture": [.japanese: "建築", .english: "Architecture"],
         "Design": [.japanese: "デザイン", .english: "Design"],
         "Advisor": [.japanese: "顧問・外部コーチ", .english: "Advisor"],
+        
+        // MARK: - Subscription Locks
+        "Force Curve is Locked": [.japanese: "フォースカーブはロックされています", .english: "Force Curve is Locked"],
+        "Upgrade to Pro to analyze your rowing form in real-time.": [.japanese: "Proプランにアップグレードして、リアルタイムでローイングフォームを分析しましょう。", .english: "Upgrade to Pro to analyze your rowing form in real-time."],
+        "Unlock Force Curve": [.japanese: "フォースカーブを解放", .english: "Unlock Force Curve"],
+        "Requires Manager Plan": [.japanese: "マネジャープランが必要です", .english: "Requires Manager Plan"],
+        "Race View is Locked": [.japanese: "レースビューはロックされています", .english: "Race View is Locked"],
+        "Upgrade to RowPilot MAX to visualize real-time racing, competitive leaderboards, and detailed gap tracking.": [.japanese: "RowPilot MAXにアップグレードして、リアルタイムレース、順位表、タイム差表示を解放しましょう。", .english: "Upgrade to RowPilot MAX to visualize real-time racing, competitive leaderboards, and detailed gap tracking."],
+        "Unlock Race View (MAX)": [.japanese: "レースビューを解放 (MAX)", .english: "Unlock Race View (MAX)"],
     ]
+    
     
     /// Get localized string
     func string(_ key: String) -> String {

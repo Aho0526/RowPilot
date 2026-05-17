@@ -22,6 +22,8 @@ struct ManagerWorkoutDashboardView: View {
     
     @AppStorage("pm5GridColumns") private var pm5GridColumns: Int = 2
     @State private var isLandscapeMode: Bool = false
+    @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
+    @State private var showingSubscription: Bool = false
     
     var body: some View {
         GeometryReader { geo in
@@ -32,14 +34,19 @@ struct ManagerWorkoutDashboardView: View {
                 Theme.background.ignoresSafeArea()
                 
                 if isLandscape && isDistanceWorkout {
-                    // MARK: - Landscape Race View (単一距離のみ)
-                    ManagerRaceView(
-                        viewModel: viewModel,
-                        showRepeatAlert: $showRepeatAlert,
-                        showModeSettings: $showModeSettings,
-                        showEditSheet: $showEditSheet,
-                        showZoomSettings: $showZoomSettings
-                    )
+                    if currentPlan.hasRaceView {
+                        // MARK: - Landscape Race View (単一距離のみ)
+                        ManagerRaceView(
+                            viewModel: viewModel,
+                            showRepeatAlert: $showRepeatAlert,
+                            showModeSettings: $showModeSettings,
+                            showEditSheet: $showEditSheet,
+                            showZoomSettings: $showZoomSettings
+                        )
+                    } else {
+                        // MARK: - Locked Landscape Race View
+                        lockedLandscapeView
+                    }
                 } else {
                     // MARK: - Portrait Card Dashboard
                     VStack(spacing: 0) {
@@ -324,6 +331,88 @@ struct ManagerWorkoutDashboardView: View {
             return String(format: "%d:%02d:%02d", h, m, s)
         }
         return String(format: "%02d:%02d", m, s)
+    }
+    
+    // MARK: - Subviews
+    
+    private var lockedLandscapeView: some View {
+        ZStack {
+            // Blurred mock race visualization
+            VStack {
+                Spacer()
+                // A simulated water track with a few blurred boat icons
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.blue.opacity(0.15))
+                        .frame(height: 40)
+                    
+                    HStack {
+                        Image(systemName: "rower")
+                            .font(.system(size: 24))
+                            .foregroundColor(Theme.accent.opacity(0.4))
+                            .offset(x: 100)
+                        
+                        Image(systemName: "rower")
+                            .font(.system(size: 24))
+                            .foregroundColor(Theme.secondaryAccent.opacity(0.4))
+                            .offset(x: 200)
+                    }
+                }
+                .padding(.horizontal, 40)
+                .blur(radius: 6)
+                
+                Spacer()
+            }
+            .background(Theme.background)
+            
+            // Ultra thin glassmorphism lock card
+            VStack(spacing: 16) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(Theme.accent)
+                    .padding(14)
+                    .background(Theme.accent.opacity(0.15))
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Theme.accent.opacity(0.3), lineWidth: 1))
+                
+                VStack(spacing: 6) {
+                    Text("Race View is Locked".localized)
+                        .font(.title2)
+                        .fontWeight(.black)
+                        .foregroundColor(.white)
+                    
+                    Text("Upgrade to RowPilot MAX to visualize real-time racing, competitive leaderboards, and detailed gap tracking.".localized)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+                
+                Button(action: {
+                    showingSubscription = true
+                }) {
+                    Text("Unlock Race View (MAX)".localized)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Theme.mainBackground)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(Theme.accent)
+                        .cornerRadius(24)
+                        .shadow(color: Theme.accent.opacity(0.3), radius: 10, x: 0, y: 5)
+                }
+                .padding(.top, 8)
+            }
+            .padding(32)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color.black.opacity(0.5))
+                    .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.1), lineWidth: 1))
+            )
+            .padding(.horizontal, 60)
+        }
+        .sheet(isPresented: $showingSubscription) {
+            SubscriptionView()
+        }
     }
 }
 
@@ -653,4 +742,5 @@ struct ManagerModeSettingsView: View {
             })
         }
     }
+
 }

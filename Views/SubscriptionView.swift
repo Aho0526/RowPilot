@@ -46,13 +46,13 @@ struct SubscriptionView: View {
                     VStack(spacing: 16) {
                         // Individual Plans
                         PlanSectionHeader(title: "Individual".localized)
-                        SubscriptionCard(plan: .free, current: currentPlan)
+                        //SubscriptionCard(plan: .free, current: currentPlan)
                         SubscriptionCard(plan: .pro, current: currentPlan)
                         
                         // Manager Plans
                         PlanSectionHeader(title: "For Managers".localized)
                         SubscriptionCard(plan: .manager, current: currentPlan)
-                        SubscriptionCard(plan: .team, current: currentPlan)
+                        //SubscriptionCard(plan: .team, current: currentPlan)
                         
                         // Professional Plans
                         PlanSectionHeader(title: "For Coaches & Teams".localized)

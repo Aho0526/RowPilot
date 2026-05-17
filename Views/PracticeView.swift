@@ -3,7 +3,9 @@ import SwiftUI
 struct PracticeView: View {
     @EnvironmentObject var ergManager: RowErgManager
     @EnvironmentObject var app: AppViewModel
+    @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
     @State private var showingHelp = false    
+    @State private var showingSubscription = false    
     var body: some View {
         NavigationStack(path: $app.practiceNavigationPath) {
             ZStack {
@@ -136,19 +138,46 @@ struct PracticeView: View {
                         
                         // MARK: - Manager Mode
                         PracticeSection(title: "Manager Mode".localized, icon: "person.2.fill") {
-                            NavigationLink {
-                                PM5ManagerView()
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text("Manager Mode Desc".localized)
-                                            .font(.caption)
+                            if currentPlan.hasManagerMode {
+                                NavigationLink {
+                                    PM5ManagerView()
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading) {
+                                            Text("Manager Mode Desc".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
                                             .foregroundColor(Theme.textSecondary)
                                     }
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(Theme.textSecondary)
                                 }
+                            } else {
+                                Button(action: {
+                                    showingSubscription = true
+                                }) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("Manager Mode Desc".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "lock.fill")
+                                                    .font(.caption2)
+                                                Text("Requires Manager Plan".localized)
+                                                    .font(.caption2)
+                                                    .fontWeight(.bold)
+                                            }
+                                            .foregroundColor(Theme.accent)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "lock.fill")
+                                            .foregroundColor(Theme.textSecondary.opacity(0.5))
+                                    }
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                         
@@ -225,6 +254,9 @@ struct PracticeView: View {
         2000mTTや練習でレース練習をする際におすすめです。
     """
                 )
+            }
+            .sheet(isPresented: $showingSubscription) {
+                SubscriptionView()
             }
         }
     }

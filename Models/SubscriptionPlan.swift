@@ -49,4 +49,22 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
             return ["CSV形式出力", "レースビュー開放", "高度なアナリティクス", "団体向けサポート"]
         }
     }
+    
+    // MARK: - Feature Flags
+    
+    /// Pro以上のプラン（Pro, Manager, Team, MAX）でForce Curveを解放
+    var hasForceCurve: Bool {
+        return self != .free
+    }
+    
+    /// Manager以上のプラン（Manager, Team, MAX）でマネージャーモードを解放
+    var hasManagerMode: Bool {
+        return self == .manager || self == .team || self == .max
+    }
+    
+    /// MAXプランのみでレースビューを解放
+    var hasRaceView: Bool {
+        return self == .max
+    }
 }
+
