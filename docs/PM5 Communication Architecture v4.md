@@ -1,15 +1,15 @@
 # RowPilot PM5 Communication Architecture v4
 ### Overview
-v4では、従来の「固定時間待機」に依存した通信方式を廃止し、
- PM5の実際の状態（Machine Status）を監視しながら進行する
- “State-Synchronized Architecture” を採用している。
-各PM5は独立した state machine として管理され、
- 1台の遅延や通信異常が全体を停止させない構造となっている。
+In v4, we have eliminated the traditional communication method that relied on “fixed-time waiting”
+and adopted a “State-Synchronized Architecture” that proceeds while monitoring
+the actual state (Machine Status) of the PM5.
+Each PM5 is managed as an independent state machine,
+and the architecture is designed so that a delay or communication error in a single unit does not halt the entire system.
 
 ## 1. Communication Layer
 ### Extended CSAFE Frame
-複数PM5接続時の安定性を優先し、
- すべての通信を Extended CSAFE Frame へ統一。
+Prioritizing stability when multiple PM5s are connected,
+all communication is standardized to the Extended CSAFE Frame.
 
 ### F0 [Destination] [Source] [Payload] [Checksum] F2
 - Addressing
@@ -21,54 +21,54 @@ v4では、従来の「固定時間待機」に依存した通信方式を廃止
 - 0x00
 
 Byte Stuffing
-制御バイト：
+Control bytes:
 0xF0 ~ 0xF3
-を payload 内で検出した場合、
- CSAFE仕様に基づき byte stuffing を実施。
+If detected within the payload,
+byte stuffing is performed in accordance with the CSAFE specification.
 
 ---
 
 ## 2. Transmission Architecture
 CSAFECommandQueue
-BLE通信の不安定化を防ぐため、
- 全送信を専用 queue で管理。
+To prevent instability in BLE communication,
+all transmissions are managed by a dedicated queue.
 
 
 ### Global Write Limiter 
-CoreBluetooth内部queueの詰まりを防ぐため、
- 同時BLE write数を制限。
+To prevent congestion in the CoreBluetooth internal queue,
+ the number of concurrent BLE writes is limited.
 maxConcurrentWrites = 3
 
 ---
 ### Inter-frame Gap
-CSAFE仕様準拠のため、
- 全フレーム送信間に minimum 50ms gap を挿入。
+To comply with the CSAFE specification,
+ a minimum 50ms gap is inserted between all frame transmissions.
 interFrameGap = 50ms
 
 ---
 ### Parallel / Sequential Hybrid
-#### Device内部
+#### Within the Device
 Sequential
-各PM5への送信順序を保証。
+Guarantees the transmission order to each PM5.
 
-#### Device間
+#### Between Devices
 Parallel
-複数PM5を並列制御。
+Controls multiple PM5s in parallel.
 
 ---
 
 ## 3. v4 Workflow
 ### Phase 1 — TERMINATE
-全PM5へ強制リセットを送信。
-目的：
-- 既存Workout終了
-- PM5内部状態初期化
-- 状態同期開始
+Send a forced reset to all PM5s.
+Purpose:
+- End the current workout
+- Initialize PM5 internal state
+- Start state synchronization
 
 ---
 ### Phase 2 — Machine Status Polling
-TERMINATE後、
- 4Hz polling により PM5状態を監視。
+After TERMINATE,
+ monitor PM5 status via 4Hz polling.
 
 #### Polling Target
 Machine Status = Ready
@@ -77,26 +77,26 @@ Machine Status = Ready
 baseTimeout = 9.0s
 
 #### Dynamic Extension
-以下を検知した場合：
+If any of the following are detected:
 - Busy
 - InUse
 - Finish
-- state transition
-##### → deadline を自動延長。
+- State transition
+##### → Automatically extend the deadline.
 
 
 ### Purpose
-PM5内部の：
-- save処理
-- workout終了処理
-- state transition遅延
-を安全に吸収。
+Safely accommodate:
+- Save operations
+- Workout termination processing
+- State transition delays
+within the PM5.
 
 ---
-### Phase3 — CONFIG
-Ready同期完了後、
- Workout設定を個別送信。
-例：
+### Phase 3 — CONFIG
+After Ready synchronization is complete,
+ individually send workout settings.
+Example:
 - Distance
 - Time
 - Split
@@ -106,64 +106,60 @@ Ready同期完了後、
 
 ## 4. Fault Tolerance
 Healthy / Degraded Separation
-通信停止または状態停滞時のみ：
-Degraded
-へ移行。
+Only when communication stops or the state stagnates:
+Transition to
+Degraded.
 
 #### Isolation Design
-1台の異常で：
-- queue停止
-- workflow停止
-- UI停止
-を発生させない。
+In the event of a failure on a single unit:
+- Queue stop
+- Workflow stop
+- UI stop
+shall not occur.
 
 ---
 
 ## 5. Data Acquisition
 ### General Status (0x31)
-取得：
+Acquire:
 - Distance
 - Elapsed Time
 
 ### Rowing Status (0x32)
-取得：
+Acquire:
 Stroke Rate
 Pace /500m
 
 ### Data Point (0x22)
-取得：
+Acquire:
 - CSAFE responses
 - Machine Status
 
 ---
 
 ## 6. UI / UX Philosophy
-v4では optimistic UI を採用。
-ボタン押下直後に dashboard 遷移を行い、
- 各PM5の状態同期はバックグラウンドで進行する。
+v4 adopts an optimistic UI.
+The dashboard loads immediately after a button is pressed,
+ while status synchronization for each PM5 proceeds in the background.
 
 ### Goals
-- 操作レスポンス向上
-- 通信待機感の排除
-- 異常デバイスの個別可視化
+- Improve operational responsiveness
+- Eliminate the feeling of waiting for communication
+- Individual visualization of faulty devices
 
 ---
 
 ## 7. Design Philosophy
-v4は「研究用」ではなく、
- 実運用・App Store投入を前提とした
- “Stable Base Architecture” として設計されている。
-目的は：
-理論上最強
-ではなく、
-BLE実環境で壊れないこと
-を最優先とする。
+v4 is not designed for “research purposes,”
+but rather as a “Stable Base Architecture”
+intended for actual operation and release on the App Store.
+The objective is:
+not to be theoretically the strongest,
+but to prioritize
+reliability in real-world BLE environments
+above all else.
 
-以上
 
----
-## あとがき
-AIを用いてRowPilot内のマネージャーモードにおける通信アーキテクチャを
-言語化しています。
-また、v4(本誌の内容)は2026/5/13に作成、適用されたものです。
-改訂版(v4.1など)があれば順次公開します。
+<hr>Version: 1.0<br>
+Author: Kaito Nakahira / Antigravity AI<br>
+Date: 2026-05-16
