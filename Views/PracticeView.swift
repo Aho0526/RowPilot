@@ -218,42 +218,7 @@ struct PracticeView: View {
                 }
             }
             .sheet(isPresented: $showingHelp) {
-                HelpView(
-                    title: "Practice Help".localized,
-                    content: """
-    練習タブの使い方
-        1:1通信時
-            PM5をスキャンを押す
-            PM5でconnectボタンを押し、接続したいPM5の画面上に出てきた番号(例:PM5 ID 430665873)と合致するものをアプリ上で選択。
-            画面が遷移し、単一距離か単一時間ワークアウトを指定後、それぞれの目標を対応レンジ内で設定し送信。
-            送信するとともにアプリ内の数値がPM5の画面と合致するので、任意のタイミングでワークアウト開始。
-            終了時に保存/破棄を選択し、ワークアウトを終了する。
-
-
-        1:複数通信(マネージャーモード)時
-        ※これを利用するにはRowPilot Managerのサブスクリプション登録が必要です。
-            マネージャーモードを選択後、PM5をスキャン。
-            使用する全てのPM5を接続可能状態にし、使用するPM5の全てを追加する。
-            "次へ→"を選択し、単一距離か単一時間ワークアウトを設定する。
-            対応レンジ内で距離・時間を設定し送信(送信台数に応じて少し時間がかかります。)
-            送信後、ダッシュボード画面に自動で遷移し全ての接続状況やワークアウト状況が見られます。
-
-        "もう一度ボタン"
-            文字通り最初に設定したワークアウトを繰り返すことができます。
-            押すとワークアウトを保存・破棄を選択し、自動的にPM5のリセット->ワークアウトの設定が完了します。
-
-        "モード設定ボタン"
-            ワークアウトの再設定ができます。
-            強制的にPM5のワークアウト設定がリセットされるのでワークアウト中に操作しないようにしてください。
-
-        "PM5設定ボタン"
-            PM5のカスタムネームや表示上の並び替えができます。
-            ダッシュボードやレースビュー時に便利な機能です。
-
-        ダッシュボード画面にてスマホを横倒しにするとレースをしているような見た目に変更することができます。(RowPilot MAXのみ)
-        2000mTTや練習でレース練習をする際におすすめです。
-    """
-                )
+                PracticeHelpView()
             }
             .sheet(isPresented: $showingSubscription) {
                 SubscriptionView()
@@ -477,5 +442,214 @@ struct PracticeHelpToolbarItem: View {
         } else {
             EmptyView()
         }
+    }
+}
+
+// MARK: - Practice Help View (QA Format)
+struct PracticeHelpView: View {
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Title/Intro
+                        VStack(spacing: 8) {
+                            Image(systemName: "questionmark.circle.fill")
+                                .font(.system(size: 48))
+                                .foregroundColor(Theme.accent)
+                                .padding(.bottom, 8)
+                            
+                            Text("練習タブの使い方".localized)
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(Theme.textMain)
+                            
+                            Text("RowPilotの基本機能やPM5との通信方法についてのガイドです。".localized)
+                                .font(.subheadline)
+                                .foregroundColor(Theme.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.top, 20)
+                        .padding(.bottom, 10)
+                        
+                        Group {
+                            HelpSectionView(title: "1:1通信時 (シングルモード)".localized, icon: "iphone.and.arrow.forward") {
+                                HelpStepView(step: "1", text: "「PM5をスキャン」を押します。".localized)
+                                HelpStepView(step: "2", text: "PM5側でConnectボタンを押し、アプリの画面に表示されたPM5 ID（例: 430665873）と合致するものを選択します。".localized)
+                                HelpStepView(step: "3", text: "画面が遷移し、単一距離か単一時間ワークアウトを指定後、それぞれの目標を対応レンジ内で設定し送信します。".localized)
+                                HelpStepView(step: "4", text: "送信するとともにアプリ内の数値がPM5の画面と合致するので、任意のタイミングでワークアウト開始します。".localized)
+                                HelpStepView(step: "5", text: "終了時に保存/破棄を選択し、ワークアウトを終了します。".localized)
+                            }
+                            
+                            HelpSectionView(title: "1:複数通信 (マネージャーモード)時".localized, icon: "person.3.fill") {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "star.fill")
+                                            .foregroundColor(.yellow)
+                                        Text("※これを利用するにはRowPilot Managerのサブスクリプション登録が必要です。".localized)
+                                            .font(.caption)
+                                            .foregroundColor(Theme.textSecondary)
+                                    }
+                                    
+                                    HelpStepView(step: "1", text: "マネージャーモードを選択後、PM5をスキャンします。".localized)
+                                    HelpStepView(step: "2", text: "使用する全てのPM5を接続可能状態にし、使用するPM5の全てを追加します。".localized)
+                                    HelpStepView(step: "3", text: "「次へ→」を選択し、単一距離か単一時間ワークアウトを設定します。対応レンジ内で距離・時間を設定し送信します(送信台数に応じて少し時間がかかります)。".localized)
+                                    HelpStepView(step: "4", text: "送信後、ダッシュボード画面に自動で遷移し全ての接続状況やワークアウト状況が見られます。".localized)
+                                }
+                            }
+                        }
+                        
+                        Group {
+                            HelpSectionView(title: "各機能の解説".localized, icon: "switch.2") {
+                                HelpFeatureItem(title: "「もう一度」ボタン".localized, icon: "arrow.counterclockwise") {
+                                    Text("文字通り最初に設定したワークアウトを繰り返すことができます。押すとワークアウトを保存・破棄を選択し、自動的にPM5のリセット->ワークアウトの設定が完了します。".localized)
+                                }
+                                
+                                HelpFeatureItem(title: "「モード設定」ボタン".localized, icon: "gearshape.fill") {
+                                    Text("ワークアウトの再設定ができます。強制的にPM5のワークアウト設定がリセットされるのでワークアウト中に操作しないようにしてください。".localized)
+                                }
+                                
+                                HelpFeatureItem(title: "「PM5設定」ボタン".localized, icon: "pencil.and.list.clipboard") {
+                                    Text("PM5のカスタムネームや表示上の並び替えができます。ダッシュボードやレースビュー時に便利な機能です。".localized)
+                                }
+                                
+                                HelpFeatureItem(title: "レースビュー (MAXのみ)".localized, icon: "flag.checkered") {
+                                    Text("ダッシュボード画面にてスマホを横倒しにするとレースをしているような見た目に変更することができます。2000mTTや練習でレース練習をする際におすすめです。".localized)
+                                }
+                            }
+                        }
+                        CreditSection(title: "問題が解決しない場合") {
+                                                NavigationLink(destination: HelpQA()) {
+                                                    HStack {
+                                                        Text("QAコーナーに移る")
+                                                            .foregroundColor(Theme.textMain)
+                                                        Spacer()
+                                                        Image(systemName: "chevron.right")
+                                                            .foregroundColor(Theme.textSecondary)
+                                                    }
+                                                }
+                                            }
+                        
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 40)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done".localized) {
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Subviews for Practice Help
+struct HelpSectionView<Content: View>: View {
+    let title: String
+    let icon: String
+    let content: Content
+    
+    init(title: String, icon: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.content = content()
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundColor(Theme.accent)
+                
+                Text(title)
+                    .font(Theme.subHeaderFont())
+                    .foregroundColor(Theme.accent)
+            }
+            .padding(.bottom, 4)
+            
+            VStack(alignment: .leading, spacing: 16) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(20)
+        .background(Theme.cardBackground)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+    }
+}
+
+struct HelpStepView: View {
+    let step: String
+    let text: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(step)
+                .font(.caption)
+                .fontWeight(.bold)
+                .foregroundColor(Theme.mainBackground)
+                .frame(width: 24, height: 24)
+                .background(Theme.accent)
+                .clipShape(Circle())
+                .padding(.top, 2)
+            
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(Theme.textMain)
+                .lineSpacing(6)
+        }
+    }
+}
+
+struct HelpFeatureItem<Content: View>: View {
+    let title: String
+    let icon: String
+    let content: Content
+    
+    init(title: String, icon: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.content = content()
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.subheadline)
+                    .foregroundColor(Theme.textMain)
+                    .frame(width: 20)
+                
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.textMain)
+            }
+            
+            VStack(alignment: .leading) {
+                content
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+                    .lineSpacing(6)
+            }
+            .padding(.leading, 28)
+        }
+        .padding(.vertical, 6)
+    }
+}
+#Preview {
+    NavigationStack {
+        SubscriptionView()
     }
 }

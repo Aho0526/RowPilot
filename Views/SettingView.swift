@@ -196,7 +196,8 @@ struct SettingView: View {
             
             // アプリ情報
             VStack(spacing: 8) {
-                Text("Version 1.0.0")
+                Text("Version 1.2.0(Beta)")
+                Text("Build from May 18")
                 NavigationLink(destination: TermsView()) {
                     Text("Terms of Service".localized)
                         .underline()

@@ -308,7 +308,44 @@ struct SpecialThanksView: View {
         .navigationTitle("Special Thanks")
     }
 }
-
+//MARK:- HelpQA
+struct HelpQA: View {
+    var body: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 20) {
+                    CreditSection(title: "PM5がリストに出てこない") {
+                        Text("PM5の設定->ファームウェアバージョンを確認してください。")
+                        Text("バージョン163では動作しません。")
+                        Text("動作確認環境:v178.037 / PM5のみ")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "バージョン更新ができない") {
+                        Text("本アプリはConcept2公式のものではないので更新はできません。")
+                        Text("ErgDataからのアップデートか、USBケーブルを用いて更新してください。")
+                        Text("それでも解決しない場合はConcept2に連絡してください。")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "マネージャーモードでPM5がリストに出てこない") {
+                        Text("1:1の接続が成立している場合リストに表示されません。")
+                        Text("一度接続を切って確認してください。")
+                    .foregroundColor(Theme.textMain)
+                    }
+                    CreditSection(title: "iPhoneの動作が重たい") {
+                        Text("接続しているPM5の数が多くなるほど動作に影響が出る可能性があります。")
+                        Text("最大同時接続数は10個までにしていますが、使用者の端末の性能に応じて接続台数を変更してください。")
+                        Text("以下の環境で8台同時のテストを行なっています。動作にラグは生じていません。")
+                        Text("動作確認環境:iPhone17,iOS26.5 / iPad Pro M1,iPadOS26.5")
+                    .foregroundColor(Theme.textMain)
+                    }
+                }
+                .padding()
+            }
+        }
+        .navigationTitle("")
+    }
+}
 #Preview {
     NavigationStack {
         CreditsView()
