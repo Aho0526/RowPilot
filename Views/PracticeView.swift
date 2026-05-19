@@ -509,8 +509,8 @@ struct PracticeHelpView: View {
                                     Text("文字通り最初に設定したワークアウトを繰り返すことができます。押すとワークアウトを保存・破棄を選択し、自動的にPM5のリセット->ワークアウトの設定が完了します。".localized)
                                 }
                                 
-                                HelpFeatureItem(title: "「モード設定」ボタン".localized, icon: "gearshape.fill") {
-                                    Text("ワークアウトの再設定ができます。強制的にPM5のワークアウト設定がリセットされるのでワークアウト中に操作しないようにしてください。".localized)
+                                HelpFeatureItem(title: "「設定」ボタン".localized, icon: "gearshape.fill") {
+                                    Text("ワークアウトの再設定や取得スピード（Hz）の設定変更ができます。強制的にPM5のワークアウト設定がリセットされるのでワークアウト中に操作しないようにしてください。".localized)
                                 }
                                 
                                 HelpFeatureItem(title: "「PM5設定」ボタン".localized, icon: "pencil.and.list.clipboard") {

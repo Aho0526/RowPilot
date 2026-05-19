@@ -119,7 +119,7 @@ struct ManagerWorkoutDashboardView: View {
                             Label("もう一度", systemImage: "arrow.counterclockwise")
                         }
                         Button(action: { showModeSettings = true }) {
-                            Label("モード設定", systemImage: "gearshape.fill")
+                            Label("Settings".localized, systemImage: "gearshape.fill")
                         }
                         Button(action: { showEditSheet = true }) {
                             Label("PM5編集", systemImage: "pencil.and.list.clipboard")
@@ -281,7 +281,7 @@ struct ManagerWorkoutDashboardView: View {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 24))
                             .foregroundColor(.orange)
-                        Text("モード設定")
+                        Text("Settings".localized)
                             .font(.system(size: 10))
                             .foregroundColor(Theme.textSecondary)
                     }
@@ -735,8 +735,38 @@ struct ManagerModeSettingsView: View {
                     Toggle("ペース(500m)を表示", isOn: $pm5ShowPace)
                     Toggle("ワットを表示", isOn: $pm5ShowWatts)
                 }
+                
+                Section(header: Text("データ取得スピード (Hz)")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("取得頻度:")
+                            Spacer()
+                            Text("\(viewModel.retrievalSpeedHz) Hz")
+                                .fontWeight(.bold)
+                                .foregroundColor(.orange)
+                        }
+                        Slider(
+                            value: Binding(
+                                get: { Double(viewModel.retrievalSpeedHz) },
+                                set: { viewModel.updateRetrievalSpeed(Int($0)) }
+                            ),
+                            in: 1...4,
+                            step: 1
+                        )
+                        .tint(.orange)
+                        HStack {
+                            Text("1 Hz")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("4 Hz")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
             }
-            .navigationTitle("モード設定")
+            .navigationTitle("Settings".localized)
             .navigationBarItems(trailing: Button("完了") {
                 showModeSettings = false
             })

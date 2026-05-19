@@ -95,12 +95,15 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     private let C2_CHAR_POWER_DATA = CBUUID(string: "CE060033-43E5-11E4-916C-0800200C9A66")
     private let C2_CHAR_ADDITIONAL_STROKE_DATA_0x36 = CBUUID(string: "CE060036-43E5-11E4-916C-0800200C9A66")
     private let C2_CHAR_END_OF_WORKOUT = CBUUID(string: "CE060037-43E5-11E4-916C-0800200C9A66")
+    private let C2_CHAR_ROWING_STATUS_SAMPLE_RATE = CBUUID(string: "CE060034-43E5-11E4-916C-0800200C9A66")
     
     // MARK: - CoreBluetooth
     private var centralManager: CBCentralManager!
     
     /// デバイスごとのControl Point Characteristicを保持
     private var controlCharacteristics: [UUID: CBCharacteristic] = [:]
+    /// デバイスごとのSample Rate Characteristicを保持
+    private var sampleRateCharacteristics: [UUID: CBCharacteristic] = [:]
     
     // MARK: - Published State（3層分離）
     
@@ -153,6 +156,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// デバイスごとのカスタム名（Key: BLE名, Value: カスタム名）
     @Published var deviceCustomNames: [String: String] = [:]
     
+    /// 取得スピード (Hz) - 1~4 の値
+    @Published var retrievalSpeedHz: Int = 2
+    
     /// ワークアウト開始時間
     var workoutStartTime: Date? = nil
     
@@ -192,6 +198,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     override init() {
         super.init()
         loadCustomNames()
+        self.retrievalSpeedHz = UserDefaults.standard.integer(forKey: "PM5RetrievalSpeedHz")
+        if self.retrievalSpeedHz < 1 || self.retrievalSpeedHz > 4 {
+            self.retrievalSpeedHz = 2
+        }
         centralManager = CBCentralManager(delegate: self, queue: nil)
     }
     
@@ -247,6 +257,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         connectedDevices.removeAll { $0.identifier == peripheral.identifier }
         disconnectedDeviceIDs.remove(peripheral.identifier)
         controlCharacteristics.removeValue(forKey: peripheral.identifier)
+        sampleRateCharacteristics.removeValue(forKey: peripheral.identifier)
         deviceMetrics.removeValue(forKey: peripheral.identifier)
         ignoredDeviceIDs.insert(peripheral.identifier)
         // 再スキャンまで検出一覧には戻さない
@@ -302,6 +313,33 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         UserDefaults.standard.set(deviceCustomNames, forKey: Self.customNamesKey)
     }
     
+    /// 取得スピードを更新し、すべての接続中デバイスに適用する
+    func updateRetrievalSpeed(_ speed: Int) {
+        let limitedSpeed = min(max(speed, 1), 4)
+        retrievalSpeedHz = limitedSpeed
+        UserDefaults.standard.set(limitedSpeed, forKey: "PM5RetrievalSpeedHz")
+        
+        let val = sampleRateValue(for: limitedSpeed)
+        print("PM5ManagerVM: 取得スピードを \(limitedSpeed)Hz (値: \(val)) に変更します")
+        
+        for (deviceID, char) in sampleRateCharacteristics {
+            if let peripheral = connectedDevices.first(where: { $0.identifier == deviceID }) {
+                peripheral.writeValue(Data([val]), for: char, type: .withResponse)
+                print("PM5ManagerVM: デバイス \(peripheral.name ?? "") の取得スピードを更新")
+            }
+        }
+    }
+    
+    private func sampleRateValue(for hz: Int) -> UInt8 {
+        switch hz {
+        case 1: return 0 // 1s (1Hz)
+        case 2: return 1 // 500ms (2Hz)
+        case 3: return 2 // 250ms (4Hz)
+        case 4: return 2 // 250ms (4Hz)
+        default: return 1 // 2Hz (Default)
+        }
+    }
+    
     /// 全PM5を切断してリストをクリア
     func disconnectAll() {
         for device in connectedDevices {
@@ -312,6 +350,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         disconnectedDeviceIDs.removeAll()
         ignoredDeviceIDs.removeAll()
         controlCharacteristics.removeAll()
+        sampleRateCharacteristics.removeAll()
         discoveredDevices.removeAll()
         deviceMetrics.removeAll()
         showDashboard = false
@@ -1239,6 +1278,7 @@ extension PM5ManagerViewModel: CBCentralManagerDelegate {
         // リストから消さずに切断状態としてマーク
         disconnectedDeviceIDs.insert(peripheral.identifier)
         controlCharacteristics.removeValue(forKey: peripheral.identifier)
+        sampleRateCharacteristics.removeValue(forKey: peripheral.identifier)
         
         // メトリクスの接続状態を更新
         deviceMetrics[peripheral.identifier]?.isConnected = false
@@ -1264,7 +1304,7 @@ extension PM5ManagerViewModel: CBPeripheralDelegate {
             }
             if service.uuid == C2_SERVICE_UUID {
                 peripheral.discoverCharacteristics(
-                    [C2_CHAR_GENERAL_STATUS, C2_CHAR_ROWING_STATUS_0x32, C2_CHAR_STROKE_DATA, C2_CHAR_ADDITIONAL_STROKE_DATA_0x36, C2_CHAR_END_OF_WORKOUT],
+                    [C2_CHAR_GENERAL_STATUS, C2_CHAR_ROWING_STATUS_0x32, C2_CHAR_STROKE_DATA, C2_CHAR_ADDITIONAL_STROKE_DATA_0x36, C2_CHAR_END_OF_WORKOUT, C2_CHAR_ROWING_STATUS_SAMPLE_RATE],
                     for: service
                 )
             }
@@ -1286,6 +1326,12 @@ extension PM5ManagerViewModel: CBPeripheralDelegate {
             if [C2_CHAR_GENERAL_STATUS, C2_CHAR_ROWING_STATUS_0x32, C2_CHAR_STROKE_DATA, C2_CHAR_ADDITIONAL_STROKE_DATA_0x36].contains(characteristic.uuid) {
                 peripheral.setNotifyValue(true, for: characteristic)
                 print("PM5ManagerVM: Notify購読開始 → \(characteristic.uuid.uuidString.prefix(8)) on \(peripheral.name ?? "Unknown")")
+            }
+            if characteristic.uuid == C2_CHAR_ROWING_STATUS_SAMPLE_RATE {
+                sampleRateCharacteristics[peripheral.identifier] = characteristic
+                let val = sampleRateValue(for: retrievalSpeedHz)
+                peripheral.writeValue(Data([val]), for: characteristic, type: .withResponse)
+                print("PM5ManagerVM: Sample Rate発見 & 設定適用 (\(retrievalSpeedHz)Hz, 値: \(val)) → \(peripheral.name ?? "Unknown")")
             }
         }
     }
