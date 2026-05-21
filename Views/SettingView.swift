@@ -4,6 +4,7 @@ struct SettingView: View {
     @ObservedObject private var settingsManager = SettingsManager.shared
     @ObservedObject private var themeManager = ThemeManager.shared
     @ObservedObject private var localizationManager = LocalizationManager.shared
+    @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
     @State private var showingResetAlert = false
     
     var body: some View {
@@ -143,6 +144,13 @@ struct SettingView: View {
                 SettingsToggleRow(title: "Auto Start".localized, isOn: $settingsManager.settings.autoStartOnMotion)
             }
             
+            // マネージャー設定（サブスク解放時のみ表示）
+            if currentPlan.hasManagerMode {
+                SettingsSection(title: "Manager Mode".localized, icon: "person.3.sequence.fill") {
+                    SettingsToggleRow(title: "Save 0-Record PM5s".localized, isOn: $settingsManager.settings.saveZeroRecordPM5s)
+                }
+            }
+            
             // 単位設定
             SettingsSection(title: "Units".localized, icon: "ruler.fill") {
                 HStack {
@@ -205,7 +213,7 @@ struct SettingView: View {
                         .underline()
                 }
                 Text("Version 1.2.0(Beta)")
-                Text("Build from May 19")
+                Text("Build from May 20")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

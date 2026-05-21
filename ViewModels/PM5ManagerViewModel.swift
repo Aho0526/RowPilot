@@ -1181,8 +1181,11 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// 全デバイスの記録を保存
     func saveAllRecords(recordManager: RecordManager) {
         print("PM5ManagerVM: Saving records for all connected devices")
-        for (_, metrics) in deviceMetrics {
-            if metrics.distance > 0 || metrics.elapsedTime > 0 {
+        let sessionId = UUID() // Group all these records under one session
+        let saveZero = SettingsManager.shared.settings.saveZeroRecordPM5s
+        
+        for (deviceID, metrics) in deviceMetrics {
+            if saveZero || metrics.distance > 0 || metrics.elapsedTime > 0 {
                 let recordDate: Date = workoutStartTime ?? Date()
                 let recordDuration: TimeInterval = metrics.elapsedTime
                 let recordDistance: Double = metrics.distance
@@ -1194,6 +1197,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 let recordNotes: String = "Indoor Workout (Manager Mode) - \(metrics.name)"
                 let recordTags: [String] = ["ManagerMode", "Indoor"]
                 
+                // Serial Number: The CBPeripheral name might just be "PM5", but sometimes we can use the identifier.
+                // It's better to store device name and custom name correctly.
+                let customName = deviceCustomNames[metrics.name] ?? metrics.name
+                
                 let record = RowingRecord(
                     id: UUID(),
                     date: recordDate,
@@ -1204,8 +1211,13 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                     averagePace: recordPace,
                     startLocation: nil,
                     endLocation: nil,
-                    notes: "\(recordNotes) | Type: \(recordType) | Power: \(recordPower.map { "\($0)W" } ?? "N/A")",
-                    tags: recordTags
+                    notes: "\(recordNotes) | Type: \(recordType)",
+                    tags: recordTags,
+                    isManagerMode: true,
+                    managerSessionId: sessionId,
+                    pm5SerialNumber: metrics.name, // Usually PM5 XXXX
+                    pm5CustomName: customName,
+                    averageWatt: recordPower
                 )
                 recordManager.addRecord(record)
             }

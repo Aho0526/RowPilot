@@ -20,6 +20,13 @@ struct RowingRecord: Identifiable, Codable {
     var notes: String?
     var tags: [String]? // 例: ["朝練", "2000m", "レース準備"]
     
+    // マネージャーモード
+    var isManagerMode: Bool = false
+    var managerSessionId: UUID?
+    var pm5SerialNumber: String?
+    var pm5CustomName: String?
+    var averageWatt: Int?
+    
     init(
         id: UUID = UUID(),
         date: Date = Date(),
@@ -31,7 +38,12 @@ struct RowingRecord: Identifiable, Codable {
         startLocation: LocationData? = nil,
         endLocation: LocationData? = nil,
         notes: String? = nil,
-        tags: [String]? = nil
+        tags: [String]? = nil,
+        isManagerMode: Bool = false,
+        managerSessionId: UUID? = nil,
+        pm5SerialNumber: String? = nil,
+        pm5CustomName: String? = nil,
+        averageWatt: Int? = nil
     ) {
         self.id = id
         self.date = date
@@ -44,6 +56,11 @@ struct RowingRecord: Identifiable, Codable {
         self.endLocation = endLocation
         self.notes = notes
         self.tags = tags
+        self.isManagerMode = isManagerMode
+        self.managerSessionId = managerSessionId
+        self.pm5SerialNumber = pm5SerialNumber
+        self.pm5CustomName = pm5CustomName
+        self.averageWatt = averageWatt
     }
 }
 
@@ -60,12 +77,32 @@ struct LocationData: Codable {
 
 // MARK: - Computed Properties
 extension RowingRecord {
-    /// フォーマットされた時間 (HH:MM:SS)
+    var isDistanceWorkout: Bool {
+        if let tags = tags, tags.contains("distance") {
+            return true
+        }
+        if let notes = notes, notes.localizedCaseInsensitiveContains("Type: distance") {
+            return true
+        }
+        return false
+    }
+
+    /// フォーマットされた時間 (HH:MM:SS または MM:SS.SSS / HH:MM:SS.SSS)
     var formattedDuration: String {
         let hours = Int(duration) / 3600
         let minutes = (Int(duration) % 3600) / 60
         let seconds = Int(duration) % 60
-        return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        
+        if isDistanceWorkout {
+            let milliseconds = Int((duration.truncatingRemainder(dividingBy: 1)) * 1000)
+            if hours > 0 {
+                return String(format: "%02d:%02d:%02d.%03d", hours, minutes, seconds, milliseconds)
+            } else {
+                return String(format: "%02d:%02d.%03d", minutes, seconds, milliseconds)
+            }
+        } else {
+            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        }
     }
     
     /// フォーマットされた距離 (km)

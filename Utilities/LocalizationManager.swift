@@ -335,12 +335,16 @@ class LocalizationManager: ObservableObject {
         "Send to all PM5s": [.japanese: "全PM5に送信", .english: "Send to all PM5s"],
         "Min Time Message": [.japanese: "※ 最短設定時間は20秒です", .english: "Min duration is 20s"],
         "Bulk Send Message": [.japanese: "台のPM5に一括送信", .english: "sync to PM5s"],
-        "Devices": [.japanese: "台", .english: " devices"],
-        "Connected PM5s": [.japanese: "接続中のPM5", .english: "Connected PM5s"],
-        
         "Remaining": [.japanese: "残り", .english: "Remaining"],
         "Finish": [.japanese: "終了", .english: "FINISH"],
         "Practice Workout": [.japanese: "練習ワークアウト", .english: "PRACTICE WORKOUT"],
+        
+        // MARK: - Manager Session Custom Labels
+        "Save 0-Record PM5s": [.japanese: "記録が0のPM5も残す", .english: "Save 0-Record PM5s"],
+        "Manager Session Detail": [.japanese: "マネージャーモード詳細", .english: "Manager Session Detail"],
+        "Connected Devices": [.japanese: "接続デバイス一覧", .english: "Connected Devices"],
+        "Connected PM5s": [.japanese: "接続中のPM5", .english: "Connected PM5s"],
+        "Devices": [.japanese: "台のデバイス", .english: " Devices"],
         
         // MARK: - Sort Order
         "Sort_Date_Desc": [.japanese: "日付（新しい順）", .english: "Date (Newest)"],

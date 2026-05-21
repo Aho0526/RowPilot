@@ -163,6 +163,12 @@ class RecordManager: ObservableObject {
             endLoc = LocationData(latitude: eLat, longitude: eLon)
         }
         
+        let isManagerMode = entity.value(forKey: "isManagerMode") as? Bool ?? false
+        let managerSessionId = entity.value(forKey: "managerSessionId") as? UUID
+        let pm5SerialNumber = entity.value(forKey: "pm5SerialNumber") as? String
+        let pm5CustomName = entity.value(forKey: "pm5CustomName") as? String
+        let averageWatt = entity.value(forKey: "averageWatt") as? Int
+        
         return RowingRecord(
             id: id,
             date: date,
@@ -174,7 +180,12 @@ class RecordManager: ObservableObject {
             startLocation: startLoc,
             endLocation: endLoc,
             notes: notes,
-            tags: tags
+            tags: tags,
+            isManagerMode: isManagerMode,
+            managerSessionId: managerSessionId,
+            pm5SerialNumber: pm5SerialNumber,
+            pm5CustomName: pm5CustomName,
+            averageWatt: averageWatt
         )
     }
     
@@ -197,6 +208,16 @@ class RecordManager: ObservableObject {
         if let end = model.endLocation {
             entity.setValue(end.latitude, forKey: "endLat")
             entity.setValue(end.longitude, forKey: "endLon")
+        }
+        
+        entity.setValue(model.isManagerMode, forKey: "isManagerMode")
+        entity.setValue(model.managerSessionId, forKey: "managerSessionId")
+        entity.setValue(model.pm5SerialNumber, forKey: "pm5SerialNumber")
+        entity.setValue(model.pm5CustomName, forKey: "pm5CustomName")
+        if let watt = model.averageWatt {
+            entity.setValue(watt, forKey: "averageWatt")
+        } else {
+            entity.setValue(nil, forKey: "averageWatt")
         }
     }
     

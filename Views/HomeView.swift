@@ -158,11 +158,57 @@ struct HomeView: View {
             .padding(.horizontal)
     }
     
+    enum RecordListItem: Identifiable {
+        case single(RowingRecord)
+        case managerSession(UUID, [RowingRecord])
+        
+        var id: String {
+            switch self {
+            case .single(let r): return r.id.uuidString
+            case .managerSession(let u, _): return u.uuidString
+            }
+        }
+        
+        var date: Date {
+            switch self {
+            case .single(let r): return r.date
+            case .managerSession(_, let records): return records.first?.date ?? Date()
+            }
+        }
+    }
+    
+    private var groupedRecords: [RecordListItem] {
+        var items: [RecordListItem] = []
+        var managerGroups: [UUID: [RowingRecord]] = [:]
+        
+        for record in recordManager.records {
+            if record.isManagerMode, let sessionId = record.managerSessionId {
+                managerGroups[sessionId, default: []].append(record)
+            } else {
+                items.append(.single(record))
+            }
+        }
+        
+        for (sessionId, records) in managerGroups {
+            items.append(.managerSession(sessionId, records))
+        }
+        
+        return items.sorted { $0.date > $1.date }
+    }
+
     private var historyList: some View {
         LazyVStack(spacing: 12) {
-            ForEach(recordManager.records.sorted { $0.date > $1.date }) { record in
-                NavigationLink(destination: RecordDetailView(record: record)) {
-                    RecordRowCard(record: record)
+            ForEach(groupedRecords) { item in
+                switch item {
+                case .single(let record):
+                    NavigationLink(destination: RecordDetailView(record: record)) {
+                        RecordRowCard(record: record)
+                    }
+                case .managerSession(_, let records):
+                    // Manager Session group with navigation to detail view
+                    NavigationLink(destination: ManagerSessionDetailView(records: records)) {
+                        ManagerSessionRowCard(records: records)
+                    }
                 }
             }
         }
@@ -279,6 +325,70 @@ struct RecordRowCard: View {
         .padding()
         .background(Theme.cardBackground)
         .cornerRadius(12)
+    }
+    
+    private func dayStr(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "d"
+        return f.string(from: date)
+    }
+    
+    private func monthStr(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM"
+        return f.string(from: date)
+    }
+}
+
+struct ManagerSessionRowCard: View {
+    let records: [RowingRecord]
+    
+    var body: some View {
+        HStack {
+            // Date Box
+            VStack {
+                Text(dayStr(records.first?.date ?? Date()))
+                    .font(.title3)
+                    .bold()
+                    .foregroundColor(Theme.textMain)
+                Text(monthStr(records.first?.date ?? Date()))
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            .frame(width: 50)
+            .padding(.trailing, 8)
+            
+            // Stats
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Manager Session".localized)
+                    .font(.headline)
+                    .foregroundColor(Theme.textMain)
+                
+                HStack(spacing: 8) {
+                    Image(systemName: "person.3.fill")
+                    Text("\(records.count) Devices".localized)
+                }
+                .font(.subheadline)
+                .foregroundColor(Theme.accent) // Visually distinct accent
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(Theme.textSecondary.opacity(0.5))
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(
+                    LinearGradient(colors: [Color.indigo.opacity(0.6), Color.purple.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    lineWidth: 1.5
+                )
+        )
     }
     
     private func dayStr(_ date: Date) -> String {

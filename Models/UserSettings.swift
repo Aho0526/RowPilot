@@ -38,6 +38,9 @@ struct UserSettings: Codable {
     var sosUserName: String
     var sosMapSelection: SOSMapSelection
     
+    // マネージャー設定
+    var saveZeroRecordPM5s: Bool
+    
     init(
         soundEnabled: Bool = true,
         voiceFeedbackEnabled: Bool = false,
@@ -57,7 +60,8 @@ struct UserSettings: Codable {
         sosContactName: String = "",
         sosContactPhone: String = "",
         sosUserName: String = "",
-        sosMapSelection: SOSMapSelection = .both
+        sosMapSelection: SOSMapSelection = .both,
+        saveZeroRecordPM5s: Bool = false
     ) {
         self.soundEnabled = soundEnabled
         self.voiceFeedbackEnabled = voiceFeedbackEnabled
@@ -78,6 +82,7 @@ struct UserSettings: Codable {
         self.sosContactPhone = sosContactPhone
         self.sosUserName = sosUserName
         self.sosMapSelection = sosMapSelection
+        self.saveZeroRecordPM5s = saveZeroRecordPM5s
     }
 }
 

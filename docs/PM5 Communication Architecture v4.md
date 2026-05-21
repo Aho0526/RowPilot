@@ -6,13 +6,12 @@ the actual state (Machine Status) of the PM5.
 Each PM5 is managed as an independent state machine,
 and the architecture is designed so that a delay or communication error in a single unit does not halt the entire system.
 
---- 
 ## 1. Communication Layer
-#### Extended CSAFE Frame
+### Extended CSAFE Frame
 Prioritizing stability when multiple PM5s are connected,
 all communication is standardized to the Extended CSAFE Frame.
 
-#### F0 [Destination] [Source] [Payload] [Checksum] F2
+### F0 [Destination] [Source] [Payload] [Checksum] F2
 - Addressing
 - Field
 - Value
@@ -52,7 +51,7 @@ interFrameGap = 50ms
 Sequential
 Guarantees the transmission order to each PM5.
 
-### Between Devices
+#### Between Devices
 Parallel
 Controls multiple PM5s in parallel.
 
@@ -83,10 +82,10 @@ If any of the following are detected:
 - InUse
 - Finish
 - State transition
-### → Automatically extend the deadline.
+##### → Automatically extend the deadline.
 
 
-## Purpose
+### Purpose
 Safely accommodate:
 - Save operations
 - Workout termination processing
@@ -111,7 +110,7 @@ Only when communication stops or the state stagnates:
 Transition to
 Degraded.
 
-### Isolation Design
+#### Isolation Design
 In the event of a failure on a single unit:
 - Queue stop
 - Workflow stop
@@ -161,6 +160,7 @@ reliability in real-world BLE environments
 above all else.
 
 
-<hr>Document Version: 1.1<br>
+<hr>Version: 1.0<br>
 Author: Kaito Nakahira / Antigravity AI<br>
-Date: 2026-05-18
+Date: 2026-05-17
+
