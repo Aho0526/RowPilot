@@ -218,11 +218,7 @@ struct HomeView: View {
     // MARK: - Helpers
     
     private func formatDistance(_ meters: Double) -> String {
-        if meters >= 1000 {
-            return String(format: "%.2f km", meters / 1000)
-        } else {
-            return String(format: "%.0f m", meters)
-        }
+        return String(format: "%.0f m", meters)
     }
     
     private func formatDuration(_ seconds: TimeInterval) -> String {

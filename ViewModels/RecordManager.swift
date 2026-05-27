@@ -14,6 +14,38 @@ class RecordManager: ObservableObject {
     private let legacyRecordsKey = "RowPilotRecords"
     private var cancellables = Set<AnyCancellable>()
     
+    // MARK: - dataPoints JSONファイル管理
+    // CoreDataのTransformableでSwift structを保存する際の制限を避けるため、
+    // dataPointsはDocuments/DataPoints/配下のJSONファイルで管理する
+    private var dataPointsDirectory: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return docs.appendingPathComponent("DataPoints", isDirectory: true)
+    }
+    
+    private func dataPointsURL(for id: UUID) -> URL {
+        dataPointsDirectory.appendingPathComponent("\(id.uuidString).json")
+    }
+    
+    private func saveDataPoints(_ points: [WorkoutDataPoint], for id: UUID) {
+        do {
+            try FileManager.default.createDirectory(at: dataPointsDirectory, withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(points)
+            try data.write(to: dataPointsURL(for: id))
+        } catch {
+            print("RecordManager: Failed to save dataPoints: \(error)")
+        }
+    }
+    
+    private func loadDataPoints(for id: UUID) -> [WorkoutDataPoint]? {
+        let url = dataPointsURL(for: id)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode([WorkoutDataPoint].self, from: data)
+    }
+    
+    private func deleteDataPoints(for id: UUID) {
+        try? FileManager.default.removeItem(at: dataPointsURL(for: id))
+    }
+    
     init() {
         // Listen for store reload (iCloud toggle or initial load)
         NotificationCenter.default.publisher(for: .nPersistentStoreChanged)
@@ -57,7 +89,12 @@ class RecordManager: ObservableObject {
         
         do {
             let entities = try context.fetch(request)
-            self.records = entities.compactMap { self.mapEntityToModel($0) }
+            self.records = entities.compactMap { entity -> RowingRecord? in
+                guard var record = self.mapEntityToModel(entity) else { return nil }
+                // JSONファイルからdataPointsを復元
+                record.dataPoints = self.loadDataPoints(for: record.id)
+                return record
+            }
         } catch {
             print("Failed to fetch records: \(error)")
         }
@@ -66,14 +103,22 @@ class RecordManager: ObservableObject {
     func addRecord(_ record: RowingRecord) {
         guard PersistenceController.shared.isStoreLoaded else { return }
         
+        // dataPointsはJSONファイルで保存
+        if let points = record.dataPoints, !points.isEmpty {
+            saveDataPoints(points, for: record.id)
+        }
+        
         let entity = NSEntityDescription.insertNewObject(forEntityName: "RowingRecordEntity", into: context)
         mapModelToEntity(record, entity: entity)
         saveContext()
-        fetchRecords() // 明示的にフェッチを呼び出してリストを即時更新
+        fetchRecords()
     }
     
     func deleteRecord(_ record: RowingRecord) {
         guard PersistenceController.shared.isStoreLoaded else { return }
+        
+        // JSONファイルも削除
+        deleteDataPoints(for: record.id)
         
         let request = NSFetchRequest<NSManagedObject>(entityName: "RowingRecordEntity")
         request.predicate = NSPredicate(format: "id == %@", record.id as CVarArg)
@@ -168,6 +213,7 @@ class RecordManager: ObservableObject {
         let pm5SerialNumber = entity.value(forKey: "pm5SerialNumber") as? String
         let pm5CustomName = entity.value(forKey: "pm5CustomName") as? String
         let averageWatt = entity.value(forKey: "averageWatt") as? Int
+        // dataPointsはJSONファイルから取得 (fetchRecordsで別途ロード)
         
         return RowingRecord(
             id: id,
@@ -185,7 +231,8 @@ class RecordManager: ObservableObject {
             managerSessionId: managerSessionId,
             pm5SerialNumber: pm5SerialNumber,
             pm5CustomName: pm5CustomName,
-            averageWatt: averageWatt
+            averageWatt: averageWatt,
+            dataPoints: nil // fetchRecordsでJSONファイルから注入
         )
     }
     
@@ -219,6 +266,8 @@ class RecordManager: ObservableObject {
         } else {
             entity.setValue(nil, forKey: "averageWatt")
         }
+        // dataPointsはCoreDataに保存しない（JSONファイルで管理）
+        // entity.setValue(model.dataPoints, forKey: "dataPoints") -- 削除
     }
     
     // MARK: - Migration

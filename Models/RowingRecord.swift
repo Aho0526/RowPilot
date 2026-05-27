@@ -27,6 +27,9 @@ struct RowingRecord: Identifiable, Codable {
     var pm5CustomName: String?
     var averageWatt: Int?
     
+    // 詳細データ（グラフ用）
+    var dataPoints: [WorkoutDataPoint]?
+    
     init(
         id: UUID = UUID(),
         date: Date = Date(),
@@ -43,7 +46,8 @@ struct RowingRecord: Identifiable, Codable {
         managerSessionId: UUID? = nil,
         pm5SerialNumber: String? = nil,
         pm5CustomName: String? = nil,
-        averageWatt: Int? = nil
+        averageWatt: Int? = nil,
+        dataPoints: [WorkoutDataPoint]? = nil
     ) {
         self.id = id
         self.date = date
@@ -61,6 +65,7 @@ struct RowingRecord: Identifiable, Codable {
         self.pm5SerialNumber = pm5SerialNumber
         self.pm5CustomName = pm5CustomName
         self.averageWatt = averageWatt
+        self.dataPoints = dataPoints
     }
 }
 
@@ -87,28 +92,23 @@ extension RowingRecord {
         return false
     }
 
-    /// フォーマットされた時間 (HH:MM:SS または MM:SS.SSS / HH:MM:SS.SSS)
+    /// フォーマットされた時間 (HH:MM:SS.S または MM:SS.S)
     var formattedDuration: String {
         let hours = Int(duration) / 3600
         let minutes = (Int(duration) % 3600) / 60
         let seconds = Int(duration) % 60
+        let milliseconds = Int((duration.truncatingRemainder(dividingBy: 1)) * 10) // 小数点第1位まで
         
-        if isDistanceWorkout {
-            let milliseconds = Int((duration.truncatingRemainder(dividingBy: 1)) * 1000)
-            if hours > 0 {
-                return String(format: "%02d:%02d:%02d.%03d", hours, minutes, seconds, milliseconds)
-            } else {
-                return String(format: "%02d:%02d.%03d", minutes, seconds, milliseconds)
-            }
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d.%01d", hours, minutes, seconds, milliseconds)
         } else {
-            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+            return String(format: "%02d:%02d.%01d", minutes, seconds, milliseconds)
         }
     }
     
-    /// フォーマットされた距離 (km)
+    /// フォーマットされた距離 (m)
     var formattedDistance: String {
-        let km = distance / 1000.0
-        return String(format: "%.2f km", km)
+        return String(format: "%.0f m", distance)
     }
     
     /// フォーマットされたペース (MM:SS /500m)

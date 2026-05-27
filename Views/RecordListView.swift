@@ -186,6 +186,24 @@ struct RecordDetailView: View {
                         // Performance metrics
                         metricsSection
                         
+                        // Workout Details Graph Button
+                        if let dataPoints = record.dataPoints, !dataPoints.isEmpty {
+                            NavigationLink {
+                                WorkoutGraphView(dataPoints: dataPoints)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "chart.xyaxis.line")
+                                    Text("Workout Details".localized)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                }
+                                .padding()
+                                .background(Theme.cardBackground)
+                                .foregroundColor(Theme.accent)
+                                .cornerRadius(20)
+                            }
+                        }
+                        
                         // Tags section
                         tagsSection
                         
@@ -270,7 +288,9 @@ struct RecordDetailView: View {
                 MetricCard(icon: "clock.fill", label: "Duration".localized, value: record.formattedDuration)
                 MetricCard(icon: "ruler.fill", label: "Distance".localized, value: record.formattedDistance)
                 MetricCard(icon: "metronome.fill", label: "Avg SPM".localized, value: "\(record.averageSPM)")
-                MetricCard(icon: "speedometer", label: "Avg Speed".localized, value: String(format: "%.1f km/h", record.averageSpeed))
+                if !(record.pm5SerialNumber != nil || record.isManagerMode || (record.tags?.contains("Indoor") == true)) {
+                    MetricCard(icon: "speedometer", label: "Avg Speed".localized, value: String(format: "%.1f km/h", record.averageSpeed))
+                }
                 MetricCard(icon: "timer", label: "Pace".localized, value: record.formattedPace)
             }
         }

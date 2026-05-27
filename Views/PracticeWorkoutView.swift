@@ -147,7 +147,9 @@ struct PracticeWorkoutView: View {
             averageSpeed: (ergManager.distance / max(ergManager.elapsedTime, 1)) * 3.6,
             averagePace: ergManager.pace500m,
             notes: "Indoor Workout (Practice Mode) | Type: \(workoutType) | Power: \(powerStr)",
-            tags: ["PracticeMode", "Indoor"]
+            tags: ["PracticeMode", "Indoor"],
+            averageWatt: ergManager.power,
+            dataPoints: ergManager.workoutDataPoints
         )
         appViewModel.recordManager.addRecord(record)
     }

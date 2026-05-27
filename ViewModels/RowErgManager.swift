@@ -58,6 +58,10 @@ class RowErgManager: NSObject, ObservableObject {
     @Published var targetSplitTime: Int? = nil
     @Published var showingWorkoutExecution: Bool = false
     
+    // High-frequency workout data logging
+    @Published var workoutDataPoints: [WorkoutDataPoint] = []
+    private var dataRecordingTimer: Timer?
+    
     /// ワークアウトが終了したかどうかを判定
     var isWorkoutFinished: Bool {
         if let targetDist = targetDistance {
@@ -783,7 +787,10 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetSplitTime = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = [] // 新しいワークアウト開始時に前回のデータを消去
+            self.workoutDataPoints = []
         }
+        
+        startDataRecordingTimer()
         
         // ワークアウト変更・開始前に強制終了コマンドを送信
         sendTerminateWorkout()
@@ -1015,7 +1022,7 @@ class RowErgManager: NSObject, ObservableObject {
     func resetWorkout() {
         print("RowErgManager: Resetting workout and sending TERMINATE command")
         sendTerminateWorkout()
-        
+        stopDataRecordingTimer()
         DispatchQueue.main.async {
             self.targetDistance = nil
             self.targetTime = nil
@@ -1024,6 +1031,39 @@ class RowErgManager: NSObject, ObservableObject {
             self.strokeRate = 0
             self.power = 0
             self.lastStrokeCount = -1
+        }
+    }
+    
+    // MARK: - Data Recording Timer
+    private func startDataRecordingTimer() {
+        stopDataRecordingTimer()
+        DispatchQueue.main.async {
+            self.dataRecordingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                self?.recordDataPoint()
+            }
+        }
+    }
+    
+    private func stopDataRecordingTimer() {
+        DispatchQueue.main.async {
+            self.dataRecordingTimer?.invalidate()
+            self.dataRecordingTimer = nil
+        }
+    }
+    
+    private func recordDataPoint() {
+        // Record only when actively rowing (or when time is advancing)
+        guard currentMachineState == .rowing || currentMachineState == .ready || currentMachineState == .idle else { return }
+        
+        let point = WorkoutDataPoint(
+            timeOffset: elapsedTime,
+            pace: pace500m,
+            spm: strokeRate,
+            power: power
+        )
+        
+        DispatchQueue.main.async {
+            self.workoutDataPoints.append(point)
         }
     }
     
@@ -1206,7 +1246,9 @@ extension RowErgManager: CBCentralManagerDelegate {
         strokeRate = 0
         pace500m = 0.0
         power = 0
+        // Internal tracking cleanup
         lastStrokeCount = -1
+        stopDataRecordingTimer()
         lastStrokeTime = 0
         lastStrokeDistance = 0
     }
