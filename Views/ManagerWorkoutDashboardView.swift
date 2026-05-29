@@ -102,7 +102,7 @@ struct ManagerWorkoutDashboardView: View {
                 }
             }
             .onAppear { isLandscapeMode = geo.size.width > geo.size.height }
-            .onChange(of: geo.size) { newSize in isLandscapeMode = newSize.width > newSize.height }
+            .onChange(of: geo.size) { _, newSize in isLandscapeMode = newSize.width > newSize.height }
         }
         .navigationTitle(isLandscapeMode ? "Race View".localized : "Dashboard".localized)
         .navigationBarTitleDisplayMode(.inline)

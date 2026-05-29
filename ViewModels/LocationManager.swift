@@ -9,6 +9,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var currentSpeed: Double = 0.0
     @Published var routePoints: [LocationData] = []
 
+    private var wasGpsLost = false
+    private var lastRecordedPointTime: Date?
+
     private var isPreview: Bool {
         ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     }
@@ -34,6 +37,8 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         totalDistance = 0.0
         routePoints = []
         isFirstUpdateAfterStart = true
+        wasGpsLost = false
+        lastRecordedPointTime = nil
         
         // 権限リクエストのみ（UIスレッド警告回避のため locationServicesEnabled を使用しない）
         switch locationManager.authorizationStatus {
@@ -52,7 +57,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
     
-    // ... (stopTracking etc)
     func stopTracking() {
         locationManager.stopUpdatingLocation()
     }
@@ -78,26 +82,55 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         guard let newLocation = locations.last else { return }
 
         // 1. 精度フィルタ (潮汐情報用には緩和された閾値を使用)
-        guard newLocation.horizontalAccuracy >= 0 && newLocation.horizontalAccuracy <= LocationConstants.tideAccuracyThreshold else {
+        let isAccuracyOkForTide = newLocation.horizontalAccuracy >= 0 && newLocation.horizontalAccuracy <= LocationConstants.tideAccuracyThreshold
+        // 2. キャッシュされた古いデータを無視 (例: 10秒以上前)
+        let howRecent = newLocation.timestamp.timeIntervalSinceNow
+        let isRecentOk = abs(howRecent) < 10
+
+        if !isAccuracyOkForTide || !isRecentOk {
+            DispatchQueue.main.async {
+                self.wasGpsLost = true
+            }
             return
         }
 
-        // 2. キャッシュされた古いデータを無視 (例: 10秒以上前)
-        let howRecent = newLocation.timestamp.timeIntervalSinceNow
-        guard abs(howRecent) < 10 else { return }
-
         DispatchQueue.main.async {
-            // セッション開始直後、またはpreviousLocationがない場合は距離加算しない
+            // トレーニング記録用の距離計算はより厳密な精度(20m)を維持する場合、ここでチェック
+            let isAccuracyOkForTraining = newLocation.horizontalAccuracy <= 20
+            
             if !self.isFirstUpdateAfterStart, let previous = self.previousLocation {
-                // トレーニング記録用の距離計算はより厳密な精度(20m)を維持する場合、ここでチェック
-                if newLocation.horizontalAccuracy <= 20 {
+                if isAccuracyOkForTraining {
                     let distance = newLocation.distance(from: previous)
                     self.totalDistance += distance
-                    self.routePoints.append(LocationData(latitude: newLocation.coordinate.latitude, longitude: newLocation.coordinate.longitude))
+                    
+                    var isGap = self.wasGpsLost
+                    if let lastTime = self.lastRecordedPointTime {
+                        let timeDiff = newLocation.timestamp.timeIntervalSince(lastTime)
+                        if timeDiff > 15 {
+                            isGap = true
+                        }
+                    }
+                    
+                    self.routePoints.append(LocationData(
+                        latitude: newLocation.coordinate.latitude,
+                        longitude: newLocation.coordinate.longitude,
+                        isPostGap: isGap
+                    ))
+                    
+                    self.lastRecordedPointTime = newLocation.timestamp
+                    self.wasGpsLost = false
+                } else {
+                    self.wasGpsLost = true
                 }
             } else {
-                // 初回更新（スキップ）
-                self.isFirstUpdateAfterStart = false
+                if isAccuracyOkForTraining {
+                    // 初回更新
+                    self.isFirstUpdateAfterStart = false
+                    self.lastRecordedPointTime = newLocation.timestamp
+                    self.wasGpsLost = false
+                } else {
+                    self.wasGpsLost = true
+                }
             }
             
             // 速度計算
@@ -121,5 +154,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         routePoints = []
         // 次回の開始時に距離が飛ばないようにフラグをリセット(念のため)
         isFirstUpdateAfterStart = true 
+        wasGpsLost = false
+        lastRecordedPointTime = nil
     }
 }

@@ -80,6 +80,7 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
 
 /// マネージャー用PM5複数台接続管理ViewModel
 /// Bluetooth管理クラスとViewModelを統合し、複数PM5の同時接続に対応
+@MainActor
 class PM5ManagerViewModel: NSObject, ObservableObject {
     
     // MARK: - Concept2 UUIDs
@@ -205,9 +206,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         centralManager = CBCentralManager(delegate: self, queue: nil)
     }
     
-    deinit {
-        disconnectAll()
-    }
+
     
     // MARK: - Scanning
     
@@ -943,7 +942,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         }
         // Fallback: 手動構築 (buildCSAFEFrame が nil を返すことは通常ない)
         let checksum: UInt8 = 0x80
-        var stuffingTarget = Data([0xFD, 0x00, 0x80, checksum])
+        let stuffingTarget = Data([0xFD, 0x00, 0x80, checksum])
         let stuffed = byteStuff(stuffingTarget)
         var frame = Data([0xF0])
         frame.append(stuffed)
@@ -1184,7 +1183,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         let sessionId = UUID() // Group all these records under one session
         let saveZero = SettingsManager.shared.settings.saveZeroRecordPM5s
         
-        for (deviceID, metrics) in deviceMetrics {
+        for (_, metrics) in deviceMetrics {
             if saveZero || metrics.distance > 0 || metrics.elapsedTime > 0 {
                 let recordDate: Date = workoutStartTime ?? Date()
                 let recordDuration: TimeInterval = metrics.elapsedTime
@@ -1227,7 +1226,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
 }
 
 // MARK: - CBCentralManagerDelegate
-extension PM5ManagerViewModel: CBCentralManagerDelegate {
+@MainActor extension PM5ManagerViewModel: @preconcurrency CBCentralManagerDelegate {
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         isBluetoothPoweredOn = (central.state == .poweredOn)
@@ -1306,7 +1305,7 @@ extension PM5ManagerViewModel: CBCentralManagerDelegate {
 }
 
 // MARK: - CBPeripheralDelegate
-extension PM5ManagerViewModel: CBPeripheralDelegate {
+@MainActor extension PM5ManagerViewModel: @preconcurrency CBPeripheralDelegate {
     
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard let services = peripheral.services else { return }
@@ -1411,7 +1410,6 @@ extension PM5ManagerViewModel {
             
             if data.count >= 9 {
                 let ws = data[8]
-                let previousWorkoutState = metrics.workoutState
                 metrics.workoutState = ws
                 // Note: Removed non-existent properties lastGeneralStatusByte8, isWaitingForResetAfterHalt, and resetRowingMetrics for compile success.
             }

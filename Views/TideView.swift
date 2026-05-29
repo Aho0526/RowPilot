@@ -396,7 +396,6 @@ struct TideContent: View {
     
     // .onChange を body に追加して位置情報更新に対応する
     // (body内の NavigationStack に .onChange を追加)
-    
     private func lookUpCurrentLocation(location: CLLocation, completion: @escaping (String) -> Void) {
         Task {
             let request = MKReverseGeocodingRequest(location: location)
@@ -404,9 +403,8 @@ struct TideContent: View {
                 let mapItems = try await request?.mapItems
                 if let first = mapItems?.first {
                     // プライバシー保護のため、詳細な住所（first.name）ではなく
-                    // 県名や広域エリア名（administrativeArea）を優先して表示
-                    let placemark = first.placemark
-                    let name = placemark.administrativeArea ?? placemark.locality ?? first.name
+                    // 県名や広域エリア名（regionName / cityName）を優先して表示
+                    let name = first.addressRepresentations?.regionName ?? first.addressRepresentations?.cityName ?? first.name
                     await MainActor.run { completion(name ?? "Current Location".localized) }
                 } else {
                     await MainActor.run { completion("Current Location".localized) }

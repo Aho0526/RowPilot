@@ -81,10 +81,12 @@ struct RowingRecord: Identifiable, Codable {
 struct LocationData: Codable {
     let latitude: Double
     let longitude: Double
+    var isPostGap: Bool? = nil
     
-    init(latitude: Double, longitude: Double) {
+    init(latitude: Double, longitude: Double, isPostGap: Bool? = nil) {
         self.latitude = latitude
         self.longitude = longitude
+        self.isPostGap = isPostGap
     }
 }
 

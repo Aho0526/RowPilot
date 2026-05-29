@@ -123,6 +123,18 @@ class CSAFECommandQueue {
         return q
     }
     
+    private func saveContinuation(_ continuation: CheckedContinuation<Void, Error>, for uuid: UUID) {
+        lock.lock()
+        continuations[uuid] = continuation
+        lock.unlock()
+    }
+    
+    private func cleanupContinuation(for uuid: UUID) {
+        lock.lock()
+        continuations.removeValue(forKey: uuid)
+        lock.unlock()
+    }
+    
     /// 非同期でBLE Writeを実行し、タイムアウトと競合させる
     /// Global write limiter により同時書き込み数を制限
     func writeAsync(command: Command) async throws {
@@ -138,9 +150,7 @@ class CSAFECommandQueue {
             // Task 1: 実際のBLE Write待機
             group.addTask {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    self.lock.lock()
-                    self.continuations[peripheralID] = continuation
-                    self.lock.unlock()
+                    self.saveContinuation(continuation, for: peripheralID)
                     
                     if command.label != "POLL_STATUS" {
                         let hex = command.frame.map { String(format: "%02X", $0) }.joined(separator: " ")
@@ -165,9 +175,7 @@ class CSAFECommandQueue {
         }
         
         // Continuationのクリーンアップ（成功時も念のため）
-        lock.lock()
-        continuations.removeValue(forKey: peripheralID)
-        lock.unlock()
+        cleanupContinuation(for: peripheralID)
         
         // Concept2仕様準拠: Minimum Inter-frame Gap = 50ms
         try? await Task.sleep(nanoseconds: interFrameGapNanoseconds)

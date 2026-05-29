@@ -3,8 +3,9 @@ import Foundation
 /// ボートタイプ（主要5艇種）
 enum BoatType: String, Codable, CaseIterable, Identifiable {
     case doubleSculls = "2x"    // ダブルスカル
-    case coxedQuad = "4x+"      // 舵手付きクォード
     case pair = "2-"            // ペア
+    case singleSculls = "1x"    // シングル
+    case coxedQuad = "4x+"      // 舵手付きクォード
     case four = "4-"            // フォア
     case eight = "8+"           // エイト
     
@@ -14,8 +15,9 @@ enum BoatType: String, Codable, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .doubleSculls: return "ダブルスカル"
-        case .coxedQuad:    return "舵手付きクォード"
         case .pair:         return "ペア"
+        case .singleSculls: return "シングル"
+        case .coxedQuad:    return "舵手付きクォード"
         case .four:         return "フォア"
         case .eight:        return "エイト"
         }
@@ -24,9 +26,10 @@ enum BoatType: String, Codable, CaseIterable, Identifiable {
     /// SF Symbolsアイコン名
     var iconName: String {
         switch self {
-        case .doubleSculls: return "figure.rowing"
+        case .doubleSculls: return "person.2.fill"
+        case .pair:         return "person.2.fill"
+        case .singleSculls: return "person.fill"
         case .coxedQuad:    return "person.3.sequence.fill"
-        case .pair:         return "figure.rowing"
         case .four:         return "person.3.fill"
         case .eight:        return "person.3.sequence.fill"
         }
@@ -36,8 +39,9 @@ enum BoatType: String, Codable, CaseIterable, Identifiable {
     var rowerCount: Int {
         switch self {
         case .doubleSculls: return 2
-        case .coxedQuad:    return 4
         case .pair:         return 2
+        case .singleSculls: return 1
+        case .coxedQuad:    return 4
         case .four:         return 4
         case .eight:        return 8
         }
@@ -59,7 +63,7 @@ enum BoatType: String, Codable, CaseIterable, Identifiable {
     /// スカル艇かどうか
     var isScull: Bool {
         switch self {
-        case .doubleSculls, .coxedQuad: return true
+        case .doubleSculls, .coxedQuad, .singleSculls: return true
         default: return false
         }
     }

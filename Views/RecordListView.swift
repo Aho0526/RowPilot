@@ -33,7 +33,9 @@ struct RecordListView: View {
                 }
             }
             .sheet(item: $selectedRecord) { record in
-                RecordDetailView(record: record)
+                NavigationStack {
+                    RecordDetailView(record: record)
+                }
             }
         }
     }
@@ -169,6 +171,7 @@ struct RecordDetailView: View {
     @State private var showingSaveConfirmation = false
     @State private var showCrewSheet = false
     @State private var currentCrewInfo: CrewInfo? = nil
+    @State private var showingExpandedMap = false
     
     private var isIndoorRecord: Bool {
         if let tags = record.tags, tags.contains("Indoor") { return true }
@@ -178,94 +181,89 @@ struct RecordDetailView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.background.ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Header with date
-                        headerSection
-                        
-                        // Map section (if location available)
-                        if record.startLocation != nil || record.endLocation != nil {
-                            mapSection
-                        }
-                        
-                        // Performance metrics
-                        metricsSection
-                        
-                        // Crew section (PM5/Indoor/Manager以外のRowMode記録のみ表示)
-                        if !isIndoorRecord {
-                            crewSection
-                        }
-                        
-                        // Workout Details Graph Button
-                        if let dataPoints = record.dataPoints, !dataPoints.isEmpty {
-                            NavigationLink {
-                                WorkoutGraphView(dataPoints: dataPoints)
-                            } label: {
-                                HStack {
-                                    Image(systemName: "chart.xyaxis.line")
-                                    Text("Workout Details".localized)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                }
-                                .padding()
-                                .background(Theme.cardBackground)
-                                .foregroundColor(Theme.accent)
-                                .cornerRadius(20)
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header with date
+                    headerSection
+                    
+                    // Map section (if location available)
+                    if record.startLocation != nil || record.endLocation != nil {
+                        mapSection
+                    }
+                    
+                    // Performance metrics
+                    metricsSection
+                    
+                    // Crew section (PM5/Indoor/Manager以外のRowMode記録のみ表示)
+                    if !isIndoorRecord {
+                        crewSection
+                    }
+                    
+                    // Workout Details Graph Button
+                    if let dataPoints = record.dataPoints, !dataPoints.isEmpty {
+                        NavigationLink {
+                            WorkoutGraphView(dataPoints: dataPoints)
+                        } label: {
+                            HStack {
+                                Image(systemName: "chart.xyaxis.line")
+                                Text("Workout Details".localized)
+                                Spacer()
+                                Image(systemName: "chevron.right")
                             }
+                            .padding()
+                            .background(Theme.cardBackground)
+                            .foregroundColor(Theme.accent)
+                            .cornerRadius(20)
                         }
-                        
-                        // Tags section
-                        tagsSection
-                        
-                        // Notes section
-                        notesSection
                     }
-                    .padding()
+                    
+                    // Tags section
+                    tagsSection
+                    
+                    // Notes section
+                    notesSection
                 }
+                .padding()
             }
-            .navigationTitle("Record Detail".localized)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Close".localized) {
-                        dismiss()
+        }
+        .navigationTitle("Record Detail".localized)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(isEditing ? "Save".localized : "Edit".localized) {
+                    if isEditing {
+                        saveChanges()
                     }
-                    .foregroundColor(Theme.accent)
+                    isEditing.toggle()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(isEditing ? "Save".localized : "Edit".localized) {
-                        if isEditing {
-                            saveChanges()
-                        }
-                        isEditing.toggle()
-                    }
-                    .foregroundColor(Theme.accent)
+                .foregroundColor(Theme.accent)
+            }
+        }
+        .onAppear {
+            editedNotes = record.notes ?? ""
+            editedTags = record.tags ?? []
+            currentCrewInfo = record.crewInfo
+        }
+        .sheet(isPresented: $showCrewSheet) {
+            CrewEditSheet(
+                recordId: record.id,
+                existingCrewInfo: currentCrewInfo,
+                onSave: { crewInfo in
+                    currentCrewInfo = crewInfo
+                    app.recordManager.updateCrewInfo(for: record.id, crewInfo: crewInfo)
+                },
+                onDelete: {
+                    currentCrewInfo = nil
+                    app.recordManager.updateCrewInfo(for: record.id, crewInfo: nil)
                 }
-            }
-            .onAppear {
-                editedNotes = record.notes ?? ""
-                editedTags = record.tags ?? []
-                currentCrewInfo = record.crewInfo
-            }
-            .sheet(isPresented: $showCrewSheet) {
-                CrewEditSheet(
-                    recordId: record.id,
-                    existingCrewInfo: currentCrewInfo,
-                    onSave: { crewInfo in
-                        currentCrewInfo = crewInfo
-                        app.recordManager.updateCrewInfo(for: record.id, crewInfo: crewInfo)
-                    },
-                    onDelete: {
-                        currentCrewInfo = nil
-                        app.recordManager.updateCrewInfo(for: record.id, crewInfo: nil)
-                    }
-                )
-            }
+            )
+        }
+        .sheet(isPresented: $showingExpandedMap) {
+            ExpandedMapView(record: record)
         }
     }
     
@@ -300,6 +298,10 @@ struct RecordDetailView: View {
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(Theme.accent.opacity(0.3), lineWidth: 1)
                 )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    showingExpandedMap = true
+                }
         }
         .padding()
         .background(Theme.cardBackground)
@@ -537,10 +539,19 @@ struct RecordMapView: View {
     
     var body: some View {
         Map {
-            // 経路の描画
+            // 経路の描画 (セグメントに分割して、GPSロスト区間を破線で描画)
             if let points = routePoints, !points.isEmpty {
-                MapPolyline(coordinates: points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) })
-                    .stroke(Theme.accent, lineWidth: 4)
+                // 正常区間 (ソリッド線)
+                ForEach(Array(points.solidSegments().enumerated()), id: \.offset) { _, coords in
+                    MapPolyline(coordinates: coords)
+                        .stroke(Theme.accent, lineWidth: 4)
+                }
+                
+                // GPSロスト復帰区間 (グレーの破線)
+                ForEach(Array(points.gapSegments().enumerated()), id: \.offset) { _, coords in
+                    MapPolyline(coordinates: coords)
+                        .stroke(.gray, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round, dash: [6, 6]))
+                }
             }
             
             if let start = startLocation {
@@ -564,6 +575,72 @@ struct RecordMapView: View {
             }
         }
         .mapStyle(.standard(elevation: .realistic))
+    }
+}
+
+// MARK: - Expanded Map View
+struct ExpandedMapView: View {
+    let record: RowingRecord
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                
+                RecordMapView(startLocation: record.startLocation, endLocation: record.endLocation, routePoints: record.routePoints)
+                    .ignoresSafeArea(edges: [.bottom, .horizontal])
+            }
+            .navigationTitle("Route".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Close".localized) {
+                        dismiss()
+                    }
+                    .foregroundColor(Theme.accent)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - LocationData Array Extension
+extension Array where Element == LocationData {
+    func solidSegments() -> [[CLLocationCoordinate2D]] {
+        var segments: [[CLLocationCoordinate2D]] = []
+        var currentSegment: [CLLocationCoordinate2D] = []
+        
+        for point in self {
+            let coord = CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
+            if point.isPostGap == true {
+                if !currentSegment.isEmpty {
+                    segments.append(currentSegment)
+                }
+                currentSegment = [coord]
+            } else {
+                currentSegment.append(coord)
+            }
+        }
+        if !currentSegment.isEmpty {
+            segments.append(currentSegment)
+        }
+        return segments
+    }
+    
+    func gapSegments() -> [[CLLocationCoordinate2D]] {
+        var segments: [[CLLocationCoordinate2D]] = []
+        for i in 1..<self.count {
+            if self[i].isPostGap == true {
+                let prev = self[i - 1]
+                let curr = self[i]
+                segments.append([
+                    CLLocationCoordinate2D(latitude: prev.latitude, longitude: prev.longitude),
+                    CLLocationCoordinate2D(latitude: curr.latitude, longitude: curr.longitude)
+                ])
+            }
+        }
+        return segments
     }
 }
 

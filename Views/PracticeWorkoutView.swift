@@ -128,7 +128,7 @@ struct PracticeWorkoutView: View {
         } message: {
             Text("Would you like to save this workout record?".localized)
         }
-        .onChange(of: ergManager.isWorkoutFinished) { finished in
+        .onChange(of: ergManager.isWorkoutFinished) { _, finished in
             if finished {
                 showSaveAlert = true
             }

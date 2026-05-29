@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 
+@MainActor
 class AppViewModel: ObservableObject {
     @Published var isSplashVisible: Bool = true  // アプリ起動時はスプラッシュを表示
     @Published var activeTab: Int = 0 // 0: Home, 1: Tide, 2: RowMode, 3: Practice, 4: Setting
@@ -86,7 +87,9 @@ class AppViewModel: ObservableObject {
         locationManager.startTracking()
         
         sessionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.elapsedTime += 1
+            Task { @MainActor [weak self] in
+                self?.elapsedTime += 1
+            }
         }
     }
     
@@ -123,7 +126,9 @@ class AppViewModel: ObservableObject {
         locationManager.startTracking()
         
         sessionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.elapsedTime += 1
+            Task { @MainActor [weak self] in
+                self?.elapsedTime += 1
+            }
         }
     }
     
