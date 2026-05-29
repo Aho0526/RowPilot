@@ -41,6 +41,9 @@ struct UserSettings: Codable {
     // マネージャー設定
     var saveZeroRecordPM5s: Bool
     
+    // 天気表示設定
+    var weatherDisplayMode: WeatherDisplayMode
+    
     init(
         soundEnabled: Bool = true,
         voiceFeedbackEnabled: Bool = false,
@@ -61,7 +64,8 @@ struct UserSettings: Codable {
         sosContactPhone: String = "",
         sosUserName: String = "",
         sosMapSelection: SOSMapSelection = .both,
-        saveZeroRecordPM5s: Bool = false
+        saveZeroRecordPM5s: Bool = false,
+        weatherDisplayMode: WeatherDisplayMode = .iconAndTemp
     ) {
         self.soundEnabled = soundEnabled
         self.voiceFeedbackEnabled = voiceFeedbackEnabled
@@ -83,6 +87,7 @@ struct UserSettings: Codable {
         self.sosUserName = sosUserName
         self.sosMapSelection = sosMapSelection
         self.saveZeroRecordPM5s = saveZeroRecordPM5s
+        self.weatherDisplayMode = weatherDisplayMode
     }
 }
 
@@ -91,6 +96,22 @@ enum SOSMapSelection: String, Codable, CaseIterable {
     case appleMaps = "Apple Maps"
     case googleMaps = "Google Maps"
     case both = "Apple Maps & Google Maps"
+}
+
+/// ホームの天気表示モード
+enum WeatherDisplayMode: String, Codable, CaseIterable, Identifiable {
+    case hidden = "非表示"
+    case iconOnly = "アイコンのみ"
+    case iconAndTemp = "アイコン + 気温"
+    case iconTempRain = "アイコン + 気温 + 降水確率"
+    case full = "フル表示"
+    
+    var id: String { rawValue }
+    
+    var showIcon: Bool { self != .hidden }
+    var showTemp: Bool { self == .iconAndTemp || self == .iconTempRain || self == .full }
+    var showRain: Bool { self == .iconTempRain || self == .full }
+    var showLabel: Bool { self == .full }
 }
 enum ColorSchemePreference: String, Codable, CaseIterable {
     case light = "ライト"

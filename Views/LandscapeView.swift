@@ -19,6 +19,7 @@ struct LandscapeView: View {
     @State private var statusTimer: Timer?
     @State private var showingSaveAlert = false
     @State private var showingHelp = false
+    @State private var showingSOSWarningAlert = false
     
     @State private var showSOSOverlay = false
     
@@ -201,6 +202,16 @@ struct LandscapeView: View {
         } message: {
             Text("Save Message".localized)
         }
+        .alert("SOS Warning".localized, isPresented: $showingSOSWarningAlert) {
+            Button("Set Contact".localized, role: .cancel) {
+                app.navigateToSOSSettings()
+            }
+            Button("Start Anyway".localized, role: .destructive) {
+                app.startSession()
+            }
+        } message: {
+            Text("SOS Warning Message".localized)
+        }
     }
 
     private func updateStatusInfo() {
@@ -235,6 +246,15 @@ struct LandscapeView: View {
 
     // MARK: - Actions
     
+    private func checkSOSAndStart() {
+        let settings = SettingsManager.shared.settings
+        if settings.sosContactPhone.isEmpty || settings.sosUserName.isEmpty {
+            showingSOSWarningAlert = true
+        } else {
+            app.startSession()
+        }
+    }
+    
     private func togglePause() {
         if app.isRecording {
             app.stopSession()
@@ -242,7 +262,7 @@ struct LandscapeView: View {
             if app.isSessionActive {
                 app.resumeSession()
             } else {
-                app.startSession()
+                checkSOSAndStart()
             }
         }
     }
@@ -270,7 +290,8 @@ struct LandscapeView: View {
             averageSpeed: locationManager.currentSpeed,
             averagePace: calculateAveragePace(),
             startLocation: app.sessionStartLocation,
-            endLocation: getCurrentLocation()
+            endLocation: getCurrentLocation(),
+            routePoints: locationManager.routePoints.isEmpty ? nil : locationManager.routePoints
         )
         recordManager.addRecord(record)
         discardSession()

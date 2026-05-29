@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingView: View {
+    @EnvironmentObject var app: AppViewModel
     @ObservedObject private var settingsManager = SettingsManager.shared
     @ObservedObject private var themeManager = ThemeManager.shared
     @ObservedObject private var localizationManager = LocalizationManager.shared
@@ -8,7 +9,7 @@ struct SettingView: View {
     @State private var showingResetAlert = false
     
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $app.settingsNavigationPath) {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 
@@ -96,7 +97,7 @@ struct SettingView: View {
             
             // SOS設定
             SettingsSection(title: "Emergency Contact".localized, icon: "sos") {
-                NavigationLink(destination: SOSSettingsView()) {
+                NavigationLink(value: "SOSSettings") {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("SOS Settings".localized)
@@ -137,6 +138,21 @@ struct SettingView: View {
                 SettingsToggleRow(title: "Show Battery".localized, isOn: $settingsManager.settings.showBatteryStatus)
                 SettingsToggleRow(title: "Show GPS Accuracy".localized, isOn: $settingsManager.settings.showGPSAccuracy)
                 SettingsToggleRow(title: "Show Help Buttons".localized, isOn: $settingsManager.settings.showHelpButtons)
+                
+                Divider().background(Theme.textSecondary.opacity(0.3))
+                
+                // 天気表示モード
+                HStack {
+                    Label("Weather Display".localized, systemImage: "cloud.sun.fill")
+                        .foregroundColor(Theme.textMain)
+                    Spacer()
+                    Picker("", selection: $settingsManager.settings.weatherDisplayMode) {
+                        ForEach(WeatherDisplayMode.allCases) { mode in
+                            Text(mode.rawValue.localized).tag(mode)
+                        }
+                    }
+                    .tint(Theme.accent)
+                }
             }
             
             // 計測設定
@@ -218,6 +234,11 @@ struct SettingView: View {
             .font(.caption)
             .foregroundColor(Theme.textSecondary)
             .padding(.bottom)
+        }
+        .navigationDestination(for: String.self) { value in
+            if value == "SOSSettings" {
+                SOSSettingsView()
+            }
         }
     }
 }

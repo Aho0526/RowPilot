@@ -7,6 +7,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     @Published var totalDistance: Double = 0.0
     @Published var currentSpeed: Double = 0.0
+    @Published var routePoints: [LocationData] = []
 
     private var isPreview: Bool {
         ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
@@ -31,6 +32,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // 距離はリセットするが、前回の位置情報(信号強度用)は保持する
         // ただし、距離計算の飛びを防ぐためにフラグを立てる
         totalDistance = 0.0
+        routePoints = []
         isFirstUpdateAfterStart = true
         
         // 権限リクエストのみ（UIスレッド警告回避のため locationServicesEnabled を使用しない）
@@ -91,6 +93,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 if newLocation.horizontalAccuracy <= 20 {
                     let distance = newLocation.distance(from: previous)
                     self.totalDistance += distance
+                    self.routePoints.append(LocationData(latitude: newLocation.coordinate.latitude, longitude: newLocation.coordinate.longitude))
                 }
             } else {
                 // 初回更新（スキップ）
@@ -115,6 +118,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // 位置情報はクリアせず、積算値のみリセット
         totalDistance = 0.0
         currentSpeed = 0.0
+        routePoints = []
         // 次回の開始時に距離が飛ばないようにフラグをリセット(念のため)
         isFirstUpdateAfterStart = true 
     }

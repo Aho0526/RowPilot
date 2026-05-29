@@ -167,6 +167,15 @@ struct RecordDetailView: View {
     @State private var newTag: String = ""
     @State private var isEditing = false
     @State private var showingSaveConfirmation = false
+    @State private var showCrewSheet = false
+    @State private var currentCrewInfo: CrewInfo? = nil
+    
+    private var isIndoorRecord: Bool {
+        if let tags = record.tags, tags.contains("Indoor") { return true }
+        if record.isManagerMode { return true }
+        if record.pm5SerialNumber != nil { return true }
+        return false
+    }
     
     var body: some View {
         NavigationStack {
@@ -185,6 +194,11 @@ struct RecordDetailView: View {
                         
                         // Performance metrics
                         metricsSection
+                        
+                        // Crew section (PM5/Indoor/Manager以外のRowMode記録のみ表示)
+                        if !isIndoorRecord {
+                            crewSection
+                        }
                         
                         // Workout Details Graph Button
                         if let dataPoints = record.dataPoints, !dataPoints.isEmpty {
@@ -236,6 +250,21 @@ struct RecordDetailView: View {
             .onAppear {
                 editedNotes = record.notes ?? ""
                 editedTags = record.tags ?? []
+                currentCrewInfo = record.crewInfo
+            }
+            .sheet(isPresented: $showCrewSheet) {
+                CrewEditSheet(
+                    recordId: record.id,
+                    existingCrewInfo: currentCrewInfo,
+                    onSave: { crewInfo in
+                        currentCrewInfo = crewInfo
+                        app.recordManager.updateCrewInfo(for: record.id, crewInfo: crewInfo)
+                    },
+                    onDelete: {
+                        currentCrewInfo = nil
+                        app.recordManager.updateCrewInfo(for: record.id, crewInfo: nil)
+                    }
+                )
             }
         }
     }
@@ -264,7 +293,7 @@ struct RecordDetailView: View {
                 .font(Theme.subHeaderFont())
                 .foregroundColor(Theme.textMain)
             
-            RecordMapView(startLocation: record.startLocation, endLocation: record.endLocation)
+            RecordMapView(startLocation: record.startLocation, endLocation: record.endLocation, routePoints: record.routePoints)
                 .frame(height: 200)
                 .cornerRadius(16)
                 .overlay(
@@ -292,6 +321,76 @@ struct RecordDetailView: View {
                     MetricCard(icon: "speedometer", label: "Avg Speed".localized, value: String(format: "%.1f km/h", record.averageSpeed))
                 }
                 MetricCard(icon: "timer", label: "Pace".localized, value: record.formattedPace)
+            }
+        }
+        .padding()
+        .background(Theme.cardBackground)
+        .cornerRadius(20)
+    }
+    
+    // MARK: - Crew Section
+    private var crewSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let crewInfo = currentCrewInfo {
+                // クルー情報が登録済みの場合：ボート図を表示
+                HStack {
+                    Label("Crew", systemImage: "person.3.fill")
+                        .font(Theme.subHeaderFont())
+                        .foregroundColor(Theme.textMain)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        showCrewSheet = true
+                    }) {
+                        HStack(spacing: 4) {
+                            Text("Edit".localized)
+                                .font(.subheadline)
+                            Image(systemName: "pencil")
+                                .font(.caption)
+                        }
+                        .foregroundColor(Theme.accent)
+                    }
+                }
+                
+                BoatDiagramView(crewInfo: crewInfo)
+                
+                // 入力済みメンバー数
+                HStack {
+                    Image(systemName: "person.fill.checkmark")
+                        .font(.caption)
+                        .foregroundColor(Theme.accent)
+                    Text("\(crewInfo.filledCount)/\(crewInfo.members.count) 名登録済み")
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                }
+            } else {
+                // クルー未登録：追加ボタン
+                Button(action: {
+                    showCrewSheet = true
+                }) {
+                    HStack {
+                        Image(systemName: "person.badge.plus")
+                            .font(.title3)
+                            .foregroundStyle(Theme.primaryGradient)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Add Crew")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(Theme.textMain)
+                            Text("クルーメンバーを記録")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary.opacity(0.5))
+                    }
+                }
             }
         }
         .padding()
@@ -434,9 +533,16 @@ struct TagChip: View {
 struct RecordMapView: View {
     let startLocation: LocationData?
     let endLocation: LocationData?
+    let routePoints: [LocationData]?
     
     var body: some View {
         Map {
+            // 経路の描画
+            if let points = routePoints, !points.isEmpty {
+                MapPolyline(coordinates: points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) })
+                    .stroke(Theme.accent, lineWidth: 4)
+            }
+            
             if let start = startLocation {
                 Annotation("Start", coordinate: CLLocationCoordinate2D(latitude: start.latitude, longitude: start.longitude)) {
                     Image(systemName: "flag.fill")

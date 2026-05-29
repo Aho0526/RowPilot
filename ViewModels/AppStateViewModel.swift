@@ -14,6 +14,7 @@ class AppViewModel: ObservableObject {
     
     // Navigation State
     @Published var practiceNavigationPath = NavigationPath()
+    @Published var settingsNavigationPath = NavigationPath()
     @Published var lastPracticeTabLeaveTime: Date?
     
     // SOS Shared State
@@ -25,6 +26,7 @@ class AppViewModel: ObservableObject {
     let locationManager = LocationManager()
     let recordManager = RecordManager()
     let tideManager = TideManager()
+    let weatherManager = WeatherManager()
     
     // 共有 BLE マネージャー
     let ergManager = RowErgManager()
@@ -49,6 +51,7 @@ class AppViewModel: ObservableObject {
             .compactMap { $0 }
             .sink { [weak self] location in
                 self?.tideManager.findNearestStation(location: location)
+                self?.weatherManager.fetchWeather(for: location)
             }
             .store(in: &cancellables)
             
@@ -171,6 +174,13 @@ class AppViewModel: ObservableObject {
         isSplashVisible = true
         
         print("AppViewModel: Full reset completed.")
+    }
+    
+    // MARK: - Navigation Helpers
+    
+    func navigateToSOSSettings() {
+        activeTab = 4 // Settings tab
+        settingsNavigationPath.append("SOSSettings")
     }
     
     // MARK: - SOS Logic

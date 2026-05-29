@@ -54,18 +54,22 @@ struct TideContent: View {
                         portraitLayout
                     }
                 }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
+                // ヘルプボタンをZStack内の右上に配置
                 if SettingsManager.shared.settings.showHelpButtons {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        HelpCircleButton {
-                            showingHelp = true
+                    VStack {
+                        HStack {
+                            Spacer()
+                            HelpCircleButton {
+                                showingHelp = true
+                            }
+                            .padding()
                         }
+                        Spacer()
                     }
                 }
             }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .sheet(isPresented: $showingHelp) {
                 HelpView(
                     title: "Tide Help".localized,

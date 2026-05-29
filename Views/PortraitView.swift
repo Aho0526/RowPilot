@@ -14,6 +14,7 @@ struct PortraitView: View {
 
     @State private var showingSaveAlert = false
     @State private var showingHelp = false
+    @State private var showingSOSWarningAlert = false
     
     @State private var showSOSOverlay = false
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
@@ -74,28 +75,28 @@ struct PortraitView: View {
                         }
                         
                         // Help & SOS Buttons (Top Right)
-                        if SettingsManager.shared.settings.showHelpButtons {
-                            HStack(spacing: 12) {
-                                Spacer()
-                                
-                                // SOS Entry Button
-                                Button(action: {
-                                    withAnimation { showSOSOverlay = true }
-                                }) {
-                                    Image(systemName: "sos")
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundColor(.white)
-                                        .frame(width: 38, height: 38)
-                                        .background(Color.red)
-                                        .clipShape(Circle())
-                                }
-                                
+                        HStack(spacing: 12) {
+                            Spacer()
+                            
+                            // SOS Entry Button
+                            Button(action: {
+                                withAnimation { showSOSOverlay = true }
+                            }) {
+                                Image(systemName: "sos")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 38, height: 38)
+                                    .background(Color.red)
+                                    .clipShape(Circle())
+                            }
+                            
+                            if SettingsManager.shared.settings.showHelpButtons {
                                 HelpCircleButton {
                                     showingHelp = true
                                 }
                             }
-                            .padding(16)
                         }
+                        .padding(16)
                     }
                     
                     Divider().overlay(Theme.textSecondary.opacity(0.3))
@@ -143,7 +144,7 @@ struct PortraitView: View {
                             if isRunning {
                                 stopSession()
                             } else {
-                                startSession()
+                                checkSOSAndStart()
                             }
                         }) {
                             Text(isRunning ? "Stop".localized : "Start Rowing".localized)
@@ -194,6 +195,16 @@ struct PortraitView: View {
         } message: {
             Text("Save Message".localized)
         }
+        .alert("SOS Warning".localized, isPresented: $showingSOSWarningAlert) {
+            Button("Set Contact".localized, role: .cancel) {
+                app.navigateToSOSSettings()
+            }
+            Button("Start Anyway".localized, role: .destructive) {
+                app.startSession()
+            }
+        } message: {
+            Text("SOS Warning Message".localized)
+        }
         // Force redraw when theme changes
         .id(themeManager.currentPreset)
         .sheet(isPresented: $showingHelp) {
@@ -222,6 +233,15 @@ struct PortraitView: View {
         return .orange
     }
 
+    private func checkSOSAndStart() {
+        let settings = SettingsManager.shared.settings
+        if settings.sosContactPhone.isEmpty || settings.sosUserName.isEmpty {
+            showingSOSWarningAlert = true
+        } else {
+            app.startSession()
+        }
+    }
+
     private func startSession() {
         app.startSession()
     }
@@ -242,7 +262,8 @@ struct PortraitView: View {
             averageSpeed: locationManager.currentSpeed,
             averagePace: calculateAveragePace(),
             startLocation: app.sessionStartLocation,
-            endLocation: getCurrentLocation()
+            endLocation: getCurrentLocation(),
+            routePoints: locationManager.routePoints.isEmpty ? nil : locationManager.routePoints
         )
         
         recordManager.addRecord(record)

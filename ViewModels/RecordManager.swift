@@ -2,6 +2,20 @@ import Foundation
 import SwiftUI
 import CoreData
 import Combine
+/// 記録の絞り込み種別
+enum RecordFilter: String, CaseIterable {
+    case both = "Both"
+    case outdoor = "Outdoor"
+    case indoor = "Indoor"
+    
+    var localized: String {
+        switch self {
+        case .both: return "両方" // Could use LocalizationManager
+        case .outdoor: return "屋外"
+        case .indoor: return "屋内"
+        }
+    }
+}
 
 /// 練習記録を管理するViewModel (Core Data + CloudKit Version)
 class RecordManager: ObservableObject {
@@ -44,6 +58,67 @@ class RecordManager: ObservableObject {
     
     private func deleteDataPoints(for id: UUID) {
         try? FileManager.default.removeItem(at: dataPointsURL(for: id))
+    }
+    
+    // MARK: - crewInfo JSONファイル管理
+    // dataPointsと同様にDocuments/CrewInfo/配下のJSONファイルで管理する
+    private var crewInfoDirectory: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return docs.appendingPathComponent("CrewInfo", isDirectory: true)
+    }
+    
+    private func crewInfoURL(for id: UUID) -> URL {
+        crewInfoDirectory.appendingPathComponent("\(id.uuidString).json")
+    }
+    
+    private func saveCrewInfo(_ crewInfo: CrewInfo, for id: UUID) {
+        do {
+            try FileManager.default.createDirectory(at: crewInfoDirectory, withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(crewInfo)
+            try data.write(to: crewInfoURL(for: id))
+        } catch {
+            print("RecordManager: Failed to save crewInfo: \(error)")
+        }
+    }
+    
+    private func loadCrewInfo(for id: UUID) -> CrewInfo? {
+        let url = crewInfoURL(for: id)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(CrewInfo.self, from: data)
+    }
+    
+    private func deleteCrewInfo(for id: UUID) {
+        try? FileManager.default.removeItem(at: crewInfoURL(for: id))
+    }
+    
+    // MARK: - routePoints JSONファイル管理
+    private var routePointsDirectory: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return docs.appendingPathComponent("RoutePoints", isDirectory: true)
+    }
+    
+    private func routePointsURL(for id: UUID) -> URL {
+        routePointsDirectory.appendingPathComponent("\(id.uuidString).json")
+    }
+    
+    private func saveRoutePoints(_ points: [LocationData], for id: UUID) {
+        do {
+            try FileManager.default.createDirectory(at: routePointsDirectory, withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(points)
+            try data.write(to: routePointsURL(for: id))
+        } catch {
+            print("RecordManager: Failed to save routePoints: \(error)")
+        }
+    }
+    
+    private func loadRoutePoints(for id: UUID) -> [LocationData]? {
+        let url = routePointsURL(for: id)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode([LocationData].self, from: data)
+    }
+    
+    private func deleteRoutePoints(for id: UUID) {
+        try? FileManager.default.removeItem(at: routePointsURL(for: id))
     }
     
     init() {
@@ -93,6 +168,10 @@ class RecordManager: ObservableObject {
                 guard var record = self.mapEntityToModel(entity) else { return nil }
                 // JSONファイルからdataPointsを復元
                 record.dataPoints = self.loadDataPoints(for: record.id)
+                // JSONファイルからcrewInfoを復元
+                record.crewInfo = self.loadCrewInfo(for: record.id)
+                // JSONファイルからroutePointsを復元
+                record.routePoints = self.loadRoutePoints(for: record.id)
                 return record
             }
         } catch {
@@ -108,6 +187,16 @@ class RecordManager: ObservableObject {
             saveDataPoints(points, for: record.id)
         }
         
+        // crewInfoはJSONファイルで保存
+        if let crewInfo = record.crewInfo {
+            saveCrewInfo(crewInfo, for: record.id)
+        }
+        
+        // routePointsはJSONファイルで保存
+        if let routePoints = record.routePoints, !routePoints.isEmpty {
+            saveRoutePoints(routePoints, for: record.id)
+        }
+        
         let entity = NSEntityDescription.insertNewObject(forEntityName: "RowingRecordEntity", into: context)
         mapModelToEntity(record, entity: entity)
         saveContext()
@@ -119,6 +208,8 @@ class RecordManager: ObservableObject {
         
         // JSONファイルも削除
         deleteDataPoints(for: record.id)
+        deleteCrewInfo(for: record.id)
+        deleteRoutePoints(for: record.id)
         
         let request = NSFetchRequest<NSManagedObject>(entityName: "RowingRecordEntity")
         request.predicate = NSPredicate(format: "id == %@", record.id as CVarArg)
@@ -134,7 +225,7 @@ class RecordManager: ObservableObject {
         }
     }
     
-    func updateRecord(_ id: UUID, notes: String?, tags: [String]?) {
+    func updateRecord(_ id: UUID, notes: String?, tags: [String]?, crewInfo: CrewInfo? = nil) {
         guard PersistenceController.shared.isStoreLoaded else { return }
         
         let request = NSFetchRequest<NSManagedObject>(entityName: "RowingRecordEntity")
@@ -146,11 +237,27 @@ class RecordManager: ObservableObject {
                 entity.setValue(notes, forKey: "notes")
                 entity.setValue(tags, forKey: "tags")
                 saveContext()
+                
+                // crewInfoはJSONファイルで管理
+                if let crewInfo = crewInfo {
+                    saveCrewInfo(crewInfo, for: id)
+                }
+                
                 fetchRecords()
             }
         } catch {
             print("Failed to update record: \(error)")
         }
+    }
+    
+    /// crewInfoのみを更新する専用メソッド
+    func updateCrewInfo(for id: UUID, crewInfo: CrewInfo?) {
+        if let crewInfo = crewInfo {
+            saveCrewInfo(crewInfo, for: id)
+        } else {
+            deleteCrewInfo(for: id)
+        }
+        fetchRecords()
     }
     
     func clearAllRecords() {
@@ -314,4 +421,49 @@ class RecordManager: ObservableObject {
     
     var monthlyDistance: Double { recordsThisMonth.reduce(0) { $0 + $1.distance } }
     var monthlyDuration: TimeInterval { recordsThisMonth.reduce(0) { $0 + $1.duration } }
+    
+    // MARK: - Advanced Filtering
+    
+    func records(for month: Date, filter: RecordFilter) -> [RowingRecord] {
+        let calendar = Calendar.current
+        return records.filter { record in
+            guard calendar.isDate(record.date, equalTo: month, toGranularity: .month) else {
+                return false
+            }
+            switch filter {
+            case .both: return true
+            case .outdoor: return isOutdoor(record)
+            case .indoor: return !isOutdoor(record)
+            }
+        }
+    }
+    
+    func allRecords(filter: RecordFilter) -> [RowingRecord] {
+        switch filter {
+        case .both: return records
+        case .outdoor: return records.filter { isOutdoor($0) }
+        case .indoor: return records.filter { !isOutdoor($0) }
+        }
+    }
+    
+    func stats(for records: [RowingRecord]) -> (distance: Double, duration: TimeInterval, count: Int) {
+        let dist = records.reduce(0) { $0 + $1.distance }
+        let dur = records.reduce(0) { $0 + $1.duration }
+        return (dist, dur, records.count)
+    }
+    
+    private func isOutdoor(_ record: RowingRecord) -> Bool {
+        // Indoor records typically have tags containing "Indoor" or isManagerMode == true
+        if let tags = record.tags, tags.contains("Indoor") {
+            return false
+        }
+        if record.isManagerMode {
+            return false
+        }
+        if record.startLocation != nil {
+            return true
+        }
+        // Default assumption
+        return true
+    }
 }

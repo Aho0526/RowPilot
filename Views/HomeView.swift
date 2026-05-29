@@ -5,7 +5,14 @@ struct HomeView: View {
     @EnvironmentObject var app: AppViewModel
     private var recordManager: RecordManager { app.recordManager }
     private var tideManager: TideManager { app.tideManager }
+    private var weatherManager: WeatherManager { app.weatherManager }
     @ObservedObject private var themeManager = ThemeManager.shared
+    @ObservedObject private var settingsManager = SettingsManager.shared
+    
+    @State private var selectedFilter: RecordFilter = .both
+    @State private var selectedMonth: Date = Date()
+    @State private var showMonthlySummary: Bool = false
+    @State private var showCumulativeSummary: Bool = false
     
     var body: some View {
         NavigationStack {
@@ -19,15 +26,13 @@ struct HomeView: View {
                         // MARK: - Header / Status Card
                         statusCard
                         
-                        // MARK: - Monthly Stats
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Records".localized)
-                                .font(Theme.subHeaderFont())
-                                .foregroundColor(Theme.textMain)
-                                .padding(.horizontal)
-                            
-                            statsGrid
-                        }
+                        // MARK: - Filters & Month Selector
+                        filterControls
+                        monthSelector
+                            .padding(.top, 8)
+                        
+                        // MARK: - Stats (Compact Summary Badges)
+                        summaryBadges
                         
                         // MARK: - History
                         VStack(alignment: .leading, spacing: 12) {
@@ -36,7 +41,9 @@ struct HomeView: View {
                                 .foregroundColor(Theme.textMain)
                                 .padding(.horizontal)
                             
-                            if recordManager.records.isEmpty {
+                            
+                            let currentItems = groupedRecords
+                            if currentItems.isEmpty {
                                 emptyHistoryView
                             } else {
                                 historyList
@@ -52,10 +59,10 @@ struct HomeView: View {
             .onAppear {
                  if let location = app.locationManager.previousLocation {
                      tideManager.findNearestStation(location: location)
-                     // Explicitly trigger a fetch if current data is nil
                      if let station = tideManager.nearestStation {
                          tideManager.fetchTideData(for: station, date: Date())
                      }
+                     weatherManager.fetchWeather(for: location)
                  }
             }
         }
@@ -89,9 +96,41 @@ struct HomeView: View {
                     }
                 }
                 Spacer()
-                Image(systemName: "sun.max.fill") // Placeholder icon
-                    .font(.system(size: 40))
-                    .foregroundStyle(Theme.primaryGradient)
+                // 天気ウィジェット（設定に応じて表示内容を切り替え）
+                let mode = settingsManager.settings.weatherDisplayMode
+                if mode != .hidden {
+                    VStack(spacing: 3) {
+                        if weatherManager.isLoading {
+                            ProgressView().tint(.white).scaleEffect(1.1)
+                        } else {
+                            if mode.showIcon {
+                                Image(systemName: weatherManager.currentSymbol)
+                                    .font(.system(size: 32))
+                                    .foregroundStyle(Theme.primaryGradient)
+                            }
+                            if mode.showTemp, let temp = weatherManager.temperature {
+                                Text(String(format: "%.0f°C", temp))
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white.opacity(0.9))
+                            }
+                            if mode.showRain, let rain = weatherManager.precipitationProbability {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "umbrella.fill")
+                                        .font(.system(size: 9))
+                                    Text("\(rain)%")
+                                        .font(.caption2)
+                                }
+                                .foregroundColor(.cyan.opacity(0.9))
+                            }
+                            if mode.showLabel {
+                                Text(weatherManager.currentLabel)
+                                    .font(.caption2)
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+                    }
+                }
             }
             
             // Tide Summary
@@ -124,28 +163,226 @@ struct HomeView: View {
         }
     }
     
-    private var statsGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-            StatCard(
-                icon: "ruler",
-                label: "Distance".localized,
-                value: formatDistance(recordManager.monthlyDistance),
-                color: Theme.accent
-            )
-            StatCard(
-                icon: "clock",
-                label: "Duration".localized,
-                value: formatDuration(recordManager.monthlyDuration),
-                color: Theme.secondaryAccent
-            )
-            StatCard(
-                icon: "number",
-                label: "Count".localized, // Need to add to Manager
-                value: "\(recordManager.recordsThisMonth.count)",
-                color: .orange
-            )
+    private var filterControls: some View {
+        HStack(spacing: 0) {
+            ForEach(RecordFilter.allCases, id: \.self) { filter in
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedFilter = filter
+                    }
+                }) {
+                    Text(filter.localized)
+                        .font(.subheadline)
+                        .fontWeight(selectedFilter == filter ? .bold : .medium)
+                        .foregroundColor(selectedFilter == filter ? .white : Theme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            ZStack {
+                                if selectedFilter == filter {
+                                    Theme.accent
+                                        .cornerRadius(8)
+                                        .shadow(color: Theme.accent.opacity(0.4), radius: 4, x: 0, y: 2)
+                                }
+                            }
+                        )
+                }
+            }
         }
+        .padding(4)
+        .background(Theme.cardBackground)
+        .cornerRadius(12)
         .padding(.horizontal)
+    }
+    
+    private var monthSelector: some View {
+        HStack {
+            Button(action: { changeMonth(by: -1) }) {
+                Image(systemName: "chevron.left")
+                    .foregroundColor(Theme.accent)
+                    .padding(10)
+                    .background(Theme.cardBackground)
+                    .clipShape(Circle())
+            }
+            
+            Spacer()
+            
+            Text(monthYearFormatter.string(from: selectedMonth))
+                .font(.headline)
+                .foregroundColor(Theme.textMain)
+                .contentTransition(.numericText())
+            
+            Spacer()
+            
+            Button(action: { changeMonth(by: 1) }) {
+                Image(systemName: "chevron.right")
+                    .foregroundColor(isCurrentMonth ? Theme.textSecondary.opacity(0.3) : Theme.accent)
+                    .padding(10)
+                    .background(Theme.cardBackground)
+                    .clipShape(Circle())
+            }
+            .disabled(isCurrentMonth)
+        }
+        .padding(.horizontal, 24)
+    }
+    
+    private func changeMonth(by value: Int) {
+        if let newDate = Calendar.current.date(byAdding: .month, value: value, to: selectedMonth) {
+            withAnimation {
+                selectedMonth = newDate
+            }
+        }
+    }
+    
+    private var isCurrentMonth: Bool {
+        Calendar.current.isDate(selectedMonth, equalTo: Date(), toGranularity: .month)
+    }
+    
+    private var monthYearFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy年 M月"
+        return f
+    }
+    
+    private var summaryBadges: some View {
+        let monthRecords = recordManager.records(for: selectedMonth, filter: selectedFilter)
+        let monthStats = recordManager.stats(for: monthRecords)
+        let allFiltered = recordManager.allRecords(filter: selectedFilter)
+        let cumulativeStats = recordManager.stats(for: allFiltered)
+        
+        return VStack(spacing: 12) {
+            // Compact badge row
+            HStack(spacing: 12) {
+                // Monthly Summary Badge
+                Button(action: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        showMonthlySummary.toggle()
+                        if showMonthlySummary { showCumulativeSummary = false }
+                    }
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(showMonthlySummary ? .white : Theme.accent)
+                        Text("\(shortMonthFormatter.string(from: selectedMonth))")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(showMonthlySummary ? .white : Theme.textMain)
+                        Text("\(monthStats.count)件")
+                            .font(.caption)
+                            .foregroundColor(showMonthlySummary ? .white.opacity(0.8) : Theme.textSecondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(showMonthlySummary ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.cardBackground))
+                    )
+                    .shadow(color: showMonthlySummary ? Theme.accent.opacity(0.3) : Color.clear, radius: 6, x: 0, y: 3)
+                }
+                
+                // Cumulative Summary Badge
+                Button(action: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        showCumulativeSummary.toggle()
+                        if showCumulativeSummary { showMonthlySummary = false }
+                    }
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chart.bar.doc.horizontal")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(showCumulativeSummary ? .white : Theme.secondaryAccent)
+                        Text("累積")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(showCumulativeSummary ? .white : Theme.textMain)
+                        Text("\(cumulativeStats.count)件")
+                            .font(.caption)
+                            .foregroundColor(showCumulativeSummary ? .white.opacity(0.8) : Theme.textSecondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(showCumulativeSummary ? AnyShapeStyle(Theme.secondaryAccent) : AnyShapeStyle(Theme.cardBackground))
+                    )
+                    .shadow(color: showCumulativeSummary ? Theme.secondaryAccent.opacity(0.3) : Color.clear, radius: 6, x: 0, y: 3)
+                }
+                
+                Spacer()
+            }
+            .padding(.horizontal)
+            
+            // Expandable Monthly Summary
+            if showMonthlySummary {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("\(monthYearFormatter.string(from: selectedMonth))")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.textSecondary)
+                    
+                    HStack(spacing: 16) {
+                        compactStat(icon: "ruler", value: formatDistance(monthStats.distance), color: Theme.accent)
+                        compactStat(icon: "clock", value: formatDuration(monthStats.duration), color: Theme.secondaryAccent)
+                        compactStat(icon: "number", value: "\(monthStats.count)", color: .orange)
+                    }
+                }
+                .padding(14)
+                .background(Theme.cardBackground)
+                .cornerRadius(14)
+                .padding(.horizontal)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .top).combined(with: .opacity),
+                    removal: .opacity
+                ))
+            }
+            
+            // Expandable Cumulative Summary
+            if showCumulativeSummary {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("累積のサマリー")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Theme.textSecondary)
+                    
+                    HStack(spacing: 16) {
+                        compactStat(icon: "ruler", value: formatDistance(cumulativeStats.distance), color: Theme.accent)
+                        compactStat(icon: "clock", value: formatDuration(cumulativeStats.duration), color: Theme.secondaryAccent)
+                        compactStat(icon: "number", value: "\(cumulativeStats.count)", color: .orange)
+                    }
+                }
+                .padding(14)
+                .background(Theme.cardBackground)
+                .cornerRadius(14)
+                .padding(.horizontal)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .top).combined(with: .opacity),
+                    removal: .opacity
+                ))
+            }
+        }
+    }
+    
+    private func compactStat(icon: String, value: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundColor(color)
+                .padding(5)
+                .background(color.opacity(0.15))
+                .clipShape(Circle())
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.textMain)
+                .minimumScaleFactor(0.7)
+        }
+    }
+    
+    private var shortMonthFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "M月"
+        return f
     }
     
     private var emptyHistoryView: some View {
@@ -181,7 +418,9 @@ struct HomeView: View {
         var items: [RecordListItem] = []
         var managerGroups: [UUID: [RowingRecord]] = [:]
         
-        for record in recordManager.records {
+        let filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter)
+        
+        for record in filteredRecords {
             if record.isManagerMode, let sessionId = record.managerSessionId {
                 managerGroups[sessionId, default: []].append(record)
             } else {

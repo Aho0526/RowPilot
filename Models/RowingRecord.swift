@@ -15,6 +15,7 @@ struct RowingRecord: Identifiable, Codable {
     // 位置情報
     let startLocation: LocationData?
     let endLocation: LocationData?
+    var routePoints: [LocationData]?
     
     // メモ・タグ
     var notes: String?
@@ -29,6 +30,9 @@ struct RowingRecord: Identifiable, Codable {
     
     // 詳細データ（グラフ用）
     var dataPoints: [WorkoutDataPoint]?
+    
+    // クルー情報
+    var crewInfo: CrewInfo?
     
     init(
         id: UUID = UUID(),
@@ -47,7 +51,9 @@ struct RowingRecord: Identifiable, Codable {
         pm5SerialNumber: String? = nil,
         pm5CustomName: String? = nil,
         averageWatt: Int? = nil,
-        dataPoints: [WorkoutDataPoint]? = nil
+        dataPoints: [WorkoutDataPoint]? = nil,
+        crewInfo: CrewInfo? = nil,
+        routePoints: [LocationData]? = nil
     ) {
         self.id = id
         self.date = date
@@ -66,6 +72,8 @@ struct RowingRecord: Identifiable, Codable {
         self.pm5CustomName = pm5CustomName
         self.averageWatt = averageWatt
         self.dataPoints = dataPoints
+        self.crewInfo = crewInfo
+        self.routePoints = routePoints
     }
 }
 
