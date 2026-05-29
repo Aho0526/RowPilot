@@ -383,6 +383,41 @@ class LocalizationManager: ObservableObject {
         "Race View is Locked": [.japanese: "レースビューはロックされています", .english: "Race View is Locked"],
         "Upgrade to RowPilot MAX to visualize real-time racing, competitive leaderboards, and detailed gap tracking.": [.japanese: "RowPilot MAXにアップグレードして、リアルタイムレース、順位表、タイム差表示を解放しましょう。", .english: "Upgrade to RowPilot MAX to visualize real-time racing, competitive leaderboards, and detailed gap tracking."],
         "Unlock Race View (MAX)": [.japanese: "レースビューを解放 (MAX)", .english: "Unlock Race View (MAX)"],
+        
+        // MARK: - Sharing & Import
+        "Share Confirmation": [.japanese: "共有の確認", .english: "Share Confirmation"],
+        "Share to \"%@\"?": [.japanese: "\"%@\" に共有しますか？", .english: "Share to \"%@\"?"],
+        "Sharing": [.japanese: "ワークアウト共有", .english: "Workout Sharing"],
+        "Share": [.japanese: "共有", .english: "Share"],
+        "Share Workout": [.japanese: "ワークアウトを共有", .english: "Share Workout"],
+        "Auto Share After Save": [.japanese: "保存後に共有を提案", .english: "Suggest Sharing After Save"],
+        "Auto Share Desc": [.japanese: "マネージャーモードで保存した後、各デバイスへの共有を提案します", .english: "Suggest sharing to each device after saving in Manager Mode"],
+        "Import Behavior": [.japanese: "受信時の動作", .english: "Import Behavior"],
+        "Import Behavior Desc": [.japanese: "他のデバイスから共有されたワークアウトの受信方法を選択します", .english: "Choose how to handle workouts shared from other devices"],
+        "自動インポート": [.japanese: "自動インポート", .english: "Auto Import"],
+        "毎回確認": [.japanese: "毎回確認", .english: "Ask Each Time"],
+        "受信しない": [.japanese: "受信しない", .english: "Reject"],
+        "Skip": [.japanese: "スキップ", .english: "Skip"],
+        "Workout Imported": [.japanese: "ワークアウトをインポートしました", .english: "Workout Imported"],
+        "Duplicate Record": [.japanese: "この記録は既にインポート済みです", .english: "This record has already been imported"],
+        "Import Failed": [.japanese: "インポートに失敗しました", .english: "Import Failed"],
+        "Save Results": [.japanese: "結果を保存", .english: "Save Results"],
+        "Finish Workout": [.japanese: "ワークアウトを終了", .english: "Finish Workout"],
+        "Finish without saving": [.japanese: "保存せずに終了", .english: "Finish without saving"],
+        "Save and Finish": [.japanese: "保存して終了", .english: "Save and Finish"],
+        "Are you sure you want to finish without saving?": [.japanese: "保存せずに終了してよろしいですか？", .english: "Are you sure you want to finish without saving?"],
+        "Would you like to save current results before repeating?": [.japanese: "繰り返す前に現在の結果を保存しますか？", .english: "Would you like to save current results before repeating?"],
+        "Back": [.japanese: "戻る", .english: "Back"],
+        "Manager Session": [.japanese: "マネージャーセッション", .english: "Manager Session"],
+        "History": [.japanese: "履歴", .english: "History"],
+        "Workout Details": [.japanese: "ワークアウト詳細", .english: "Workout Details"],
+        
+        // MARK: - Deletion Alerts
+        "Delete All Workouts": [.japanese: "すべてのワークアウトを消去", .english: "Delete All Workouts"],
+        "Delete All Alert Message": [.japanese: "すべてのワークアウトデータを消去しますか？この操作は取り消せません。", .english: "Are you sure you want to delete all workout data? This action cannot be undone."],
+        "Delete Record": [.japanese: "記録の削除", .english: "Delete Record"],
+        "Delete Record Message": [.japanese: "この記録を削除しますか？\n削除されたデータは復元できません。", .english: "Are you sure you want to delete this record? This action cannot be undone."],
+        "Delete Session Message": [.japanese: "このセッション内のすべての記録（%d件）を削除しますか？\n削除されたデータは復元できません。", .english: "Are you sure you want to delete all %d records in this session? This action cannot be undone."],
     ]
     
     

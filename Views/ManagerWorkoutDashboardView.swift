@@ -167,6 +167,9 @@ struct ManagerWorkoutDashboardView: View {
         .alert("Save Results".localized, isPresented: $showSaveAlert) {
             Button("Save".localized) {
                 viewModel.saveAllRecords(recordManager: appViewModel.recordManager)
+                triggerShareFlowIfEnabled {
+                    // 保存のみの場合は何もしない（画面に残る）
+                }
             }
             Button("Cancel".localized, role: .cancel) {}
         } message: {
@@ -175,14 +178,16 @@ struct ManagerWorkoutDashboardView: View {
         .alert("Repeat Workout".localized, isPresented: $showRepeatAlert) {
             Button("Save and Repeat".localized) {
                 viewModel.saveAllRecords(recordManager: appViewModel.recordManager)
-                if let rest = viewModel.workoutRestTime {
-                    viewModel.resetAndStartIntervalWorkout(distance: viewModel.workoutDistance, time: viewModel.workoutTime, rest: rest)
-                } else {
-                    viewModel.resetAndStartWorkout(
-                        distance: viewModel.workoutDistance,
-                        time: viewModel.workoutTime,
-                        split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : viewModel.workoutSplitTime
-                    )
+                triggerShareFlowIfEnabled {
+                    if let rest = viewModel.workoutRestTime {
+                        viewModel.resetAndStartIntervalWorkout(distance: viewModel.workoutDistance, time: viewModel.workoutTime, rest: rest)
+                    } else {
+                        viewModel.resetAndStartWorkout(
+                            distance: viewModel.workoutDistance,
+                            time: viewModel.workoutTime,
+                            split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : viewModel.workoutSplitTime
+                        )
+                    }
                 }
             }
             Button("Discard and Repeat".localized, role: .destructive) {
@@ -207,8 +212,10 @@ struct ManagerWorkoutDashboardView: View {
             }
             Button("Save and Finish".localized) {
                 viewModel.saveAllRecords(recordManager: appViewModel.recordManager)
-                viewModel.resetAllDevices()
-                dismiss()
+                triggerShareFlowIfEnabled {
+                    viewModel.resetAllDevices()
+                    dismiss()
+                }
             }
             Button("Cancel".localized, role: .cancel) {}
         } message: {
@@ -219,6 +226,29 @@ struct ManagerWorkoutDashboardView: View {
         }
         .sheet(isPresented: $showEditSheet) {
             PM5EditView(viewModel: viewModel, isPresented: $showEditSheet)
+        }
+    }
+    
+    // MARK: - Share Flow
+    
+    /// 設定に応じてマネージャーモードの共有フローを開始し、完了後にコールバックを実行
+    private func triggerShareFlowIfEnabled(completion: @escaping () -> Void) {
+        guard SettingsManager.shared.settings.autoShareAfterManagerSave else {
+            completion()
+            return
+        }
+        let records = viewModel.lastSavedRecords
+        guard !records.isEmpty else {
+            completion()
+            return
+        }
+        
+        // 少し遅延してUIが落ち着いてから共有フローを開始
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            WorkoutShareManager.shared.startManagerShareFlow(records: records) {
+                print("PM5 Manager: Share flow completed")
+                completion()
+            }
         }
     }
     

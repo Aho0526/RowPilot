@@ -44,6 +44,10 @@ struct UserSettings: Codable {
     // 天気表示設定
     var weatherDisplayMode: WeatherDisplayMode
     
+    // 共有設定
+    var autoShareAfterManagerSave: Bool
+    var importBehavior: ImportBehavior
+    
     init(
         soundEnabled: Bool = true,
         voiceFeedbackEnabled: Bool = false,
@@ -65,7 +69,9 @@ struct UserSettings: Codable {
         sosUserName: String = "",
         sosMapSelection: SOSMapSelection = .both,
         saveZeroRecordPM5s: Bool = false,
-        weatherDisplayMode: WeatherDisplayMode = .iconAndTemp
+        weatherDisplayMode: WeatherDisplayMode = .iconAndTemp,
+        autoShareAfterManagerSave: Bool = false,
+        importBehavior: ImportBehavior = .askEachTime
     ) {
         self.soundEnabled = soundEnabled
         self.voiceFeedbackEnabled = voiceFeedbackEnabled
@@ -88,7 +94,18 @@ struct UserSettings: Codable {
         self.sosMapSelection = sosMapSelection
         self.saveZeroRecordPM5s = saveZeroRecordPM5s
         self.weatherDisplayMode = weatherDisplayMode
+        self.autoShareAfterManagerSave = autoShareAfterManagerSave
+        self.importBehavior = importBehavior
     }
+}
+
+/// ワークアウト受信時のインポート挙動
+enum ImportBehavior: String, Codable, CaseIterable, Identifiable {
+    case autoImport = "自動インポート"
+    case askEachTime = "毎回確認"
+    case reject = "受信しない"
+    
+    var id: String { rawValue }
 }
 
 // MARK: - Enums

@@ -203,6 +203,42 @@ class RecordManager: ObservableObject {
         fetchRecords()
     }
     
+    func deleteAllRecords() {
+        guard PersistenceController.shared.isStoreLoaded else { return }
+        
+        let fileManager = FileManager.default
+        
+        // 1. 各フォルダ配下の全JSONファイルを削除
+        if let files = try? fileManager.contentsOfDirectory(at: dataPointsDirectory, includingPropertiesForKeys: nil) {
+            for file in files {
+                try? fileManager.removeItem(at: file)
+            }
+        }
+        if let files = try? fileManager.contentsOfDirectory(at: crewInfoDirectory, includingPropertiesForKeys: nil) {
+            for file in files {
+                try? fileManager.removeItem(at: file)
+            }
+        }
+        if let files = try? fileManager.contentsOfDirectory(at: routePointsDirectory, includingPropertiesForKeys: nil) {
+            for file in files {
+                try? fileManager.removeItem(at: file)
+            }
+        }
+        
+        // 2. CoreDataからすべてのエンティティを削除
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: "RowingRecordEntity")
+        let deleteRequest = NSBatchDeleteRequest(fetchRequest: fetchRequest)
+        
+        do {
+            try context.execute(deleteRequest)
+            saveContext()
+            fetchRecords() // メモリ上のリストを空にリセット
+            print("RecordManager: All records and JSON files deleted successfully.")
+        } catch {
+            print("RecordManager: Failed to delete all records: \(error)")
+        }
+    }
+    
     func deleteRecord(_ record: RowingRecord) {
         guard PersistenceController.shared.isStoreLoaded else { return }
         
@@ -452,7 +488,7 @@ class RecordManager: ObservableObject {
         return (dist, dur, records.count)
     }
     
-    private func isOutdoor(_ record: RowingRecord) -> Bool {
+    func isOutdoor(_ record: RowingRecord) -> Bool {
         // Indoor records typically have tags containing "Indoor" or isManagerMode == true
         if let tags = record.tags, tags.contains("Indoor") {
             return false

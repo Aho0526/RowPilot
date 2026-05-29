@@ -11,10 +11,22 @@ struct HomeView: View {
     
     @State private var selectedFilter: RecordFilter = .both
     @State private var selectedMonth: Date = Date()
-    @State private var showMonthlySummary: Bool = false
-    @State private var showCumulativeSummary: Bool = false
+    @State private var selectedDay: Date? = nil
+    @State private var showCalendarSheet = false
+    
+    // 削除管理
+    @State private var showingDeleteConfirm = false
+    @State private var itemToDelete: RecordListItem? = nil
+    @State private var itemIDBeingAnimated: String? = nil
+    
+    // 遷移管理
+    @State private var selectedRecord: RowingRecord? = nil
+    @State private var selectedManagerSession: ManagerSessionItem? = nil
     
     var body: some View {
+        // 依存関係を明示することで、レコードの追加・削除（インポート含む）時に確実にUIを再描画する
+        let _ = recordManager.records
+        
         NavigationStack {
             ZStack {
                 // 背景
@@ -26,29 +38,14 @@ struct HomeView: View {
                         // MARK: - Header / Status Card
                         statusCard
                         
-                        // MARK: - Filters & Month Selector
+                        // MARK: - Filters
                         filterControls
-                        monthSelector
-                            .padding(.top, 8)
                         
-                        // MARK: - Stats (Compact Summary Badges)
-                        summaryBadges
+                        // MARK: - Active Filter Chips
+                        activeFilterChips
                         
                         // MARK: - History
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("History".localized)
-                                .font(Theme.subHeaderFont())
-                                .foregroundColor(Theme.textMain)
-                                .padding(.horizontal)
-                            
-                            
-                            let currentItems = groupedRecords
-                            if currentItems.isEmpty {
-                                emptyHistoryView
-                            } else {
-                                historyList
-                            }
-                        }
+                        historySection
                     }
                     .padding(.vertical)
                 }
@@ -56,6 +53,76 @@ struct HomeView: View {
             .navigationTitle("Home".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        showCalendarSheet = true
+                    }) {
+                        Image(systemName: "calendar")
+                            .font(.title3)
+                            .foregroundColor(Theme.accent)
+                    }
+                }
+            }
+            .sheet(isPresented: $showCalendarSheet) {
+                NavigationStack {
+                    ZStack {
+                        Theme.background.ignoresSafeArea()
+                        
+                        ScrollView {
+                            VStack(spacing: 24) {
+                                // MARK: - Stats
+                                statsDashboard
+                                    .padding(.top)
+                                
+                                // MARK: - Calendar Card
+                                calendarCard
+                                
+                                // MARK: - Sheet History
+                                sheetHistorySection
+                            }
+                            .padding(.vertical)
+                        }
+                    }
+                    .navigationTitle(LocalizationManager.shared.language == .japanese ? "カレンダー・サマリー" : "Calendar & Stats")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Close".localized) {
+                                showCalendarSheet = false
+                            }
+                            .foregroundColor(Theme.accent)
+                        }
+                    }
+                    .alert("Delete Record".localized, isPresented: $showingDeleteConfirm) {
+                        Button("Delete".localized, role: .destructive) {
+                            if let item = itemToDelete {
+                                confirmDelete(item)
+                            }
+                        }
+                        Button("Cancel".localized, role: .cancel) {
+                            itemToDelete = nil
+                        }
+                    } message: {
+                        if let item = itemToDelete {
+                            switch item {
+                            case .single(_):
+                                Text("Delete Record Message".localized)
+                            case .managerSession(_, let records):
+                                Text(String(format: "Delete Session Message".localized, records.count))
+                            }
+                        }
+                    }
+                    .navigationDestination(item: $selectedRecord) { record in
+                        RecordDetailView(record: record)
+                    }
+                    .navigationDestination(item: $selectedManagerSession) { session in
+                        ManagerSessionDetailView(records: session.records)
+                    }
+                }
+                .presentationDetents([.large])
+                .id(themeManager.currentPreset)
+            }
             .onAppear {
                  if let location = app.locationManager.previousLocation {
                      tideManager.findNearestStation(location: location)
@@ -65,8 +132,33 @@ struct HomeView: View {
                      weatherManager.fetchWeather(for: location)
                  }
             }
+            .navigationDestination(item: $selectedRecord) { record in
+                RecordDetailView(record: record)
+            }
+            .navigationDestination(item: $selectedManagerSession) { session in
+                ManagerSessionDetailView(records: session.records)
+            }
         }
         .id(themeManager.currentPreset)
+        .alert("Delete Record".localized, isPresented: $showingDeleteConfirm) {
+            Button("Delete".localized, role: .destructive) {
+                if let item = itemToDelete {
+                    confirmDelete(item)
+                }
+            }
+            Button("Cancel".localized, role: .cancel) {
+                itemToDelete = nil
+            }
+        } message: {
+            if let item = itemToDelete {
+                switch item {
+                case .single(_):
+                    Text("Delete Record Message".localized)
+                case .managerSession(_, let records):
+                    Text(String(format: "Delete Session Message".localized, records.count))
+                }
+            }
+        }
     }
     
     // MARK: - Components
@@ -195,41 +287,241 @@ struct HomeView: View {
         .padding(.horizontal)
     }
     
-    private var monthSelector: some View {
-        HStack {
-            Button(action: { changeMonth(by: -1) }) {
-                Image(systemName: "chevron.left")
-                    .foregroundColor(Theme.accent)
-                    .padding(10)
-                    .background(Theme.cardBackground)
-                    .clipShape(Circle())
+    private var statsDashboard: some View {
+        let monthRecords = recordManager.records(for: selectedMonth, filter: selectedFilter)
+        let monthStats = recordManager.stats(for: monthRecords)
+        let allFiltered = recordManager.allRecords(filter: selectedFilter)
+        let cumulativeStats = recordManager.stats(for: allFiltered)
+        
+        return HStack(spacing: 12) {
+            // This Month Card
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\(shortMonthFormatter.string(from: selectedMonth))のサマリー")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.textSecondary)
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    compactStat(icon: "ruler", value: formatDistanceKm(monthStats.distance), color: Theme.accent)
+                    compactStat(icon: "clock", value: formatDuration(monthStats.duration), color: Theme.secondaryAccent)
+                    compactStat(icon: "number", value: "\(monthStats.count)件", color: .orange)
+                }
             }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.cardBackground)
+            .cornerRadius(16)
             
-            Spacer()
-            
-            Text(monthYearFormatter.string(from: selectedMonth))
-                .font(.headline)
-                .foregroundColor(Theme.textMain)
-                .contentTransition(.numericText())
-            
-            Spacer()
-            
-            Button(action: { changeMonth(by: 1) }) {
-                Image(systemName: "chevron.right")
-                    .foregroundColor(isCurrentMonth ? Theme.textSecondary.opacity(0.3) : Theme.accent)
-                    .padding(10)
-                    .background(Theme.cardBackground)
-                    .clipShape(Circle())
+            // Cumulative Card
+            VStack(alignment: .leading, spacing: 8) {
+                Text("累積のサマリー")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.textSecondary)
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    compactStat(icon: "ruler", value: formatDistanceKm(cumulativeStats.distance), color: Theme.accent)
+                    compactStat(icon: "clock", value: formatDuration(cumulativeStats.duration), color: Theme.secondaryAccent)
+                    compactStat(icon: "number", value: "\(cumulativeStats.count)件", color: .orange)
+                }
             }
-            .disabled(isCurrentMonth)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.cardBackground)
+            .cornerRadius(16)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal)
+    }
+    
+    private var calendarCard: some View {
+        VStack(spacing: 12) {
+            // Month navigation inside the calendar
+            HStack {
+                Button(action: { changeMonth(by: -1) }) {
+                    Image(systemName: "chevron.left")
+                        .foregroundColor(Theme.accent)
+                        .padding(8)
+                        .background(Color.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
+                
+                Spacer()
+                
+                Text(monthYearFormatter.string(from: selectedMonth))
+                    .font(.headline)
+                    .foregroundColor(Theme.textMain)
+                    .contentTransition(.numericText())
+                
+                Spacer()
+                
+                Button(action: { changeMonth(by: 1) }) {
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(isCurrentMonth ? Theme.textSecondary.opacity(0.3) : Theme.accent)
+                        .padding(8)
+                        .background(Color.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
+                .disabled(isCurrentMonth)
+            }
+            .padding(.horizontal, 8)
+            
+            // Weekdays
+            let weekdaySymbols = ["日", "月", "火", "水", "木", "金", "土"]
+            HStack(spacing: 0) {
+                ForEach(weekdaySymbols, id: \.self) { symbol in
+                    Text(symbol)
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            
+            // Days Grid
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(0..<calendarDays.count, id: \.self) { index in
+                    if let day = calendarDays[index] {
+                        let isSelected = selectedDay.map { Calendar.current.isDate($0, inSameDayAs: day) } ?? false
+                        let recordsCount = records(on: day).count
+                        let hasRecords = recordsCount > 0
+                        
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                if isSelected {
+                                    selectedDay = nil
+                                } else {
+                                    selectedDay = day
+                                }
+                            }
+                        }) {
+                            VStack(spacing: 4) {
+                                Text("\(Calendar.current.component(.day, from: day))")
+                                    .font(.subheadline)
+                                    .fontWeight(isSelected ? .bold : (hasRecords ? .semibold : .regular))
+                                    .foregroundColor(isSelected ? .black : (hasRecords ? Theme.textMain : Theme.textSecondary.opacity(0.6)))
+                                    .frame(width: 28, height: 28)
+                                    .background(
+                                        ZStack {
+                                            if isSelected {
+                                                Circle()
+                                                    .fill(Theme.accent)
+                                            } else if Calendar.current.isDateInToday(day) {
+                                                Circle()
+                                                    .stroke(Theme.accent.opacity(0.8), lineWidth: 1.5)
+                                            }
+                                        }
+                                    )
+                                
+                                // Workout Dots
+                                HStack(spacing: 3) {
+                                    if hasOutdoorRecord(on: day) {
+                                        Circle()
+                                            .fill(Theme.accent)
+                                            .frame(width: 4, height: 4)
+                                    }
+                                    if hasIndoorRecord(on: day) {
+                                        Circle()
+                                            .fill(Theme.secondaryAccent)
+                                            .frame(width: 4, height: 4)
+                                    }
+                                }
+                                .frame(height: 4)
+                            }
+                        }
+                    } else {
+                        // Empty cell for calendar offset
+                        Spacer()
+                            .frame(height: 36)
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(Theme.cardBackground)
+        .cornerRadius(20)
+        .padding(.horizontal)
+        .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
+    }
+    
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(historyHeaderTitle)
+                .font(Theme.subHeaderFont())
+                .foregroundColor(Theme.textMain)
+                .padding(.horizontal)
+            
+            let currentItems = groupedRecords
+            if currentItems.isEmpty {
+                emptyHistoryView
+            } else {
+                historyList
+            }
+        }
+    }
+    
+    private var historyHeaderTitle: String {
+        if let day = selectedDay {
+            let f = DateFormatter()
+            f.dateFormat = "M/d"
+            return LocalizationManager.shared.language == .japanese ? "\(f.string(from: day))の履歴" : "History for \(f.string(from: day))"
+        } else {
+            return "History".localized
+        }
+    }
+    
+    private var activeFilterChips: some View {
+        Group {
+            if let day = selectedDay {
+                HStack(spacing: 8) {
+                    // Day Filter Chip
+                    filterChip(
+                        text: formatDateYMD(day),
+                        icon: "calendar"
+                    ) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            selectedDay = nil
+                        }
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+    
+    private func filterChip(text: String, icon: String, onDismiss: @escaping () -> Void) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption)
+            Text(text)
+                .font(.caption)
+                .fontWeight(.medium)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .foregroundColor(Theme.accent)
+        .background(Theme.accent.opacity(0.15))
+        .cornerRadius(12)
+    }
+    
+    private func formatDateYMD(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy/M/d"
+        return f.string(from: date)
     }
     
     private func changeMonth(by value: Int) {
         if let newDate = Calendar.current.date(byAdding: .month, value: value, to: selectedMonth) {
             withAnimation {
                 selectedMonth = newDate
+                selectedDay = nil
             }
         }
     }
@@ -240,127 +532,8 @@ struct HomeView: View {
     
     private var monthYearFormatter: DateFormatter {
         let f = DateFormatter()
-        f.dateFormat = "yyyy年 M月"
+        f.dateFormat = "yyyy/M"
         return f
-    }
-    
-    private var summaryBadges: some View {
-        let monthRecords = recordManager.records(for: selectedMonth, filter: selectedFilter)
-        let monthStats = recordManager.stats(for: monthRecords)
-        let allFiltered = recordManager.allRecords(filter: selectedFilter)
-        let cumulativeStats = recordManager.stats(for: allFiltered)
-        
-        return VStack(spacing: 12) {
-            // Compact badge row
-            HStack(spacing: 12) {
-                // Monthly Summary Badge
-                Button(action: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        showMonthlySummary.toggle()
-                        if showMonthlySummary { showCumulativeSummary = false }
-                    }
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(showMonthlySummary ? .white : Theme.accent)
-                        Text("\(shortMonthFormatter.string(from: selectedMonth))")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(showMonthlySummary ? .white : Theme.textMain)
-                        Text("\(monthStats.count)件")
-                            .font(.caption)
-                            .foregroundColor(showMonthlySummary ? .white.opacity(0.8) : Theme.textSecondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(showMonthlySummary ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.cardBackground))
-                    )
-                    .shadow(color: showMonthlySummary ? Theme.accent.opacity(0.3) : Color.clear, radius: 6, x: 0, y: 3)
-                }
-                
-                // Cumulative Summary Badge
-                Button(action: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        showCumulativeSummary.toggle()
-                        if showCumulativeSummary { showMonthlySummary = false }
-                    }
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "chart.bar.doc.horizontal")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(showCumulativeSummary ? .white : Theme.secondaryAccent)
-                        Text("累積")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(showCumulativeSummary ? .white : Theme.textMain)
-                        Text("\(cumulativeStats.count)件")
-                            .font(.caption)
-                            .foregroundColor(showCumulativeSummary ? .white.opacity(0.8) : Theme.textSecondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(showCumulativeSummary ? AnyShapeStyle(Theme.secondaryAccent) : AnyShapeStyle(Theme.cardBackground))
-                    )
-                    .shadow(color: showCumulativeSummary ? Theme.secondaryAccent.opacity(0.3) : Color.clear, radius: 6, x: 0, y: 3)
-                }
-                
-                Spacer()
-            }
-            .padding(.horizontal)
-            
-            // Expandable Monthly Summary
-            if showMonthlySummary {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("\(monthYearFormatter.string(from: selectedMonth))")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(Theme.textSecondary)
-                    
-                    HStack(spacing: 16) {
-                        compactStat(icon: "ruler", value: formatDistance(monthStats.distance), color: Theme.accent)
-                        compactStat(icon: "clock", value: formatDuration(monthStats.duration), color: Theme.secondaryAccent)
-                        compactStat(icon: "number", value: "\(monthStats.count)", color: .orange)
-                    }
-                }
-                .padding(14)
-                .background(Theme.cardBackground)
-                .cornerRadius(14)
-                .padding(.horizontal)
-                .transition(.asymmetric(
-                    insertion: .move(edge: .top).combined(with: .opacity),
-                    removal: .opacity
-                ))
-            }
-            
-            // Expandable Cumulative Summary
-            if showCumulativeSummary {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("累積のサマリー")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(Theme.textSecondary)
-                    
-                    HStack(spacing: 16) {
-                        compactStat(icon: "ruler", value: formatDistance(cumulativeStats.distance), color: Theme.accent)
-                        compactStat(icon: "clock", value: formatDuration(cumulativeStats.duration), color: Theme.secondaryAccent)
-                        compactStat(icon: "number", value: "\(cumulativeStats.count)", color: .orange)
-                    }
-                }
-                .padding(14)
-                .background(Theme.cardBackground)
-                .cornerRadius(14)
-                .padding(.horizontal)
-                .transition(.asymmetric(
-                    insertion: .move(edge: .top).combined(with: .opacity),
-                    removal: .opacity
-                ))
-            }
-        }
     }
     
     private func compactStat(icon: String, value: String, color: Color) -> some View {
@@ -383,6 +556,53 @@ struct HomeView: View {
         let f = DateFormatter()
         f.dateFormat = "M月"
         return f
+    }
+    
+    private var calendarDays: [Date?] {
+        let calendar = Calendar.current
+        let startOfMonth = selectedMonth.startOfMonth(using: calendar)
+        let weekdayOfFirst = calendar.component(.weekday, from: startOfMonth)
+        
+        // Sunday is 1. If weekdayOfFirst is 1 (Sunday), offset is 0.
+        // If weekdayOfFirst is 2 (Monday), offset is 1.
+        let offset = weekdayOfFirst - 1
+        
+        var days: [Date?] = Array(repeating: nil, count: offset)
+        
+        if let range = calendar.range(of: .day, in: .month, for: selectedMonth) {
+            let numDays = range.count
+            for day in 1...numDays {
+                if let date = calendar.date(byAdding: .day, value: day - 1, to: startOfMonth) {
+                    days.append(date)
+                }
+            }
+        }
+        
+        return days
+    }
+    
+    private var filteredRecordsForMonth: [RowingRecord] {
+        recordManager.records(for: selectedMonth, filter: selectedFilter)
+    }
+    
+    private func records(on day: Date) -> [RowingRecord] {
+        filteredRecordsForMonth.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+    }
+    
+    private func hasOutdoorRecord(on day: Date) -> Bool {
+        records(on: day).contains { recordManager.isOutdoor($0) }
+    }
+    
+    private func hasIndoorRecord(on day: Date) -> Bool {
+        records(on: day).contains { !recordManager.isOutdoor($0) }
+    }
+    
+    private func formatDistanceKm(_ meters: Double) -> String {
+        if meters >= 1000 {
+            return String(format: "%.1f km", meters / 1000.0)
+        } else {
+            return String(format: "%.0f m", meters)
+        }
     }
     
     private var emptyHistoryView: some View {
@@ -418,7 +638,14 @@ struct HomeView: View {
         var items: [RecordListItem] = []
         var managerGroups: [UUID: [RowingRecord]] = [:]
         
-        let filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter)
+        let filteredRecords: [RowingRecord]
+        if let day = selectedDay {
+            filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter).filter {
+                Calendar.current.isDate($0.date, inSameDayAs: day)
+            }
+        } else {
+            filteredRecords = recordManager.allRecords(filter: selectedFilter)
+        }
         
         for record in filteredRecords {
             if record.isManagerMode, let sessionId = record.managerSessionId {
@@ -438,20 +665,147 @@ struct HomeView: View {
     private var historyList: some View {
         LazyVStack(spacing: 12) {
             ForEach(groupedRecords) { item in
-                switch item {
-                case .single(let record):
-                    NavigationLink(destination: RecordDetailView(record: record)) {
-                        RecordRowCard(record: record)
+                SwipeToDelete(id: item.id, isAnimatingOut: itemIDBeingAnimated == item.id) {
+                    prepareDelete(item)
+                } onTap: {
+                    switch item {
+                    case .single(let record):
+                        selectedRecord = record
+                    case .managerSession(let sessionId, let records):
+                        selectedManagerSession = ManagerSessionItem(id: sessionId, records: records)
                     }
-                case .managerSession(_, let records):
-                    // Manager Session group with navigation to detail view
-                    NavigationLink(destination: ManagerSessionDetailView(records: records)) {
-                        ManagerSessionRowCard(records: records)
+                } content: {
+                    Group {
+                        switch item {
+                        case .single(let record):
+                            RecordRowCard(record: record)
+                        case .managerSession(_, let records):
+                            ManagerSessionRowCard(records: records)
+                        }
                     }
                 }
             }
         }
         .padding(.horizontal)
+    }
+    
+    private var sheetGroupedRecords: [RecordListItem] {
+        var items: [RecordListItem] = []
+        var managerGroups: [UUID: [RowingRecord]] = [:]
+        
+        let filteredRecords: [RowingRecord]
+        if let day = selectedDay {
+            filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter).filter {
+                Calendar.current.isDate($0.date, inSameDayAs: day)
+            }
+        } else {
+            filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter)
+        }
+        
+        for record in filteredRecords {
+            if record.isManagerMode, let sessionId = record.managerSessionId {
+                managerGroups[sessionId, default: []].append(record)
+            } else {
+                items.append(.single(record))
+            }
+        }
+        
+        for (sessionId, records) in managerGroups {
+            items.append(.managerSession(sessionId, records))
+        }
+        
+        return items.sorted { $0.date > $1.date }
+    }
+    
+    private var sheetHistorySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(sheetHistoryHeaderTitle)
+                .font(Theme.subHeaderFont())
+                .foregroundColor(Theme.textMain)
+                .padding(.horizontal)
+            
+            let currentItems = sheetGroupedRecords
+            if currentItems.isEmpty {
+                Text("No Records".localized)
+                    .foregroundColor(Theme.textSecondary)
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Theme.cardBackground)
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+            } else {
+                sheetHistoryList
+            }
+        }
+    }
+    
+    private var sheetHistoryHeaderTitle: String {
+        if let day = selectedDay {
+            let f = DateFormatter()
+            f.dateFormat = "M/d"
+            return LocalizationManager.shared.language == .japanese ? "\(f.string(from: day))の履歴" : "History for \(f.string(from: day))"
+        } else {
+            let f = DateFormatter()
+            f.dateFormat = "MMMM"
+            let monthName = f.string(from: selectedMonth)
+            return LocalizationManager.shared.language == .japanese ? "\(shortMonthFormatter.string(from: selectedMonth))の履歴" : "\(monthName) History"
+        }
+    }
+    
+    private var sheetHistoryList: some View {
+        LazyVStack(spacing: 12) {
+            ForEach(sheetGroupedRecords) { item in
+                SwipeToDelete(id: item.id, isAnimatingOut: itemIDBeingAnimated == item.id) {
+                    prepareDelete(item)
+                } onTap: {
+                    switch item {
+                    case .single(let record):
+                        selectedRecord = record
+                    case .managerSession(let sessionId, let records):
+                        selectedManagerSession = ManagerSessionItem(id: sessionId, records: records)
+                    }
+                } content: {
+                    Group {
+                        switch item {
+                        case .single(let record):
+                            RecordRowCard(record: record)
+                        case .managerSession(_, let records):
+                            ManagerSessionRowCard(records: records)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+    
+    // MARK: - Deletion Helpers
+    
+    private func prepareDelete(_ item: RecordListItem) {
+        itemToDelete = item
+        showingDeleteConfirm = true
+    }
+    
+    private func confirmDelete(_ item: RecordListItem) {
+        withAnimation {
+            itemIDBeingAnimated = item.id
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            performDelete(item)
+            itemIDBeingAnimated = nil
+        }
+    }
+    
+    private func performDelete(_ item: RecordListItem) {
+        switch item {
+        case .single(let record):
+            recordManager.deleteRecord(record)
+        case .managerSession(_, let records):
+            for record in records {
+                recordManager.deleteRecord(record)
+            }
+        }
+        itemToDelete = nil
     }
     
     // MARK: - Helpers
@@ -636,5 +990,109 @@ struct ManagerSessionRowCard: View {
         let f = DateFormatter()
         f.dateFormat = "MMM"
         return f.string(from: date)
+    }
+}
+
+// MARK: - Date Extensions
+extension Date {
+    fileprivate func startOfMonth(using calendar: Calendar = .current) -> Date {
+        calendar.date(from: calendar.dateComponents([.year, .month], from: calendar.startOfDay(for: self)))!
+    }
+}
+
+// MARK: - ManagerSessionItem
+struct ManagerSessionItem: Identifiable, Hashable {
+    let id: UUID
+    let records: [RowingRecord]
+}
+
+// MARK: - Swipe to Delete Container View
+
+struct SwipeToDelete<Content: View>: View {
+    let id: String
+    let isAnimatingOut: Bool
+    let onDelete: () -> Void
+    let onTap: () -> Void
+    let content: () -> Content
+    
+    @State private var offset: CGFloat = 0
+    @State private var isSwiped = false
+    
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            // Content
+            content()
+                .offset(x: offset)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if isSwiped {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            offset = 0
+                            isSwiped = false
+                        }
+                    } else {
+                        onTap()
+                    }
+                }
+                .gesture(
+                DragGesture(minimumDistance: 15, coordinateSpace: .local)
+                    .onChanged { value in
+                        let xTrans = value.translation.width
+                        let yTrans = value.translation.height
+                        
+                        // Prevent horizontal swipe gesture from triggering during vertical scroll
+                        guard abs(xTrans) > abs(yTrans) else { return }
+                        
+                        // Only allow swipe to left
+                        withAnimation(.interactiveSpring()) {
+                            if xTrans < 0 {
+                                offset = isSwiped ? xTrans - 70 : xTrans
+                            } else if xTrans > 0 && isSwiped {
+                                offset = xTrans - 70
+                            }
+                        }
+                    }
+                    .onEnded { value in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            if value.translation.width < -40 {
+                                offset = -70
+                                isSwiped = true
+                            } else {
+                                offset = 0
+                                isSwiped = false
+                            }
+                        }
+                    }
+            )
+            
+            // Background Delete Button
+            if offset < 0 {
+                Button(action: {
+                    onDelete()
+                }) {
+                    Image(systemName: "trash.fill")
+                        .font(.title3)
+                        .foregroundColor(.white)
+                        .frame(width: 70)
+                        .frame(maxHeight: .infinity)
+                        .background(Color.red)
+                        .cornerRadius(12)
+                }
+                .padding(.trailing, 2)
+                .transition(.opacity) // Smooth transition when showing up
+            }
+        }
+        .onChange(of: isAnimatingOut) { newValue in
+            if newValue {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    offset = -1000
+                }
+            } else {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    offset = 0
+                    isSwiped = false
+                }
+            }
+        }
     }
 }

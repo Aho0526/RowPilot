@@ -10,5 +10,45 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>RowPilot Workout</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.rowpilot.workout</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>RowPilot Workout Data</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.rowpilot.workout</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>rowpilot</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>application/vnd.rowpilot</string>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

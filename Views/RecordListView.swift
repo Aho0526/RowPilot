@@ -234,13 +234,24 @@ struct RecordDetailView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(isEditing ? "Save".localized : "Edit".localized) {
-                    if isEditing {
-                        saveChanges()
+                HStack(spacing: 12) {
+                    // 共有ボタン
+                    Button {
+                        WorkoutShareManager.shared.presentShareSheet(for: record)
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundColor(Theme.accent)
                     }
-                    isEditing.toggle()
+                    
+                    // 編集/保存ボタン
+                    Button(isEditing ? "Save".localized : "Edit".localized) {
+                        if isEditing {
+                            saveChanges()
+                        }
+                        isEditing.toggle()
+                    }
+                    .foregroundColor(Theme.accent)
                 }
-                .foregroundColor(Theme.accent)
             }
         }
         .onAppear {

@@ -138,3 +138,14 @@ extension RowingRecord {
         return formatter.string(from: date)
     }
 }
+
+// MARK: - Hashable & Equatable
+extension RowingRecord: Hashable {
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+    
+    static func == (lhs: RowingRecord, rhs: RowingRecord) -> Bool {
+        lhs.id == rhs.id
+    }
+}

@@ -151,6 +151,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// 保存済みフラグ
     @Published var isSaved: Bool = false
     
+    /// 最後に保存したレコード群（共有フロー用）
+    @Published var lastSavedRecords: [RowingRecord] = []
+    
     /// デバイスごとの表示番号
     @Published var deviceNumbers: [UUID: Int] = [:]
     
@@ -1183,6 +1186,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         let sessionId = UUID() // Group all these records under one session
         let saveZero = SettingsManager.shared.settings.saveZeroRecordPM5s
         
+        var savedRecords: [RowingRecord] = []
+        
         for (_, metrics) in deviceMetrics {
             if saveZero || metrics.distance > 0 || metrics.elapsedTime > 0 {
                 let recordDate: Date = workoutStartTime ?? Date()
@@ -1219,8 +1224,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                     averageWatt: recordPower
                 )
                 recordManager.addRecord(record)
+                savedRecords.append(record)
             }
         }
+        lastSavedRecords = savedRecords
         isSaved = true
     }
 }

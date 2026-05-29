@@ -51,6 +51,17 @@ struct ManagerSessionDetailView: View {
                                         }
                                     }
                                     Spacer()
+                                    
+                                    Button {
+                                        let prepared = WorkoutShareManager.shared.prepareManagerRecord(record)
+                                        WorkoutShareManager.shared.presentShareSheet(for: prepared)
+                                    } label: {
+                                        Image(systemName: "square.and.arrow.up")
+                                            .font(.title3)
+                                            .foregroundColor(Theme.accent)
+                                            .padding(6)
+                                            .contentShape(Rectangle())
+                                    }
                                 }
                                 
                                 Divider()

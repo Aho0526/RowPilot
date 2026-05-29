@@ -7,6 +7,7 @@ struct SettingView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
     @State private var showingResetAlert = false
+    @State private var showingDeleteAllAlert = false
     
     var body: some View {
         NavigationStack(path: $app.settingsNavigationPath) {
@@ -21,12 +22,20 @@ struct SettingView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .alert("Reset Settings".localized, isPresented: $showingResetAlert) {
-                Button("Cancel".localized, role: .cancel) { }
                 Button("Reset".localized, role: .destructive) {
                     settingsManager.resetToDefaults()
                 }
+                Button("Cancel".localized, role: .cancel) {}
             } message: {
                 Text("Reset Alert Message".localized)
+            }
+            .alert("Delete All Workouts".localized, isPresented: $showingDeleteAllAlert) {
+                Button("Delete".localized, role: .destructive) {
+                    app.recordManager.deleteAllRecords()
+                }
+                Button("Cancel".localized, role: .cancel) {}
+            } message: {
+                Text("Delete All Alert Message".localized)
             }
         }
     }
@@ -167,6 +176,40 @@ struct SettingView: View {
                 }
             }
             
+            // 共有設定
+            SettingsSection(title: "Sharing".localized, icon: "square.and.arrow.up") {
+                // マネージャーモード保存後の共有提案
+                if currentPlan.hasManagerMode {
+                    SettingsToggleRow(
+                        title: "Auto Share After Save".localized,
+                        isOn: $settingsManager.settings.autoShareAfterManagerSave
+                    )
+                    
+                    Text("Auto Share Desc".localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                }
+                
+                Divider().background(Theme.textSecondary.opacity(0.3))
+                
+                // 受信時のインポート挙動
+                HStack {
+                    Text("Import Behavior".localized)
+                        .foregroundColor(Theme.textMain)
+                    Spacer()
+                    Picker("", selection: $settingsManager.settings.importBehavior) {
+                        ForEach(ImportBehavior.allCases) { behavior in
+                            Text(behavior.rawValue.localized).tag(behavior)
+                        }
+                    }
+                    .tint(Theme.accent)
+                }
+                
+                Text("Import Behavior Desc".localized)
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            
             // 単位設定
             SettingsSection(title: "Units".localized, icon: "ruler.fill") {
                 HStack {
@@ -218,6 +261,18 @@ struct SettingView: View {
                     .cornerRadius(12)
             }
             
+            // すべてのワークアウトを消去
+            Button(action: {
+                showingDeleteAllAlert = true
+            }) {
+                Text("Delete All Workouts".localized)
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Theme.cardBackground)
+                    .cornerRadius(12)
+            }
+            
             // アプリ情報
             VStack(spacing: 8) {
                 NavigationLink(destination: TermsView()) {
@@ -228,8 +283,8 @@ struct SettingView: View {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("Test Flight Version - 1")
-                Text("Build from May 27")
+                Text("version 1.2.1")
+                Text("Build from May 29")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)
