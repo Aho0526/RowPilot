@@ -284,7 +284,7 @@ struct SettingView: View {
                         .underline()
                 }
                 Text("version 1.2.1")
-                Text("Build from May 29")
+                Text("Build from May 30")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

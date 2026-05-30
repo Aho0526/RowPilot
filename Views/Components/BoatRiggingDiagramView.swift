@@ -1,0 +1,1429 @@
+import SwiftUI
+
+enum BoatRiggingField {
+    case span
+    case workHeight
+    case pitch
+    case lateralPitch
+    case footstretch
+    case footplateAngle
+    case footplateHeight
+    case oarLength
+    case oarInboard
+    case oarGripDiameter
+}
+
+struct BoatRiggingDiagramView: View {
+    let span: Double
+    let workHeight: Double
+    let pitch: Double
+    let lateralPitch: String
+    let footstretch: Double
+    let footplateAngle: Double
+    let footplateHeight: Double
+    let oarTotalLength: Double
+    let oarInboard: Double
+    let oarGripDiameter: Double
+    let oarType: OarType
+    let selectedField: BoatRiggingField?
+    @Binding var currentTab: Int
+    
+    @State private var dragRotationX: CGFloat = -15.0
+    @State private var dragRotationY: CGFloat = 20.0
+    @State private var previousRotationX: CGFloat = -15.0
+    @State private var previousRotationY: CGFloat = 20.0
+    @State private var userZoomFactor: CGFloat = 1.0
+    @State private var pinchScale: CGFloat = 1.0
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            // View Selector Tab
+            HStack(spacing: 8) {
+                Button(action: { currentTab = 0 }) {
+                    Text("Top View".localized)
+                        .font(.caption)
+                        .fontWeight(currentTab == 0 ? .bold : .medium)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(currentTab == 0 ? Theme.accent.opacity(0.2) : Color.clear)
+                        .foregroundColor(currentTab == 0 ? Theme.accent : Theme.textSecondary)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(currentTab == 0 ? Theme.accent : Color.gray.opacity(0.3), lineWidth: 1)
+                        )
+                }
+                
+                Button(action: { currentTab = 1 }) {
+                    Text("Diagonal View".localized)
+                        .font(.caption)
+                        .fontWeight(currentTab == 1 ? .bold : .medium)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(currentTab == 1 ? Theme.accent.opacity(0.2) : Color.clear)
+                        .foregroundColor(currentTab == 1 ? Theme.accent : Theme.textSecondary)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(currentTab == 1 ? Theme.accent : Color.gray.opacity(0.3), lineWidth: 1)
+                        )
+                }
+                
+                Button(action: { currentTab = 2 }) {
+                    Text("Side View".localized)
+                        .font(.caption)
+                        .fontWeight(currentTab == 2 ? .bold : .medium)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(currentTab == 2 ? Theme.accent.opacity(0.2) : Color.clear)
+                        .foregroundColor(currentTab == 2 ? Theme.accent : Theme.textSecondary)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(currentTab == 2 ? Theme.accent : Color.gray.opacity(0.3), lineWidth: 1)
+                        )
+                }
+            }
+            .padding(.top, 4)
+            
+            // Diagram Area
+            ZStack {
+                if currentTab == 0 {
+                    topViewDiagram
+                } else if currentTab == 1 {
+                    diagonalViewDiagram
+                } else {
+                    if selectedField == .pitch || selectedField == .lateralPitch {
+                        OarlockDiagramView(pitch: pitch, lateralPitch: lateralPitch, selectedField: selectedField)
+                    } else {
+                        sideViewDiagram
+                    }
+                }
+            }
+            .frame(height: 180)
+            .clipped()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.black.opacity(0.15))
+            )
+            
+            // Description of active field
+            if let desc = getHighlightDescription() {
+                Text(desc)
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+                    .transition(.opacity)
+            }
+        }
+        .padding(.horizontal)
+    }
+    
+    // MARK: - Top View Diagram (Span, Footstretch, Footplate Angle)
+    private var topViewDiagram: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            
+            let centerlineX = w * 0.5
+            let pinY = h * 0.42
+            let scale: CGFloat = 1.3
+            
+            let isScull = oarType == .scull
+            let halfSpanVal = isScull ? (span / 2.0) : span
+            let halfSpanPts = CGFloat(halfSpanVal) * scale
+            
+            let pinRightX = centerlineX + halfSpanPts
+            let pinLeftX = centerlineX - halfSpanPts
+            
+            let feetY = pinY - CGFloat(footstretch) * scale
+            let seatY = pinY + 28.0
+            
+            let hullHalfWidthVal: CGFloat = isScull ? 15.0 : 25.0
+            let hullHalfWidth = hullHalfWidthVal * scale
+            
+            ZStack {
+                // Centerline
+                Path { path in
+                    path.move(to: CGPoint(x: centerlineX, y: 10))
+                    path.addLine(to: CGPoint(x: centerlineX, y: h - 10))
+                }
+                .stroke(Color.white.opacity(0.15), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 4]))
+                
+                Text("Centerline".localized)
+                    .font(.system(size: 8))
+                    .foregroundColor(Theme.textSecondary.opacity(0.3))
+                    .position(x: centerlineX - 30, y: 15)
+                
+                // Hull outline (Top View)
+                Path { path in
+                    // Left Side
+                    path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: 10))
+                    path.addQuadCurve(to: CGPoint(x: centerlineX - hullHalfWidth - 3, y: h - 10), control: CGPoint(x: centerlineX - hullHalfWidth - 6, y: h * 0.5))
+                    // Right Side
+                    path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: 10))
+                    path.addQuadCurve(to: CGPoint(x: centerlineX + hullHalfWidth + 3, y: h - 10), control: CGPoint(x: centerlineX + hullHalfWidth + 6, y: h * 0.5))
+                }
+                .stroke(Color.white.opacity(0.25), lineWidth: 1.5)
+                
+                // Seat
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(hex: "333333"))
+                    .frame(width: 34, height: 20)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color.gray.opacity(0.4), lineWidth: 1)
+                    )
+                    .position(x: centerlineX, y: seatY)
+                
+                Text("Seat".localized)
+                    .font(.system(size: 8))
+                    .foregroundColor(Theme.textSecondary.opacity(0.6))
+                    .position(x: centerlineX, y: seatY)
+                
+                // Footplate Shoes (Foreshortened by Angle)
+                let angleRad = CGFloat(footplateAngle) * .pi / 180.0
+                let shoeLen = max(6.0, 18.0 * cos(angleRad))
+                
+                HStack(spacing: 6) {
+                    // Left Shoe
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(selectedField == .footplateAngle ? Theme.accent.opacity(0.3) : Color(hex: "1F1F1F"))
+                        .frame(width: 8, height: shoeLen)
+                        .rotationEffect(.degrees(-5))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 2)
+                                .stroke(selectedField == .footplateAngle ? Theme.accent : Color.gray.opacity(0.4), lineWidth: 1)
+                        )
+                    
+                    // Right Shoe
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(selectedField == .footplateAngle ? Theme.accent.opacity(0.3) : Color(hex: "1F1F1F"))
+                        .frame(width: 8, height: shoeLen)
+                        .rotationEffect(.degrees(5))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 2)
+                                .stroke(selectedField == .footplateAngle ? Theme.accent : Color.gray.opacity(0.4), lineWidth: 1)
+                        )
+                }
+                .position(x: centerlineX, y: feetY)
+                .shadow(color: selectedField == .footplateAngle ? Theme.accent.opacity(0.4) : Color.clear, radius: 4)
+                
+                // Riggers
+                // Right Rigger
+                Path { path in
+                    path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: pinY - 18))
+                    path.addLine(to: CGPoint(x: pinRightX, y: pinY))
+                    path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: pinY + 18))
+                }
+                .stroke(selectedField == .span ? Theme.accent : Color(hex: "888888"), lineWidth: 2)
+                
+                // Left Rigger (Only for Scull)
+                if isScull {
+                    Path { path in
+                        path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: pinY - 18))
+                        path.addLine(to: CGPoint(x: pinLeftX, y: pinY))
+                        path.addLine(to: CGPoint(x: centerlineX - hullHalfWidth, y: pinY + 18))
+                    }
+                    .stroke(selectedField == .span ? Theme.accent : Color(hex: "888888"), lineWidth: 2)
+                }
+                
+                // Pins
+                Circle()
+                    .fill(Color.black)
+                    .frame(width: 6, height: 6)
+                    .overlay(Circle().stroke(selectedField == .span || selectedField == .footstretch ? Theme.accent : Color.gray, lineWidth: 1.5))
+                    .position(x: pinRightX, y: pinY)
+                
+                if isScull {
+                    Circle()
+                        .fill(Color.black)
+                        .frame(width: 6, height: 6)
+                        .overlay(Circle().stroke(selectedField == .span || selectedField == .footstretch ? Theme.accent : Color.gray, lineWidth: 1.5))
+                        .position(x: pinLeftX, y: pinY)
+                }
+                
+                // MARK: - Dimension Lines (Top View)
+                if selectedField == .span {
+                    if isScull {
+                        DimensionLine(
+                            startX: pinLeftX,
+                            endX: pinRightX,
+                            y: pinY - 18,
+                            label: String(format: "Span".localized + ": %.1f cm", span),
+                            isActive: true,
+                            arrowUp: true
+                        )
+                    } else {
+                        DimensionLine(
+                            startX: centerlineX,
+                            endX: pinRightX,
+                            y: pinY - 18,
+                            label: String(format: "Spread".localized + ": %.1f cm", span),
+                            isActive: true,
+                            arrowUp: true
+                        )
+                    }
+                }
+                
+                if selectedField == .footstretch {
+                    Path { path in
+                        path.move(to: CGPoint(x: centerlineX - 40, y: pinY))
+                        path.addLine(to: CGPoint(x: centerlineX + 40, y: pinY))
+                    }
+                    .stroke(Theme.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1.0, dash: [2, 2]))
+                    
+                    Path { path in
+                        path.move(to: CGPoint(x: centerlineX - 40, y: feetY))
+                        path.addLine(to: CGPoint(x: centerlineX + 40, y: feetY))
+                    }
+                    .stroke(Theme.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1.0, dash: [2, 2]))
+                    
+                    DimensionLineVertical(
+                        startY: feetY,
+                        endY: pinY,
+                        x: centerlineX - 30,
+                        label: String(format: "Footstretch".localized + ": %.1f cm", footstretch),
+                        isActive: true,
+                        arrowLeft: true
+                    )
+                }
+                
+                if selectedField == .footplateAngle {
+                    // Horizontal reference line (seat-rail plane = 0°)
+                    Path { path in
+                        path.move(to: CGPoint(x: centerlineX + 8, y: feetY))
+                        path.addLine(to: CGPoint(x: centerlineX + 38, y: feetY))
+                    }
+                    .stroke(Color.white.opacity(0.3), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    
+                    // Arc from 0° (horizontal, seat-rail plane) to actual footplate angle
+                    // In 2D top view the footplate rises toward the bow (negative Y direction on screen)
+                    Path { path in
+                        path.addArc(
+                            center: CGPoint(x: centerlineX + 10, y: feetY),
+                            radius: 22,
+                            startAngle: .degrees(0),        // horizontal = seat rail plane
+                            endAngle: .degrees(-footplateAngle), // upward tilt of plate
+                            clockwise: true
+                        )
+                    }
+                    .stroke(Theme.accent, lineWidth: 1.5)
+                    
+                    Text(String(format: "Footplate Angle".localized + ": %.0f°", footplateAngle))
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundColor(Theme.accent)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.black.opacity(0.6).cornerRadius(3))
+                        .position(x: centerlineX + 68, y: feetY - 14)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Diagonal View Diagram (3D Perspective Cockpit Preview)
+    private var diagonalViewDiagram: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let centerlineX = w * 0.5
+            
+            let isScull = oarType == .scull
+            let halfSpanVal = isScull ? (span / 2.0) : span
+            
+            let heelsY3d = -CGFloat(max(0.0, min(25.0, footplateHeight)))
+            let z3d_foot = 20.0 + CGFloat(footstretch)
+            
+            // Check if user is focusing on footplate settings to zoom in closer
+            let isZoomedIn = selectedField == .footplateAngle || selectedField == .footplateHeight
+            
+            // Base zoom is much closer when zoomed in to clearly show heel height and angle
+            let baseZoom: CGFloat = isZoomedIn ? 3.5 : 1.5
+            let zoom: CGFloat = baseZoom * userZoomFactor
+            
+            // Center shift moves focus directly to the footplate area when zoomed in
+            let centerShiftZ: CGFloat = isZoomedIn ? (z3d_foot + 10.0) : 42.0
+            let centerShiftY: CGFloat = isZoomedIn ? (heelsY3d + 8.0) : 0.0
+            let distance: CGFloat = isZoomedIn ? 40.0 : 100.0
+            
+            // Calculates camera-space coordinates including drag rotation & zoom shifts
+            let getRotatedPoint = { (p: Point3D) -> RotatedPoint in
+                let dx = p.x
+                let dy = p.y - centerShiftY
+                let dz = p.z - centerShiftZ
+                
+                let yawRad = dragRotationY * .pi / 180.0
+                let rx = dx * cos(yawRad) - dz * sin(yawRad)
+                let rz = dx * sin(yawRad) + dz * cos(yawRad)
+                
+                let pitchRad = dragRotationX * .pi / 180.0
+                let ry = dy * cos(pitchRad) - rz * sin(pitchRad)
+                let rz2 = dy * sin(pitchRad) + rz * cos(pitchRad)
+                
+                return RotatedPoint(rx: rx, ry: ry, rz2: rz2)
+            }
+            
+            // Near clipping plane to prevent divide-by-zero or backward projection stretch
+            let nearClip: CGFloat = 3.0
+            
+            let projectRotated = { (rp: RotatedPoint) -> CGPoint in
+                let factor = (rp.rz2 + distance) / distance
+                let x = centerlineX + (rp.rx * 1.35 * zoom) / factor
+                let y = h * 0.54 - (rp.ry * 1.2 * zoom) / factor
+                return CGPoint(x: x, y: y)
+            }
+            
+            // 3D to 2D projection function
+            let project = { (x3d: CGFloat, y3d: CGFloat, z3d: CGFloat) -> CGPoint in
+                let rp = getRotatedPoint(Point3D(x: x3d, y: y3d, z: z3d))
+                return projectRotated(rp)
+            }
+            
+            // Checks if a 3D point is in front of the near clipping plane
+            let isPointVisible = { (p: Point3D) -> Bool in
+                let rp = getRotatedPoint(p)
+                return rp.rz2 + distance >= nearClip
+            }
+            
+            // Clips a 3D polygon at the near clipping plane using Sutherland-Hodgman
+            let clipPolygon = { (vertices: [Point3D]) -> [CGPoint] in
+                var inputList = vertices.map { getRotatedPoint($0) }
+                if inputList.isEmpty { return [] }
+                
+                var outputList: [RotatedPoint] = []
+                
+                for i in 0..<inputList.count {
+                    let current = inputList[i]
+                    let prev = inputList[(i + inputList.count - 1) % inputList.count]
+                    
+                    let dCurrent = current.rz2 + distance
+                    let dPrev = prev.rz2 + distance
+                    
+                    if dCurrent >= nearClip {
+                        if dPrev < nearClip {
+                            let t = (nearClip - dPrev) / (dCurrent - dPrev)
+                            let rx = prev.rx + t * (current.rx - prev.rx)
+                            let ry = prev.ry + t * (current.ry - prev.ry)
+                            let rz2 = -distance + nearClip
+                            outputList.append(RotatedPoint(rx: rx, ry: ry, rz2: rz2))
+                        }
+                        outputList.append(current)
+                    } else if dPrev >= nearClip {
+                        let t = (nearClip - dPrev) / (dCurrent - dPrev)
+                        let rx = prev.rx + t * (current.rx - prev.rx)
+                        let ry = prev.ry + t * (current.ry - prev.ry)
+                        let rz2 = -distance + nearClip
+                        outputList.append(RotatedPoint(rx: rx, ry: ry, rz2: rz2))
+                    }
+                }
+                
+                return outputList.map { projectRotated($0) }
+            }
+            
+            let drawClippedPolygon = { (vertices: [Point3D], path: inout Path) in
+                let projectedPoints = clipPolygon(vertices)
+                guard projectedPoints.count >= 3 else { return }
+                path.move(to: projectedPoints[0])
+                for i in 1..<projectedPoints.count {
+                    path.addLine(to: projectedPoints[i])
+                }
+                path.closeSubpath()
+            }
+            
+            let drawClippedLine = { (p1: Point3D, p2: Point3D, path: inout Path) in
+                let rp1 = getRotatedPoint(p1)
+                let rp2 = getRotatedPoint(p2)
+                
+                let d1 = rp1.rz2 + distance
+                let d2 = rp2.rz2 + distance
+                
+                if d1 < nearClip && d2 < nearClip {
+                    return
+                }
+                
+                if d1 >= nearClip && d2 >= nearClip {
+                    path.move(to: projectRotated(rp1))
+                    path.addLine(to: projectRotated(rp2))
+                } else {
+                    let t = (nearClip - d1) / (d2 - d1)
+                    let rx_clip = rp1.rx + t * (rp2.rx - rp1.rx)
+                    let ry_clip = rp1.ry + t * (rp2.ry - rp1.ry)
+                    let rz2_clip = -distance + nearClip
+                    let rp_clip = RotatedPoint(rx: rx_clip, ry: ry_clip, rz2: rz2_clip)
+                    
+                    let pt_clip = projectRotated(rp_clip)
+                    if d1 >= nearClip {
+                        path.move(to: projectRotated(rp1))
+                        path.addLine(to: pt_clip)
+                    } else {
+                        path.move(to: pt_clip)
+                        path.addLine(to: projectRotated(rp2))
+                    }
+                }
+            }
+            
+            let hullHalfWidthVal: CGFloat = isScull ? 16.0 : 26.0
+            let angleRad = CGFloat(footplateAngle) * .pi / 180.0
+            let plateLen3d: CGFloat = 20.0
+            let z3d_top = z3d_foot + plateLen3d * cos(angleRad)
+            let y3d_top = heelsY3d + plateLen3d * sin(angleRad)
+            let isFootplateSelected = selectedField == .footplateAngle || selectedField == .footplateHeight
+            
+            let cosA = cos(angleRad)
+            let sinA = sin(angleRad)
+            
+            // Helper to get Point3D on the shoe surface relative to footplate surface
+            let getShoePoint = { (shoeCenterX: CGFloat, u: CGFloat, v: CGFloat, height: CGFloat) -> Point3D in
+                let zPlate = z3d_foot + v * cosA
+                let yPlate = heelsY3d + v * sinA
+                let y = yPlate + height * cosA
+                let z = zPlate - height * sinA
+                let x = shoeCenterX + u
+                return Point3D(x: x, y: y, z: z)
+            }
+            
+            // Draw detailed parts of a rowing shoe (Sole, Body, Toe, Heel, Straps, Stripes)
+            let drawDetailedShoe = { (shoeCenterX: CGFloat, path: inout Path, drawPart: String) in
+                let pt = { (u: CGFloat, v: CGFloat, h: CGFloat) -> Point3D in
+                    getShoePoint(shoeCenterX, u, v, h)
+                }
+                
+                if drawPart == "sole" {
+                    let soleTop = [
+                        pt(-1.8, 1.0, 0.8),
+                        pt(-2.0, 5.0, 0.8),
+                        pt(-2.5, 10.0, 0.8),
+                        pt(-3.1, 14.0, 0.8),
+                        pt(-2.7, 17.5, 0.8),
+                        pt(-1.5, 19.5, 0.8),
+                        pt(0.5, 19.5, 0.8),
+                        pt(2.1, 17.5, 0.8),
+                        pt(2.5, 14.0, 0.8),
+                        pt(1.7, 10.0, 0.8),
+                        pt(1.7, 5.0, 0.8),
+                        pt(1.8, 1.0, 0.8)
+                    ]
+                    drawClippedPolygon(soleTop, &path)
+                } 
+                else if drawPart == "sole_side" {
+                    let soleProfile = [
+                        (-1.8, 1.0),
+                        (-2.0, 5.0),
+                        (-2.5, 10.0),
+                        (-3.1, 14.0),
+                        (-2.7, 17.5),
+                        (-1.5, 19.5),
+                        (0.5, 19.5),
+                        (2.1, 17.5),
+                        (2.5, 14.0),
+                        (1.7, 10.0),
+                        (1.7, 5.0),
+                        (1.8, 1.0)
+                    ]
+                    for i in 0..<soleProfile.count {
+                        let nextIndex = (i + 1) % soleProfile.count
+                        let p1 = soleProfile[i]
+                        let p2 = soleProfile[nextIndex]
+                        
+                        let sideVerts = [
+                            pt(p1.0, p1.1, 0),
+                            pt(p1.0, p1.1, 0.8),
+                            pt(p2.0, p2.1, 0.8),
+                            pt(p2.0, p2.1, 0)
+                        ]
+                        drawClippedPolygon(sideVerts, &path)
+                    }
+                } 
+                else if drawPart == "toe_cap" {
+                    let toeLeft = [
+                        pt(-3.1, 14.0, 0.8),
+                        pt(-2.0, 14.0, 2.8),
+                        pt(0.0, 14.0, 3.2),
+                        pt(0.0, 17.5, 2.2),
+                        pt(-2.0, 17.5, 1.8),
+                        pt(-2.7, 17.5, 0.8)
+                    ]
+                    drawClippedPolygon(toeLeft, &path)
+                    
+                    let toeRight = [
+                        pt(0.0, 14.0, 3.2),
+                        pt(1.5, 14.0, 2.8),
+                        pt(2.5, 14.0, 0.8),
+                        pt(2.1, 17.5, 0.8),
+                        pt(1.5, 17.5, 1.8),
+                        pt(0.0, 17.5, 2.2)
+                    ]
+                    drawClippedPolygon(toeRight, &path)
+                    
+                    let tipLeft = [
+                        pt(-2.7, 17.5, 0.8),
+                        pt(-2.0, 17.5, 1.8),
+                        pt(0.0, 17.5, 2.2),
+                        pt(0.0, 19.5, 1.3),
+                        pt(-1.5, 19.5, 0.8)
+                    ]
+                    drawClippedPolygon(tipLeft, &path)
+                    
+                    let tipRight = [
+                        pt(0.0, 17.5, 2.2),
+                        pt(1.5, 17.5, 1.8),
+                        pt(2.1, 17.5, 0.8),
+                        pt(0.5, 19.5, 0.8),
+                        pt(0.0, 19.5, 1.3)
+                    ]
+                    drawClippedPolygon(tipRight, &path)
+                } 
+                else if drawPart == "body" {
+                    let bodyLeft = [
+                        pt(-3.1, 14.0, 0.8),
+                        pt(-2.0, 14.0, 2.8),
+                        pt(-1.8, 10.0, 4.0),
+                        pt(-2.5, 10.0, 0.8)
+                    ]
+                    drawClippedPolygon(bodyLeft, &path)
+                    
+                    let bodyRight = [
+                        pt(2.5, 14.0, 0.8),
+                        pt(1.5, 14.0, 2.8),
+                        pt(1.2, 10.0, 4.0),
+                        pt(1.7, 10.0, 0.8)
+                    ]
+                    drawClippedPolygon(bodyRight, &path)
+                    
+                    let tongue = [
+                        pt(-2.0, 14.0, 2.8),
+                        pt(0.0, 14.0, 3.2),
+                        pt(1.5, 14.0, 2.8),
+                        pt(1.2, 10.0, 4.0),
+                        pt(0.0, 10.0, 4.4),
+                        pt(-1.8, 10.0, 4.0)
+                    ]
+                    drawClippedPolygon(tongue, &path)
+                    
+                    let midLeft = [
+                        pt(-2.5, 10.0, 0.8),
+                        pt(-1.8, 10.0, 4.0),
+                        pt(-1.5, 6.0, 3.8),
+                        pt(-2.0, 6.0, 0.8)
+                    ]
+                    drawClippedPolygon(midLeft, &path)
+                    
+                    let midRight = [
+                        pt(1.7, 10.0, 0.8),
+                        pt(1.2, 10.0, 4.0),
+                        pt(1.2, 6.0, 3.8),
+                        pt(1.7, 6.0, 0.8)
+                    ]
+                    drawClippedPolygon(midRight, &path)
+                    
+                    let instep = [
+                        pt(-1.8, 10.0, 4.0),
+                        pt(0.0, 10.0, 4.4),
+                        pt(1.2, 10.0, 4.0),
+                        pt(1.2, 6.0, 3.8),
+                        pt(0.0, 6.0, 4.2),
+                        pt(-1.5, 6.0, 3.8)
+                    ]
+                    drawClippedPolygon(instep, &path)
+                } 
+                else if drawPart == "heel" {
+                    let heelLeft = [
+                        pt(-2.0, 6.0, 0.8),
+                        pt(-1.5, 6.0, 3.8),
+                        pt(0.0, 1.0, 2.6),
+                        pt(-1.8, 1.0, 0.8)
+                    ]
+                    drawClippedPolygon(heelLeft, &path)
+                    
+                    let heelRight = [
+                        pt(1.7, 6.0, 0.8),
+                        pt(1.2, 6.0, 3.8),
+                        pt(0.0, 1.0, 2.6),
+                        pt(1.8, 1.0, 0.8)
+                    ]
+                    drawClippedPolygon(heelRight, &path)
+                } 
+                else if drawPart == "straps" {
+                    let strap1 = [
+                        pt(-2.8, 11.5, 1.2),
+                        pt(-1.0, 11.5, 3.6),
+                        pt(0.8, 11.5, 3.6),
+                        pt(2.2, 11.5, 1.2),
+                        pt(2.0, 12.5, 1.2),
+                        pt(0.8, 12.5, 3.6),
+                        pt(-1.0, 12.5, 3.6),
+                        pt(-2.6, 12.5, 1.2)
+                    ]
+                    drawClippedPolygon(strap1, &path)
+                    
+                    let strap2 = [
+                        pt(-2.3, 8.5, 1.2),
+                        pt(-1.0, 8.5, 3.9),
+                        pt(0.8, 8.5, 3.9),
+                        pt(1.7, 8.5, 1.2),
+                        pt(1.7, 9.5, 1.2),
+                        pt(0.8, 9.5, 3.9),
+                        pt(-1.0, 9.5, 3.9),
+                        pt(-2.1, 9.5, 1.2)
+                    ]
+                    drawClippedPolygon(strap2, &path)
+                } 
+                else if drawPart == "stripes" {
+                    drawClippedLine(pt(-2.4, 8.8, 1.5), pt(-2.0, 10.8, 3.0), &path)
+                    drawClippedLine(pt(-2.6, 8.3, 1.5), pt(-2.2, 10.3, 3.0), &path)
+                    drawClippedLine(pt(-2.2, 9.3, 1.5), pt(-1.8, 11.3, 3.0), &path)
+                    
+                    drawClippedLine(pt(2.1, 8.8, 1.5), pt(1.7, 10.8, 3.0), &path)
+                    drawClippedLine(pt(2.3, 8.3, 1.5), pt(1.9, 10.3, 3.0), &path)
+                    drawClippedLine(pt(1.9, 9.3, 1.5), pt(1.5, 11.3, 3.0), &path)
+                }
+            }
+            
+            // Riggers are only rendered when NOT focusing on footplate settings
+            let showRiggers = !(selectedField == .footplateAngle || selectedField == .footplateHeight || selectedField == .footstretch)
+            
+            ZStack {
+                // Drag Rotation Hint overlay
+                Text(LocalizationManager.shared.language == .japanese ? "ドラッグして回転・ピンチでズーム" : "Drag to rotate, pinch to zoom")
+                    .font(.system(size: 8, weight: .semibold, design: .rounded))
+                    .foregroundColor(Theme.textSecondary.opacity(0.5))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.3).cornerRadius(6))
+                    .position(x: w - 75, y: 15)
+                
+                // 3D Cockpit Deck Floor (Clipped)
+                let floorVertices = [
+                    Point3D(x: -hullHalfWidthVal, y: 0, z: 5),
+                    Point3D(x: hullHalfWidthVal, y: 0, z: 5),
+                    Point3D(x: hullHalfWidthVal, y: 0, z: 85),
+                    Point3D(x: -hullHalfWidthVal, y: 0, z: 85)
+                ]
+                Path { path in
+                    drawClippedPolygon(floorVertices, &path)
+                }
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: "1F2E35"), Color(hex: "0D161A")],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                
+                // Slide Rails (Cut at appropriate position dynamically relative to footplate)
+                let seatZ: CGFloat = 20
+                let railsEndZ = max(seatZ + 4, z3d_foot - 3.0)
+                
+                Path { path in
+                    drawClippedLine(Point3D(x: -6, y: 2, z: 8), Point3D(x: -6, y: 2, z: railsEndZ), &path)
+                }
+                .stroke(LinearGradient(colors: [.gray, .white, .gray], startPoint: .top, endPoint: .bottom), lineWidth: 2)
+                
+                Path { path in
+                    drawClippedLine(Point3D(x: 6, y: 2, z: 8), Point3D(x: 6, y: 2, z: railsEndZ), &path)
+                }
+                .stroke(LinearGradient(colors: [.gray, .white, .gray], startPoint: .top, endPoint: .bottom), lineWidth: 2)
+                
+                // Seat
+                let seatVertices = [
+                    Point3D(x: -12, y: 4, z: seatZ + 12),
+                    Point3D(x: 12, y: 4, z: seatZ + 12),
+                    Point3D(x: 12, y: 4, z: seatZ),
+                    Point3D(x: -12, y: 4, z: seatZ)
+                ]
+                Path { path in
+                    drawClippedPolygon(seatVertices, &path)
+                }
+                .fill(Color(hex: "333333"))
+                
+                // Seat wheels (Visibility checked)
+                Group {
+                    if isPointVisible(Point3D(x: -6, y: 2, z: seatZ + 10)) {
+                        Circle()
+                            .fill(Color.black)
+                            .frame(width: 4, height: 4)
+                            .position(project(-6, 2, seatZ + 10))
+                    }
+                    
+                    if isPointVisible(Point3D(x: 6, y: 2, z: seatZ + 10)) {
+                        Circle()
+                            .fill(Color.black)
+                            .frame(width: 4, height: 4)
+                            .position(project(6, 2, seatZ + 10))
+                    }
+                    
+                    if isPointVisible(Point3D(x: -6, y: 2, z: seatZ + 2)) {
+                        Circle()
+                            .fill(Color.black)
+                            .frame(width: 4, height: 4)
+                            .position(project(-6, 2, seatZ + 2))
+                    }
+                    
+                    if isPointVisible(Point3D(x: 6, y: 2, z: seatZ + 2)) {
+                        Circle()
+                            .fill(Color.black)
+                            .frame(width: 4, height: 4)
+                            .position(project(6, 2, seatZ + 2))
+                    }
+                }
+                
+                // Footplate Mount / Side Tracks (Clipped)
+                Path { path in
+                    drawClippedLine(Point3D(x: -hullHalfWidthVal + 1.5, y: heelsY3d - 3, z: z3d_foot - 3), Point3D(x: -hullHalfWidthVal + 1.5, y: y3d_top + 3, z: z3d_top + 3), &path)
+                }
+                .stroke(Color.gray.opacity(0.6), lineWidth: 1.5)
+                
+                Path { path in
+                    drawClippedLine(Point3D(x: hullHalfWidthVal - 1.5, y: heelsY3d - 3, z: z3d_foot - 3), Point3D(x: hullHalfWidthVal - 1.5, y: y3d_top + 3, z: z3d_top + 3), &path)
+                }
+                .stroke(Color.gray.opacity(0.6), lineWidth: 1.5)
+                
+                Path { path in
+                    drawClippedLine(Point3D(x: -hullHalfWidthVal + 1.5, y: heelsY3d, z: z3d_foot), Point3D(x: hullHalfWidthVal - 1.5, y: heelsY3d, z: z3d_foot), &path)
+                }
+                .stroke(Color.gray, lineWidth: 2)
+                
+                // Footplate Board (Clipped)
+                let footplateVertices = [
+                    Point3D(x: -11, y: heelsY3d, z: z3d_foot),
+                    Point3D(x: 11, y: heelsY3d, z: z3d_foot),
+                    Point3D(x: 11, y: y3d_top, z: z3d_top),
+                    Point3D(x: -11, y: y3d_top, z: z3d_top)
+                ]
+                Path { path in
+                    drawClippedPolygon(footplateVertices, &path)
+                }
+                .fill(isFootplateSelected ? Theme.accent.opacity(0.15) : Color(hex: "2A2A2A"))
+                .overlay(
+                    Path { path in
+                        drawClippedPolygon(footplateVertices, &path)
+                    }
+                    .stroke(isFootplateSelected ? Theme.accent : Color.gray.opacity(0.5), lineWidth: isFootplateSelected ? 2.0 : 1.0)
+                )
+                
+                // Side thickness for 3D look (Clipped)
+                let boardLeftThickness = [
+                    Point3D(x: -11, y: heelsY3d, z: z3d_foot),
+                    getShoePoint(-11, 0, 0, 1.5),
+                    getShoePoint(-11, 0, plateLen3d, 1.5),
+                    Point3D(x: -11, y: y3d_top, z: z3d_top)
+                ]
+                Path { path in
+                    drawClippedPolygon(boardLeftThickness, &path)
+                }
+                .fill(Color(hex: "1C1C1C"))
+                
+                let boardRightThickness = [
+                    Point3D(x: 11, y: heelsY3d, z: z3d_foot),
+                    getShoePoint(11, 0, 0, 1.5),
+                    getShoePoint(11, 0, plateLen3d, 1.5),
+                    Point3D(x: 11, y: y3d_top, z: z3d_top)
+                ]
+                Path { path in
+                    drawClippedPolygon(boardRightThickness, &path)
+                }
+                .fill(Color(hex: "1C1C1C"))
+                
+                // 3D Shoes (Left and Right, rendered back-to-front / component sorted)
+                // Left Shoe
+                Path { path in drawDetailedShoe(-5.0, &path, "sole_side") }.fill(Color(hex: "0F0F0F"))
+                Path { path in drawDetailedShoe(-5.0, &path, "sole") }.fill(Color(hex: "1C1C1C"))
+                Path { path in drawDetailedShoe(-5.0, &path, "toe_cap") }.fill(Color(hex: "222222"))
+                Path { path in drawDetailedShoe(-5.0, &path, "toe_cap") }.stroke(Color.white.opacity(0.12), lineWidth: 1.0)
+                Path { path in drawDetailedShoe(-5.0, &path, "body") }.fill(Color(hex: "007AFF"))
+                Path { path in drawDetailedShoe(-5.0, &path, "body") }.stroke(Color.white.opacity(0.15), lineWidth: 1.0)
+                Path { path in drawDetailedShoe(-5.0, &path, "heel") }.fill(Color(hex: "181818"))
+                Path { path in drawDetailedShoe(-5.0, &path, "heel") }.stroke(Color.white.opacity(0.12), lineWidth: 1.0)
+                Path { path in drawDetailedShoe(-5.0, &path, "straps") }.fill(Color.orange)
+                Path { path in drawDetailedShoe(-5.0, &path, "stripes") }.stroke(Color.white.opacity(0.85), lineWidth: 1.2)
+                
+                // Right Shoe
+                Path { path in drawDetailedShoe(5.0, &path, "sole_side") }.fill(Color(hex: "0F0F0F"))
+                Path { path in drawDetailedShoe(5.0, &path, "sole") }.fill(Color(hex: "1C1C1C"))
+                Path { path in drawDetailedShoe(5.0, &path, "toe_cap") }.fill(Color(hex: "222222"))
+                Path { path in drawDetailedShoe(5.0, &path, "toe_cap") }.stroke(Color.white.opacity(0.12), lineWidth: 1.0)
+                Path { path in drawDetailedShoe(5.0, &path, "body") }.fill(Color(hex: "007AFF"))
+                Path { path in drawDetailedShoe(5.0, &path, "body") }.stroke(Color.white.opacity(0.15), lineWidth: 1.0)
+                Path { path in drawDetailedShoe(5.0, &path, "heel") }.fill(Color(hex: "181818"))
+                Path { path in drawDetailedShoe(5.0, &path, "heel") }.stroke(Color.white.opacity(0.12), lineWidth: 1.0)
+                Path { path in drawDetailedShoe(5.0, &path, "straps") }.fill(Color.orange)
+                Path { path in drawDetailedShoe(5.0, &path, "stripes") }.stroke(Color.white.opacity(0.85), lineWidth: 1.2)
+                
+                // 3D Riggers (Only shown if focused setting doesn't hide them)
+                if showRiggers {
+                    let z3d_pin: CGFloat = 40
+                    let pinHeight3d = CGFloat(workHeight)
+                    
+                    Path { path in
+                        drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: 22), Point3D(x: halfSpanVal, y: pinHeight3d, z: z3d_pin), &path)
+                        drawClippedLine(Point3D(x: halfSpanVal, y: pinHeight3d, z: z3d_pin), Point3D(x: hullHalfWidthVal, y: 12, z: 58), &path)
+                    }
+                    .stroke(LinearGradient(colors: [.gray, .white, .gray], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    .shadow(radius: 2)
+                    
+                    if isScull {
+                        Path { path in
+                            drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: 22), Point3D(x: -halfSpanVal, y: pinHeight3d, z: z3d_pin), &path)
+                            drawClippedLine(Point3D(x: -halfSpanVal, y: pinHeight3d, z: z3d_pin), Point3D(x: -hullHalfWidthVal, y: 12, z: 58), &path)
+                        }
+                        .stroke(LinearGradient(colors: [.gray, .white, .gray], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                        .shadow(radius: 2)
+                    }
+                    
+                    Path { path in
+                        drawClippedLine(Point3D(x: halfSpanVal, y: pinHeight3d - 4, z: z3d_pin), Point3D(x: halfSpanVal, y: pinHeight3d + 6, z: z3d_pin), &path)
+                    }
+                    .stroke(Color.black, lineWidth: 2.5)
+                    
+                    if isScull {
+                        Path { path in
+                            drawClippedLine(Point3D(x: -halfSpanVal, y: pinHeight3d - 4, z: z3d_pin), Point3D(x: -halfSpanVal, y: pinHeight3d + 6, z: z3d_pin), &path)
+                        }
+                        .stroke(Color.black, lineWidth: 2.5)
+                    }
+                    
+                    if isPointVisible(Point3D(x: halfSpanVal, y: pinHeight3d, z: z3d_pin)) {
+                        Circle()
+                            .fill(Color(hex: "1A1A1A"))
+                            .frame(width: 8, height: 8)
+                            .overlay(Circle().stroke(Theme.accent.opacity(0.8), lineWidth: 1))
+                            .position(project(halfSpanVal, pinHeight3d, z3d_pin))
+                    }
+                    
+                    if isScull && isPointVisible(Point3D(x: -halfSpanVal, y: pinHeight3d, z: z3d_pin)) {
+                        Circle()
+                            .fill(Color(hex: "1A1A1A"))
+                            .frame(width: 8, height: 8)
+                            .overlay(Circle().stroke(Theme.accent.opacity(0.8), lineWidth: 1))
+                            .position(project(-halfSpanVal, pinHeight3d, z3d_pin))
+                    }
+                }
+                
+                // Footplate Height Indicator: vertical line from heel of left shoe up to seat level
+                if selectedField == .footplateHeight {
+                    // Heel point of the left shoe: shoeCenterX = -5, u=0, v=1.0 (heel end), height=0.8 (sole)
+                    let heelPt3D = getShoePoint(-5.0, 0, 1.0, 0.8)
+                    // Seat-level point directly above the heel (Y=4 is seat surface height)
+                    let seatAboveHeel = Point3D(x: heelPt3D.x, y: 4.0, z: heelPt3D.z)
+                    
+                    // Vertical measurement line: heel → seat level
+                    Path { path in
+                        drawClippedLine(heelPt3D, seatAboveHeel, &path)
+                    }
+                    .stroke(Theme.accent, lineWidth: 2.0)
+                    
+                    // Dashed horizontal guide at seat level
+                    Path { path in
+                        drawClippedLine(
+                            Point3D(x: heelPt3D.x - 8, y: 4.0, z: heelPt3D.z),
+                            Point3D(x: heelPt3D.x + 8, y: 4.0, z: heelPt3D.z),
+                            &path
+                        )
+                    }
+                    .stroke(Theme.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    
+                    // Dashed horizontal guide at heel level
+                    Path { path in
+                        drawClippedLine(
+                            Point3D(x: heelPt3D.x - 8, y: heelPt3D.y, z: heelPt3D.z),
+                            Point3D(x: heelPt3D.x + 8, y: heelPt3D.y, z: heelPt3D.z),
+                            &path
+                        )
+                    }
+                    .stroke(Theme.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    
+                    // Heel dot marker
+                    if isPointVisible(heelPt3D) {
+                        Circle()
+                            .fill(Theme.accent)
+                            .frame(width: 5, height: 5)
+                            .position(project(heelPt3D.x, heelPt3D.y, heelPt3D.z))
+                    }
+                    
+                    // Label at midpoint
+                    let midY3D = (heelPt3D.y + 4.0) / 2.0
+                    if isPointVisible(Point3D(x: heelPt3D.x, y: midY3D, z: heelPt3D.z)) {
+                        let displayVal = max(0.0, min(25.0, footplateHeight))
+                        let pMid = project(heelPt3D.x, midY3D, heelPt3D.z)
+                        Text(String(format: "Heel Depth".localized + ": %.1f cm", displayVal))
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .foregroundColor(Theme.accent)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.black.opacity(0.6).cornerRadius(3))
+                            .position(x: pMid.x - 40, y: pMid.y)
+                    }
+                }
+                
+                // Footplate Angle Arc Indicator in 3D (shown when angle field focused)
+                if selectedField == .footplateAngle {
+                    // Draw arc from horizontal (floor plane) to the footplate surface at the heel end
+                    // Visualise using two reference lines: horizontal and along the plate, plus a 2D arc overlaid
+                    // Horizontal reference at heel edge (z = z3d_foot, y = heelsY3d)
+                    let arcOrigin3D = Point3D(x: -13, y: heelsY3d, z: z3d_foot)
+                    let arcHoriz3D  = Point3D(x: -13, y: heelsY3d, z: z3d_foot + 12)
+                    let arcPlate3D  = getShoePoint(-13, 0, 12, 0)
+                    
+                    // Horizontal reference line
+                    Path { path in
+                        drawClippedLine(arcOrigin3D, arcHoriz3D, &path)
+                    }
+                    .stroke(Color.white.opacity(0.4), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    
+                    // Line along footplate surface
+                    Path { path in
+                        drawClippedLine(arcOrigin3D, arcPlate3D, &path)
+                    }
+                    .stroke(Theme.accent.opacity(0.7), lineWidth: 1.5)
+                    
+                    // Footplate angle label
+                    if isPointVisible(arcOrigin3D) {
+                        let pOrigin = project(arcOrigin3D.x, arcOrigin3D.y, arcOrigin3D.z)
+                        Text(String(format: "%.0f°", footplateAngle))
+                            .font(.system(size: 9, weight: .black, design: .rounded))
+                            .foregroundColor(Theme.accent)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.black.opacity(0.6).cornerRadius(3))
+                            .position(x: pOrigin.x - 28, y: pOrigin.y - 10)
+                    }
+                }
+                
+                // Floating Camera Controls Panel
+                VStack(spacing: 6) {
+                    Button(action: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                            userZoomFactor = min(3.5, userZoomFactor + 0.25)
+                        }
+                    }) {
+                        Image(systemName: "plus.magnifyingglass")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 26, height: 26)
+                            .background(Color.black.opacity(0.55))
+                            .clipShape(Circle())
+                    }
+                    
+                    Button(action: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                            userZoomFactor = max(0.4, userZoomFactor - 0.25)
+                        }
+                    }) {
+                        Image(systemName: "minus.magnifyingglass")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 26, height: 26)
+                            .background(Color.black.opacity(0.55))
+                            .clipShape(Circle())
+                    }
+                    
+                    Button(action: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            dragRotationX = -15.0
+                            dragRotationY = 20.0
+                            userZoomFactor = 1.0
+                        }
+                    }) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 26, height: 26)
+                            .background(Color.black.opacity(0.55))
+                            .clipShape(Circle())
+                    }
+                }
+                .padding(8)
+                .position(x: w - 20, y: h - 45)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { gesture in
+                        dragRotationY = previousRotationY + gesture.translation.width * 0.4
+                        dragRotationX = max(-45, min(45, previousRotationX - gesture.translation.height * 0.4))
+                    }
+                    .onEnded { gesture in
+                        previousRotationY = dragRotationY
+                        previousRotationX = dragRotationX
+                    }
+            )
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { val in
+                        userZoomFactor = max(0.4, min(3.5, pinchScale * val))
+                    }
+                    .onEnded { val in
+                        pinchScale = userZoomFactor
+                    }
+            )
+        }
+    }
+    
+    // MARK: - Side View Diagram (Height, Pitch, Lateral Pitch, Footplate Height)
+    private var sideViewDiagram: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let centerX = w * 0.5
+            let seatY = h * 0.65
+            let hullBottomY = h * 0.85
+            let isScull = oarType == .scull
+            let halfSpanVal = isScull ? (span / 2.0) : span
+            let scale: CGFloat = 1.3
+            let pinY = seatY - CGFloat(workHeight) * scale
+            let pinRightX = centerX + CGFloat(halfSpanVal) * scale
+            let pinLeftX = centerX - CGFloat(halfSpanVal) * scale
+            let hullHalfWidth = (isScull ? 15.0 : 25.0) * scale
+            let gunwaleY = seatY - 5.0
+            
+            ZStack {
+                // Hull outline (Transverse Cross-section)
+                Path { path in
+                    path.move(to: CGPoint(x: centerX - hullHalfWidth, y: gunwaleY))
+                    path.addQuadCurve(to: CGPoint(x: centerX + hullHalfWidth, y: gunwaleY), control: CGPoint(x: centerX, y: hullBottomY))
+                    path.closeSubpath()
+                }
+                .fill(LinearGradient(colors: [Color(hex: "333333"), Color(hex: "1A1A1A")], startPoint: .top, endPoint: .bottom))
+                .overlay(Path { path in
+                    path.move(to: CGPoint(x: centerX - hullHalfWidth, y: gunwaleY))
+                    path.addQuadCurve(to: CGPoint(x: centerX + hullHalfWidth, y: gunwaleY), control: CGPoint(x: centerX, y: hullBottomY))
+                }.stroke(Color.gray.opacity(0.5), lineWidth: 1.5))
+                
+                // Seat (Cross-section view at seat level)
+                Path { path in
+                    path.move(to: CGPoint(x: centerX - 12, y: seatY))
+                    path.addLine(to: CGPoint(x: centerX + 12, y: seatY))
+                    path.addLine(to: CGPoint(x: centerX + 10, y: seatY + 4))
+                    path.addLine(to: CGPoint(x: centerX - 10, y: seatY + 4))
+                    path.closeSubpath()
+                }
+                .fill(Color(hex: "444444"))
+                .overlay(
+                    Path { path in
+                        path.move(to: CGPoint(x: centerX - 12, y: seatY))
+                        path.addLine(to: CGPoint(x: centerX + 12, y: seatY))
+                    }
+                    .stroke(Color.gray, lineWidth: 1.5)
+                )
+                
+                // Riggers
+                Path { path in
+                    path.move(to: CGPoint(x: centerX + hullHalfWidth, y: gunwaleY))
+                    path.addLine(to: CGPoint(x: pinRightX, y: pinY))
+                }
+                .stroke(selectedField == .workHeight || selectedField == .span ? Theme.accent : Color(hex: "777777"), lineWidth: 2)
+                
+                if isScull {
+                    Path { path in
+                        path.move(to: CGPoint(x: centerX - hullHalfWidth, y: gunwaleY))
+                        path.addLine(to: CGPoint(x: pinLeftX, y: pinY))
+                    }
+                    .stroke(selectedField == .workHeight || selectedField == .span ? Theme.accent : Color(hex: "777777"), lineWidth: 2)
+                }
+                
+                // Height (Work Height) Indicator in Side View
+                if selectedField == .workHeight {
+                    // Dashed line at seat level
+                    Path { path in
+                        path.move(to: CGPoint(x: centerX, y: seatY))
+                        path.addLine(to: CGPoint(x: pinRightX + 15, y: seatY))
+                    }
+                    .stroke(Theme.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    
+                    // Dashed line at pin level
+                    Path { path in
+                        path.move(to: CGPoint(x: pinRightX, y: pinY))
+                        path.addLine(to: CGPoint(x: pinRightX + 15, y: pinY))
+                    }
+                    .stroke(Theme.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    
+                    // Vertical dimension line
+                    DimensionLineVertical(
+                        startY: pinY,
+                        endY: seatY,
+                        x: pinRightX + 12,
+                        label: String(format: "Height".localized + ": %.1f cm", workHeight),
+                        isActive: true,
+                        arrowLeft: false
+                    )
+                }
+                
+                let lateralPitchDeg: CGFloat = {
+                    if lateralPitch == "4/4" { return 0.0 }
+                    if lateralPitch == "5/3" { return 1.0 }
+                    if lateralPitch == "6/2" { return 2.0 }
+                    if lateralPitch == "7/1" { return 3.0 }
+                    if let val = Double(lateralPitch) { return CGFloat(val) }
+                    return 0.0
+                }()
+                
+                ZStack {
+                    Path { path in
+                        path.move(to: CGPoint(x: pinRightX, y: pinY - 12))
+                        path.addLine(to: CGPoint(x: pinRightX, y: pinY + 16))
+                    }
+                    .stroke(Color.white.opacity(0.2), style: StrokeStyle(lineWidth: 1.0, dash: [2, 2]))
+                    
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.black)
+                        .frame(width: 6, height: 12)
+                        .rotationEffect(.degrees(selectedField == .pitch ? 10.0 : lateralPitchDeg), anchor: .center)
+                        .overlay(RoundedRectangle(cornerRadius: 1.5).stroke(selectedField == .pitch || selectedField == .lateralPitch ? Theme.accent : Color.gray, lineWidth: 1.0))
+                        .position(x: pinRightX, y: pinY)
+                }
+                
+                if isScull {
+                    ZStack {
+                        Path { path in
+                            path.move(to: CGPoint(x: pinLeftX, y: pinY - 12))
+                            path.addLine(to: CGPoint(x: pinLeftX, y: pinY + 16))
+                        }
+                        .stroke(Color.white.opacity(0.2), style: StrokeStyle(lineWidth: 1.0, dash: [2, 2]))
+                        
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(Color.black)
+                            .frame(width: 6, height: 12)
+                            .rotationEffect(.degrees(-lateralPitchDeg), anchor: .center)
+                            .overlay(RoundedRectangle(cornerRadius: 1.5).stroke(selectedField == .lateralPitch ? Theme.accent : Color.gray, lineWidth: 1.0))
+                            .position(x: pinLeftX, y: pinY)
+                    }
+                }
+                
+                if selectedField == .lateralPitch {
+                    Path { path in
+                        path.addArc(center: CGPoint(x: pinRightX, y: pinY), radius: 18, startAngle: .degrees(-90), endAngle: .degrees(-90 - (lateralPitchDeg == 0 ? 4 : lateralPitchDeg * 8.0)), clockwise: true)
+                    }
+                    .stroke(Theme.accent, lineWidth: 1.5)
+                    
+                    let bushingLabel = lateralPitch
+                    
+                    Text("\("Lateral Pitch".localized): \(bushingLabel)")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundColor(Theme.accent)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.black.opacity(0.6).cornerRadius(3))
+                        .position(x: pinRightX + 32, y: pinY - 15)
+                }
+            }
+        }
+    }
+    
+    private func getHighlightDescription() -> String? {
+        guard let field = selectedField else { return nil }
+        switch field {
+        case .span:
+            return "Span Highlight Description".localized
+        case .workHeight:
+            return "Height Highlight Description".localized
+        case .pitch:
+            return "Pitch Highlight Description".localized
+        case .lateralPitch:
+            return "Lateral Pitch Highlight Description".localized
+        case .footstretch:
+            return "Footstretch Highlight Description".localized
+        case .footplateAngle:
+            return "Footplate Angle Highlight Description".localized
+        case .footplateHeight:
+            return "Footplate Height Highlight Description".localized
+        case .oarLength:
+            return "Total Length Highlight Description".localized
+        case .oarInboard:
+            return "Inboard Highlight Description".localized
+        case .oarGripDiameter:
+            return "Grip Diameter Highlight Description".localized
+        }
+    }
+}
+
+// MARK: - Vertical Dimension Line Subview (Re-defined here)
+
+struct DimensionLineVertical: View {
+    let startY: CGFloat
+    let endY: CGFloat
+    let x: CGFloat
+    let label: String
+    let isActive: Bool
+    let arrowLeft: Bool
+    
+    var body: some View {
+        ZStack {
+            // Vertical line
+            Path { path in
+                path.move(to: CGPoint(x: x, y: startY))
+                path.addLine(to: CGPoint(x: x, y: endY))
+                
+                // Top bracket
+                path.move(to: CGPoint(x: x - 4, y: startY))
+                path.addLine(to: CGPoint(x: x + 4, y: startY))
+                
+                // Bottom bracket
+                path.move(to: CGPoint(x: x - 4, y: endY))
+                path.addLine(to: CGPoint(x: x + 4, y: endY))
+            }
+            .stroke(isActive ? Theme.accent : Color.gray.opacity(0.5), lineWidth: isActive ? 2.0 : 1.0)
+            
+            // Arrows
+            Path { path in
+                // Top arrow
+                path.move(to: CGPoint(x: x - 3, y: startY + 5))
+                path.addLine(to: CGPoint(x: x, y: startY))
+                path.addLine(to: CGPoint(x: x + 3, y: startY + 5))
+                
+                // Bottom arrow
+                path.move(to: CGPoint(x: x - 3, y: endY - 5))
+                path.addLine(to: CGPoint(x: x, y: endY))
+                path.addLine(to: CGPoint(x: x + 3, y: endY - 5))
+            }
+            .stroke(isActive ? Theme.accent : Color.gray.opacity(0.5), lineWidth: isActive ? 2.0 : 1.0)
+            
+            // Label Text
+            Text(label)
+                .font(.system(size: 9, weight: isActive ? .bold : .medium, design: .rounded))
+                .foregroundColor(isActive ? Theme.accent : Theme.textSecondary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .background(Color.black.opacity(0.5).cornerRadius(4))
+                .rotationEffect(.degrees(90))
+                .position(x: arrowLeft ? x - 25 : x + 25, y: (startY + endY) / 2)
+        }
+    }
+}
+
+// MARK: - 3D Coordinate Helper Structures
+
+struct Point3D {
+    var x: CGFloat
+    var y: CGFloat
+    var z: CGFloat
+}
+
+struct RotatedPoint {
+    var rx: CGFloat
+    var ry: CGFloat
+    var rz2: CGFloat
+}
+
+// MARK: - 3D Perspective Projection and Sutherland-Hodgman Clipping Projector
+
+struct Rigging3DProjector {
+    let centerlineX: CGFloat
+    let h: CGFloat
+    let zoom: CGFloat
+    let distance: CGFloat
+    let centerShiftY: CGFloat
+    let centerShiftZ: CGFloat
+    let dragRotationX: CGFloat
+    let dragRotationY: CGFloat
+    let nearClip: CGFloat = 3.0
+    
+    func getRotatedPoint(_ p: Point3D) -> RotatedPoint {
+        let dx = p.x
+        let dy = p.y - centerShiftY
+        let dz = p.z - centerShiftZ
+        
+        let yawRad = dragRotationY * .pi / 180.0
+        let rx = dx * cos(yawRad) - dz * sin(yawRad)
+        let rz = dx * sin(yawRad) + dz * cos(yawRad)
+        
+        let pitchRad = dragRotationX * .pi / 180.0
+        let ry = dy * cos(pitchRad) - rz * sin(pitchRad)
+        let rz2 = dy * sin(pitchRad) + rz * cos(pitchRad)
+        
+        return RotatedPoint(rx: rx, ry: ry, rz2: rz2)
+    }
+    
+    func projectRotated(_ rp: RotatedPoint) -> CGPoint {
+        let factor = (rp.rz2 + distance) / distance
+        let x = centerlineX + (rp.rx * 1.35 * zoom) / factor
+        let y = h * 0.5 - (rp.ry * 1.25 * zoom) / factor
+        return CGPoint(x: x, y: y)
+    }
+    
+    func project(_ p: Point3D) -> CGPoint {
+        return projectRotated(getRotatedPoint(p))
+    }
+    
+    func isPointVisible(_ p: Point3D) -> Bool {
+        let rp = getRotatedPoint(p)
+        return rp.rz2 + distance >= nearClip
+    }
+    
+    func clipPolygon(_ vertices: [Point3D]) -> [CGPoint] {
+        var inputList = vertices.map { getRotatedPoint($0) }
+        if inputList.isEmpty { return [] }
+        
+        var outputList: [RotatedPoint] = []
+        
+        for i in 0..<inputList.count {
+            let current = inputList[i]
+            let prev = inputList[(i + inputList.count - 1) % inputList.count]
+            
+            let dCurrent = current.rz2 + distance
+            let dPrev = prev.rz2 + distance
+            
+            if dCurrent >= nearClip {
+                if dPrev < nearClip {
+                    let t = (nearClip - dPrev) / (dCurrent - dPrev)
+                    let rx = prev.rx + t * (current.rx - prev.rx)
+                    let ry = prev.ry + t * (current.ry - prev.ry)
+                    let rz2 = -distance + nearClip
+                    outputList.append(RotatedPoint(rx: rx, ry: ry, rz2: rz2))
+                }
+                outputList.append(current)
+            } else if dPrev >= nearClip {
+                let t = (nearClip - dPrev) / (dCurrent - dPrev)
+                let rx = prev.rx + t * (current.rx - prev.rx)
+                let ry = prev.ry + t * (current.ry - prev.ry)
+                let rz2 = -distance + nearClip
+                outputList.append(RotatedPoint(rx: rx, ry: ry, rz2: rz2))
+            }
+        }
+        
+        return outputList.map { projectRotated($0) }
+    }
+    
+    func drawClippedPolygon(_ vertices: [Point3D], in path: inout Path) {
+        let projectedPoints = clipPolygon(vertices)
+        guard projectedPoints.count >= 3 else { return }
+        path.move(to: projectedPoints[0])
+        for i in 1..<projectedPoints.count {
+            path.addLine(to: projectedPoints[i])
+        }
+        path.closeSubpath()
+    }
+    
+    func drawClippedLine(_ p1: Point3D, _ p2: Point3D, in path: inout Path) {
+        let rp1 = getRotatedPoint(p1)
+        let rp2 = getRotatedPoint(p2)
+        
+        let d1 = rp1.rz2 + distance
+        let d2 = rp2.rz2 + distance
+        
+        if d1 < nearClip && d2 < nearClip {
+            return
+        }
+        
+        if d1 >= nearClip && d2 >= nearClip {
+            path.move(to: projectRotated(rp1))
+            path.addLine(to: projectRotated(rp2))
+        } else {
+            let t = (nearClip - d1) / (d2 - d1)
+            let rx_clip = rp1.rx + t * (rp2.rx - rp1.rx)
+            let ry_clip = rp1.ry + t * (rp2.ry - rp1.ry)
+            let rz2_clip = -distance + nearClip
+            let rp_clip = RotatedPoint(rx: rx_clip, ry: ry_clip, rz2: rz2_clip)
+            
+            let pt_clip = projectRotated(rp_clip)
+            if d1 >= nearClip {
+                path.move(to: projectRotated(rp1))
+                path.addLine(to: pt_clip)
+            } else {
+                path.move(to: pt_clip)
+                path.addLine(to: projectRotated(rp2))
+            }
+        }
+    }
+}

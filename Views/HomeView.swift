@@ -8,6 +8,7 @@ struct HomeView: View {
     private var weatherManager: WeatherManager { app.weatherManager }
     @ObservedObject private var themeManager = ThemeManager.shared
     @ObservedObject private var settingsManager = SettingsManager.shared
+    @ObservedObject private var riggingManager = RiggingManager.shared
     
     @State private var selectedFilter: RecordFilter = .both
     @State private var selectedMonth: Date = Date()
@@ -23,9 +24,26 @@ struct HomeView: View {
     @State private var selectedRecord: RowingRecord? = nil
     @State private var selectedManagerSession: ManagerSessionItem? = nil
     
+    private var isJA: Bool {
+        LocalizationManager.shared.language == .japanese
+    }
+    
+    private var welcomeMessage: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour >= 5 && hour < 12 {
+            return "Good Morning".localized
+        } else if hour >= 12 && hour < 18 {
+            return "Good Afternoon".localized
+        } else {
+            return "Good Evening".localized
+        }
+    }
+    
     var body: some View {
         // 依存関係を明示することで、レコードの追加・削除（インポート含む）時に確実にUIを再描画する
         let _ = recordManager.records
+        let monthRecords = recordManager.records(for: selectedMonth, filter: selectedFilter)
+        let monthStats = recordManager.stats(for: monthRecords)
         
         NavigationStack {
             ZStack {
@@ -35,17 +53,239 @@ struct HomeView: View {
                 
                 ScrollView {
                     VStack(spacing: 24) {
-                        // MARK: - Header / Status Card
+                        // MARK: - Welcome & Status Header
                         statusCard
                         
-                        // MARK: - Filters
-                        filterControls
+                        // MARK: - Action Grid
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(isJA ? "クイック操作" : "Quick Actions")
+                                .font(Theme.subHeaderFont())
+                                .foregroundColor(Theme.textMain)
+                                .padding(.horizontal)
+                            
+                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+                                QuickActionCard(
+                                    title: "Start Rowing".localized,
+                                    subtitle: isJA ? "水上計測を開始" : "Start water tracking",
+                                    icon: "figure.outdoor.rowing",
+                                    color: Theme.accent
+                                ) {
+                                    app.activeTab = 2
+                                }
+                                
+                                QuickActionCard(
+                                    title: "Erg Practice".localized,
+                                    subtitle: isJA ? "エルゴと連携" : "Connect with PM5",
+                                    icon: "figure.rower",
+                                    color: Theme.secondaryAccent
+                                ) {
+                                    app.activeTab = 3
+                                }
+                                
+                                QuickActionCard(
+                                    title: "Tide".localized,
+                                    subtitle: isJA ? "潮位情報の確認" : "Check tide graphs",
+                                    icon: "water.waves",
+                                    color: .cyan
+                                ) {
+                                    app.activeTab = 1
+                                }
+                                
+                                NavigationLink(destination: RiggingManagerView()) {
+                                    QuickActionCardView(
+                                        title: "Rigging & Oars".localized,
+                                        subtitle: isJA ? "艇やオールの設定" : "Configure boat & oars",
+                                        icon: "pencil.and.ruler.fill",
+                                        color: .purple
+                                    )
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .padding(.horizontal)
+                        }
                         
-                        // MARK: - Active Filter Chips
-                        activeFilterChips
+                        // MARK: - Monthly Stats Card
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text(isJA ? "今月の進捗" : "Monthly Progress")
+                                    .font(Theme.subHeaderFont())
+                                    .foregroundColor(Theme.textMain)
+                                Spacer()
+                                Text(formatDistanceKm(monthStats.distance))
+                                    .font(.headline)
+                                    .foregroundColor(Theme.accent)
+                            }
+                            
+                            let targetDistance: Double = 50000.0 // 50km
+                            let progress = min(1.0, monthStats.distance / targetDistance)
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color.white.opacity(0.1))
+                                            .frame(height: 8)
+                                        
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Theme.primaryGradient)
+                                            .frame(width: geo.size.width * CGFloat(progress), height: 8)
+                                    }
+                                }
+                                .frame(height: 8)
+                                
+                                HStack {
+                                    Text(String(format: isJA ? "目標 50km 中 %.1f%%" : "%.1f%% of 50km goal", progress * 100))
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.textSecondary)
+                                    Spacer()
+                                    Text("\(monthStats.count) " + (isJA ? "回のセッション" : "Sessions"))
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.textSecondary)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(Theme.cardBackground)
+                        .cornerRadius(16)
+                        .padding(.horizontal)
                         
-                        // MARK: - History
-                        historySection
+                        // MARK: - Active Rigging Config Card
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("Boat Rigging Profile".localized)
+                                    .font(Theme.subHeaderFont())
+                                    .foregroundColor(Theme.textMain)
+                                Spacer()
+                                NavigationLink(destination: RiggingManagerView()) {
+                                    HStack(spacing: 4) {
+                                        Text(isJA ? "設定一覧" : "All Setups")
+                                            .font(.caption)
+                                            .foregroundColor(Theme.accent)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2)
+                                            .foregroundColor(Theme.accent)
+                                    }
+                                }
+                            }
+                            
+                            if let active = riggingManager.activeConfig {
+                                NavigationLink(destination: RiggingManagerView()) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Text(active.name)
+                                                .font(.headline)
+                                                .foregroundColor(Theme.textMain)
+                                                .lineLimit(1)
+                                            
+                                            HStack(spacing: 12) {
+                                                Label(active.boatType.displayName, systemImage: active.boatType.iconName)
+                                                    .font(.caption)
+                                                    .foregroundColor(Theme.textSecondary)
+                                                
+                                                Label("Span: \(String(format: "%.1f", active.boatSpan))cm", systemImage: "arrow.left.and.right")
+                                                    .font(.caption)
+                                                    .foregroundColor(Theme.textSecondary)
+                                            }
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        // Mini visual diagram representation
+                                        BoatDiagramView(
+                                            crewInfo: CrewInfo(boatType: active.boatType, members: Array(repeating: "", count: active.boatType.totalSeats)),
+                                            isCompact: true
+                                        )
+                                        .frame(width: 90, height: 45)
+                                        .scaleEffect(0.85)
+                                        .opacity(0.85)
+                                    }
+                                    .padding()
+                                    .background(Color.white.opacity(0.08))
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Theme.accent.opacity(0.3), lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            } else {
+                                NavigationLink(destination: RiggingManagerView()) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("No Active Rigging Setup".localized)
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                                .foregroundColor(Theme.textMain)
+                                            Text("Tap to configure boat & oars".localized)
+                                                .font(.caption2)
+                                                .foregroundColor(Theme.textSecondary)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.title3)
+                                            .foregroundColor(Theme.accent)
+                                    }
+                                    .padding()
+                                    .background(Color.white.opacity(0.05))
+                                    .cornerRadius(12)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                        .padding(.horizontal)
+                        
+                        // MARK: - Recent Activities
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text(isJA ? "最近の記録" : "Recent Activities")
+                                    .font(Theme.subHeaderFont())
+                                    .foregroundColor(Theme.textMain)
+                                Spacer()
+                                Button(action: {
+                                    selectedDay = nil
+                                    showCalendarSheet = true
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Text(isJA ? "すべて表示" : "See All")
+                                            .font(.caption)
+                                            .foregroundColor(Theme.accent)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2)
+                                            .foregroundColor(Theme.accent)
+                                    }
+                                }
+                            }
+                            
+                            let recentItems = Array(groupedRecords.prefix(3))
+                            if recentItems.isEmpty {
+                                emptyHistoryView
+                            } else {
+                                LazyVStack(spacing: 12) {
+                                    ForEach(recentItems) { item in
+                                        SwipeToDelete(id: item.id, isAnimatingOut: itemIDBeingAnimated == item.id) {
+                                            prepareDelete(item)
+                                        } onTap: {
+                                            switch item {
+                                            case .single(let record):
+                                                selectedRecord = record
+                                            case .managerSession(let sessionId, let records):
+                                                selectedManagerSession = ManagerSessionItem(id: sessionId, records: records)
+                                            }
+                                        } content: {
+                                            Group {
+                                                switch item {
+                                                case .single(let record):
+                                                    RecordRowCard(record: record)
+                                                case .managerSession(_, let records):
+                                                    ManagerSessionRowCard(records: records)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
                     }
                     .padding(.vertical)
                 }
@@ -165,10 +405,10 @@ struct HomeView: View {
     
     private var statusCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Date & Location Placeholder
+            // Greeting & Weather
             HStack {
-                VStack(alignment: .leading) {
-                    Text(dateFormatter.string(from: Date()))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(welcomeMessage)
                         .font(Theme.headerFont())
                         .foregroundColor(.white)
                     
@@ -181,14 +421,13 @@ struct HomeView: View {
                             .font(.subheadline)
                             .foregroundColor(.gray)
                     } else {
-                        // Not loading and no data? Try fetching
                         Text("--:--")
                             .font(.subheadline)
                             .foregroundColor(.gray)
                     }
                 }
                 Spacer()
-                // 天気ウィジェット（設定に応じて表示内容を切り替え）
+                // 天気ウィジェット
                 let mode = settingsManager.settings.weatherDisplayMode
                 if mode != .hidden {
                     VStack(spacing: 3) {
@@ -253,38 +492,6 @@ struct HomeView: View {
                     .foregroundColor(Theme.textMain)
             }
         }
-    }
-    
-    private var filterControls: some View {
-        HStack(spacing: 0) {
-            ForEach(RecordFilter.allCases, id: \.self) { filter in
-                Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        selectedFilter = filter
-                    }
-                }) {
-                    Text(filter.localized)
-                        .font(.subheadline)
-                        .fontWeight(selectedFilter == filter ? .bold : .medium)
-                        .foregroundColor(selectedFilter == filter ? .white : Theme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            ZStack {
-                                if selectedFilter == filter {
-                                    Theme.accent
-                                        .cornerRadius(8)
-                                        .shadow(color: Theme.accent.opacity(0.4), radius: 4, x: 0, y: 2)
-                                }
-                            }
-                        )
-                }
-            }
-        }
-        .padding(4)
-        .background(Theme.cardBackground)
-        .cornerRadius(12)
-        .padding(.horizontal)
     }
     
     private var statsDashboard: some View {
@@ -444,279 +651,6 @@ struct HomeView: View {
         .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
     }
     
-    private var historySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(historyHeaderTitle)
-                .font(Theme.subHeaderFont())
-                .foregroundColor(Theme.textMain)
-                .padding(.horizontal)
-            
-            let currentItems = groupedRecords
-            if currentItems.isEmpty {
-                emptyHistoryView
-            } else {
-                historyList
-            }
-        }
-    }
-    
-    private var historyHeaderTitle: String {
-        if let day = selectedDay {
-            let f = DateFormatter()
-            f.dateFormat = "M/d"
-            return LocalizationManager.shared.language == .japanese ? "\(f.string(from: day))の履歴" : "History for \(f.string(from: day))"
-        } else {
-            return "History".localized
-        }
-    }
-    
-    private var activeFilterChips: some View {
-        Group {
-            if let day = selectedDay {
-                HStack(spacing: 8) {
-                    // Day Filter Chip
-                    filterChip(
-                        text: formatDateYMD(day),
-                        icon: "calendar"
-                    ) {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            selectedDay = nil
-                        }
-                    }
-                    
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-    }
-    
-    private func filterChip(text: String, icon: String, onDismiss: @escaping () -> Void) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.caption)
-            Text(text)
-                .font(.caption)
-                .fontWeight(.medium)
-            Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .foregroundColor(Theme.accent)
-        .background(Theme.accent.opacity(0.15))
-        .cornerRadius(12)
-    }
-    
-    private func formatDateYMD(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy/M/d"
-        return f.string(from: date)
-    }
-    
-    private func changeMonth(by value: Int) {
-        if let newDate = Calendar.current.date(byAdding: .month, value: value, to: selectedMonth) {
-            withAnimation {
-                selectedMonth = newDate
-                selectedDay = nil
-            }
-        }
-    }
-    
-    private var isCurrentMonth: Bool {
-        Calendar.current.isDate(selectedMonth, equalTo: Date(), toGranularity: .month)
-    }
-    
-    private var monthYearFormatter: DateFormatter {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy/M"
-        return f
-    }
-    
-    private func compactStat(icon: String, value: String, color: Color) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 13))
-                .foregroundColor(color)
-                .padding(5)
-                .background(color.opacity(0.15))
-                .clipShape(Circle())
-            Text(value)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundColor(Theme.textMain)
-                .minimumScaleFactor(0.7)
-        }
-    }
-    
-    private var shortMonthFormatter: DateFormatter {
-        let f = DateFormatter()
-        f.dateFormat = "M月"
-        return f
-    }
-    
-    private var calendarDays: [Date?] {
-        let calendar = Calendar.current
-        let startOfMonth = selectedMonth.startOfMonth(using: calendar)
-        let weekdayOfFirst = calendar.component(.weekday, from: startOfMonth)
-        
-        // Sunday is 1. If weekdayOfFirst is 1 (Sunday), offset is 0.
-        // If weekdayOfFirst is 2 (Monday), offset is 1.
-        let offset = weekdayOfFirst - 1
-        
-        var days: [Date?] = Array(repeating: nil, count: offset)
-        
-        if let range = calendar.range(of: .day, in: .month, for: selectedMonth) {
-            let numDays = range.count
-            for day in 1...numDays {
-                if let date = calendar.date(byAdding: .day, value: day - 1, to: startOfMonth) {
-                    days.append(date)
-                }
-            }
-        }
-        
-        return days
-    }
-    
-    private var filteredRecordsForMonth: [RowingRecord] {
-        recordManager.records(for: selectedMonth, filter: selectedFilter)
-    }
-    
-    private func records(on day: Date) -> [RowingRecord] {
-        filteredRecordsForMonth.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
-    }
-    
-    private func hasOutdoorRecord(on day: Date) -> Bool {
-        records(on: day).contains { recordManager.isOutdoor($0) }
-    }
-    
-    private func hasIndoorRecord(on day: Date) -> Bool {
-        records(on: day).contains { !recordManager.isOutdoor($0) }
-    }
-    
-    private func formatDistanceKm(_ meters: Double) -> String {
-        if meters >= 1000 {
-            return String(format: "%.1f km", meters / 1000.0)
-        } else {
-            return String(format: "%.0f m", meters)
-        }
-    }
-    
-    private var emptyHistoryView: some View {
-        Text("No Records".localized)
-            .foregroundColor(Theme.textSecondary)
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(Theme.cardBackground)
-            .cornerRadius(12)
-            .padding(.horizontal)
-    }
-    
-    enum RecordListItem: Identifiable {
-        case single(RowingRecord)
-        case managerSession(UUID, [RowingRecord])
-        
-        var id: String {
-            switch self {
-            case .single(let r): return r.id.uuidString
-            case .managerSession(let u, _): return u.uuidString
-            }
-        }
-        
-        var date: Date {
-            switch self {
-            case .single(let r): return r.date
-            case .managerSession(_, let records): return records.first?.date ?? Date()
-            }
-        }
-    }
-    
-    private var groupedRecords: [RecordListItem] {
-        var items: [RecordListItem] = []
-        var managerGroups: [UUID: [RowingRecord]] = [:]
-        
-        let filteredRecords: [RowingRecord]
-        if let day = selectedDay {
-            filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter).filter {
-                Calendar.current.isDate($0.date, inSameDayAs: day)
-            }
-        } else {
-            filteredRecords = recordManager.allRecords(filter: selectedFilter)
-        }
-        
-        for record in filteredRecords {
-            if record.isManagerMode, let sessionId = record.managerSessionId {
-                managerGroups[sessionId, default: []].append(record)
-            } else {
-                items.append(.single(record))
-            }
-        }
-        
-        for (sessionId, records) in managerGroups {
-            items.append(.managerSession(sessionId, records))
-        }
-        
-        return items.sorted { $0.date > $1.date }
-    }
-
-    private var historyList: some View {
-        LazyVStack(spacing: 12) {
-            ForEach(groupedRecords) { item in
-                SwipeToDelete(id: item.id, isAnimatingOut: itemIDBeingAnimated == item.id) {
-                    prepareDelete(item)
-                } onTap: {
-                    switch item {
-                    case .single(let record):
-                        selectedRecord = record
-                    case .managerSession(let sessionId, let records):
-                        selectedManagerSession = ManagerSessionItem(id: sessionId, records: records)
-                    }
-                } content: {
-                    Group {
-                        switch item {
-                        case .single(let record):
-                            RecordRowCard(record: record)
-                        case .managerSession(_, let records):
-                            ManagerSessionRowCard(records: records)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.horizontal)
-    }
-    
-    private var sheetGroupedRecords: [RecordListItem] {
-        var items: [RecordListItem] = []
-        var managerGroups: [UUID: [RowingRecord]] = [:]
-        
-        let filteredRecords: [RowingRecord]
-        if let day = selectedDay {
-            filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter).filter {
-                Calendar.current.isDate($0.date, inSameDayAs: day)
-            }
-        } else {
-            filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter)
-        }
-        
-        for record in filteredRecords {
-            if record.isManagerMode, let sessionId = record.managerSessionId {
-                managerGroups[sessionId, default: []].append(record)
-            } else {
-                items.append(.single(record))
-            }
-        }
-        
-        for (sessionId, records) in managerGroups {
-            items.append(.managerSession(sessionId, records))
-        }
-        
-        return items.sorted { $0.date > $1.date }
-    }
-    
     private var sheetHistorySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(sheetHistoryHeaderTitle)
@@ -779,6 +713,90 @@ struct HomeView: View {
         .padding(.horizontal)
     }
     
+    private var emptyHistoryView: some View {
+        Text("No Records".localized)
+            .foregroundColor(Theme.textSecondary)
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(Theme.cardBackground)
+            .cornerRadius(12)
+    }
+    
+    enum RecordListItem: Identifiable {
+        case single(RowingRecord)
+        case managerSession(UUID, [RowingRecord])
+        
+        var id: String {
+            switch self {
+            case .single(let r): return r.id.uuidString
+            case .managerSession(let u, _): return u.uuidString
+            }
+        }
+        
+        var date: Date {
+            switch self {
+            case .single(let r): return r.date
+            case .managerSession(_, let records): return records.first?.date ?? Date()
+            }
+        }
+    }
+    
+    private var groupedRecords: [RecordListItem] {
+        var items: [RecordListItem] = []
+        var managerGroups: [UUID: [RowingRecord]] = [:]
+        
+        let filteredRecords: [RowingRecord]
+        if let day = selectedDay {
+            filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter).filter {
+                Calendar.current.isDate($0.date, inSameDayAs: day)
+            }
+        } else {
+            filteredRecords = recordManager.allRecords(filter: selectedFilter)
+        }
+        
+        for record in filteredRecords {
+            if record.isManagerMode, let sessionId = record.managerSessionId {
+                managerGroups[sessionId, default: []].append(record)
+            } else {
+                items.append(.single(record))
+            }
+        }
+        
+        for (sessionId, records) in managerGroups {
+            items.append(.managerSession(sessionId, records))
+        }
+        
+        return items.sorted { $0.date > $1.date }
+    }
+    
+    private var sheetGroupedRecords: [RecordListItem] {
+        var items: [RecordListItem] = []
+        var managerGroups: [UUID: [RowingRecord]] = [:]
+        
+        let filteredRecords: [RowingRecord]
+        if let day = selectedDay {
+            filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter).filter {
+                Calendar.current.isDate($0.date, inSameDayAs: day)
+            }
+        } else {
+            filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter)
+        }
+        
+        for record in filteredRecords {
+            if record.isManagerMode, let sessionId = record.managerSessionId {
+                managerGroups[sessionId, default: []].append(record)
+            } else {
+                items.append(.single(record))
+            }
+        }
+        
+        for (sessionId, records) in managerGroups {
+            items.append(.managerSession(sessionId, records))
+        }
+        
+        return items.sorted { $0.date > $1.date }
+    }
+    
     // MARK: - Deletion Helpers
     
     private func prepareDelete(_ item: RecordListItem) {
@@ -814,21 +832,151 @@ struct HomeView: View {
         return String(format: "%.0f m", meters)
     }
     
+    private func formatDistanceKm(_ meters: Double) -> String {
+        if meters >= 1000 {
+            return String(format: "%.1f km", meters / 1000.0)
+        } else {
+            return String(format: "%.0f m", meters)
+        }
+    }
+    
     private func formatDuration(_ seconds: TimeInterval) -> String {
         let hours = Int(seconds) / 3600
         let minutes = (Int(seconds) % 3600) / 60
         if hours > 0 {
-            return String(format: "%d時間%d分", hours, minutes)
+            return String(format: isJA ? "%d時間%d分" : "%dh %dm", hours, minutes)
         } else {
-            return String(format: "%d分", minutes)
+            return String(format: isJA ? "%d分" : "%dm", minutes)
         }
     }
     
-    private var dateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "M/d (E)"
-        formatter.locale = Locale(identifier: "ja_JP")
-        return formatter
+    private func changeMonth(by value: Int) {
+        if let newDate = Calendar.current.date(byAdding: .month, value: value, to: selectedMonth) {
+            withAnimation {
+                selectedMonth = newDate
+                selectedDay = nil
+            }
+        }
+    }
+    
+    private var isCurrentMonth: Bool {
+        Calendar.current.isDate(selectedMonth, equalTo: Date(), toGranularity: .month)
+    }
+    
+    private var monthYearFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy/M"
+        return f
+    }
+    
+    private func compactStat(icon: String, value: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundColor(color)
+                .padding(5)
+                .background(color.opacity(0.15))
+                .clipShape(Circle())
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(Theme.textMain)
+                .minimumScaleFactor(0.7)
+        }
+    }
+    
+    private var shortMonthFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "M月"
+        return f
+    }
+    
+    private var calendarDays: [Date?] {
+        let calendar = Calendar.current
+        let startOfMonth = selectedMonth.startOfMonth(using: calendar)
+        let weekdayOfFirst = calendar.component(.weekday, from: startOfMonth)
+        
+        let offset = weekdayOfFirst - 1
+        var days: [Date?] = Array(repeating: nil, count: offset)
+        
+        if let range = calendar.range(of: .day, in: .month, for: selectedMonth) {
+            let numDays = range.count
+            for day in 1...numDays {
+                if let date = calendar.date(byAdding: .day, value: day - 1, to: startOfMonth) {
+                    days.append(date)
+                }
+            }
+        }
+        
+        return days
+    }
+    
+    private func records(on day: Date) -> [RowingRecord] {
+        recordManager.records(for: selectedMonth, filter: selectedFilter).filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+    }
+    
+    private func hasOutdoorRecord(on day: Date) -> Bool {
+        records(on: day).contains { recordManager.isOutdoor($0) }
+    }
+    
+    private func hasIndoorRecord(on day: Date) -> Bool {
+        records(on: day).contains { !recordManager.isOutdoor($0) }
+    }
+}
+
+// MARK: - Quick Action Card View Components
+
+struct QuickActionCard: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let color: Color
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            QuickActionCardView(title: title, subtitle: subtitle, icon: icon, color: color)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct QuickActionCardView: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let color: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundColor(color)
+                    .padding(10)
+                    .background(color.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                Spacer()
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.bold)
+                    .foregroundColor(Theme.textMain)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundColor(Theme.textSecondary.opacity(0.8))
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(Theme.cardBackground)
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 }
 
@@ -1096,3 +1244,4 @@ struct SwipeToDelete<Content: View>: View {
         }
     }
 }
+
