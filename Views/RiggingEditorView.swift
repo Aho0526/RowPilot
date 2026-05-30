@@ -26,6 +26,7 @@ struct RiggingEditorView: View {
     @State private var boatFootstretch: Double
     @State private var boatFootplateAngle: Double
     @State private var boatFootplateHeight: Double
+    @State private var boatSeatPosition: Double
     
     // Blade Preset State
     @State private var selectedBladePreset: String = "Smoothie2"
@@ -46,6 +47,7 @@ struct RiggingEditorView: View {
         case boatFootstretch
         case boatFootplateAngle
         case boatFootplateHeight
+        case boatSeatPosition
     }
     @FocusState private var focusedField: Field?
     
@@ -80,6 +82,7 @@ struct RiggingEditorView: View {
         _boatFootstretch = State(initialValue: config.boatFootstretch)
         _boatFootplateAngle = State(initialValue: config.boatFootplateAngle)
         _boatFootplateHeight = State(initialValue: config.boatFootplateHeight)
+        _boatSeatPosition = State(initialValue: config.boatSeatPosition)
         
         isNew = false
         
@@ -129,6 +132,7 @@ struct RiggingEditorView: View {
         _boatFootstretch = State(initialValue: 8.0)
         _boatFootplateAngle = State(initialValue: 42.0)
         _boatFootplateHeight = State(initialValue: 15.0)
+        _boatSeatPosition = State(initialValue: 28.0)
         
         isNew = true
         _selectedBladePreset = State(initialValue: "Smoothie2")
@@ -302,6 +306,7 @@ struct RiggingEditorView: View {
                                 oarGripDiameter: oarGripDiameter,
                                 oarType: oarType,
                                 selectedField: activeBoatField,
+                                seatPosition: $boatSeatPosition,
                                 currentTab: $boatDiagramTab
                             )
                             
@@ -370,6 +375,14 @@ struct RiggingEditorView: View {
                                     NumericTextField(value: $boatFootplateHeight, suffix: "cm")
                                         .focused($focusedField, equals: .boatFootplateHeight)
                                 }
+                                
+                                HStack {
+                                    Text("Seat Position".localized)
+                                        .foregroundColor(Theme.textSecondary)
+                                    Spacer()
+                                    NumericTextField(value: $boatSeatPosition, suffix: "cm")
+                                        .focused($focusedField, equals: .boatSeatPosition)
+                                }
                             }
                             .padding()
                             .background(Theme.cardBackground)
@@ -418,7 +431,7 @@ struct RiggingEditorView: View {
             if let val = newValue {
                 withAnimation(.easeInOut) {
                     switch val {
-                    case .boatSpan, .boatFootstretch, .oarGripDiameter, .oarTotalLength, .oarInboard:
+                    case .boatSpan, .boatFootstretch, .oarGripDiameter, .oarTotalLength, .oarInboard, .boatSeatPosition:
                         boatDiagramTab = 0 // Top View
                     case .boatFootplateAngle, .boatFootplateHeight:
                         boatDiagramTab = 1 // Diagonal View
@@ -463,6 +476,7 @@ struct RiggingEditorView: View {
         case .boatFootstretch: return .footstretch
         case .boatFootplateAngle: return .footplateAngle
         case .boatFootplateHeight: return .footplateHeight
+        case .boatSeatPosition: return .seatPosition
         case .oarTotalLength: return .oarLength
         case .oarInboard: return .oarInboard
         case .oarGripDiameter: return .oarGripDiameter
@@ -498,7 +512,8 @@ struct RiggingEditorView: View {
             boatLateralPitch: boatLateralPitch,
             boatFootstretch: boatFootstretch,
             boatFootplateAngle: boatFootplateAngle,
-            boatFootplateHeight: max(0.0, min(25.0, boatFootplateHeight))
+            boatFootplateHeight: max(0.0, min(25.0, boatFootplateHeight)),
+            boatSeatPosition: boatSeatPosition
         )
         
         if isNew {

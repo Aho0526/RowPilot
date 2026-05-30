@@ -38,6 +38,7 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
     var boatFootstretch: Double // cm (e.g. 8.0)
     var boatFootplateAngle: Double // degrees (e.g. 42.0)
     var boatFootplateHeight: Double // cm (e.g. 15.0, heels below seat)
+    var boatSeatPosition: Double // cm (e.g. 28.0, distance of seat behind pin)
     
     var oarOutboard: Double {
         return max(0, oarTotalLength - oarInboard)
@@ -60,7 +61,8 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
         boatLateralPitch: String = "4/4",
         boatFootstretch: Double = 8.0,
         boatFootplateAngle: Double = 42.0,
-        boatFootplateHeight: Double = 15.0
+        boatFootplateHeight: Double = 15.0,
+        boatSeatPosition: Double = 28.0
     ) {
         self.id = id
         self.name = name
@@ -79,11 +81,12 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
         self.boatFootstretch = boatFootstretch
         self.boatFootplateAngle = boatFootplateAngle
         self.boatFootplateHeight = boatFootplateHeight
+        self.boatSeatPosition = boatSeatPosition
     }
     
     enum CodingKeys: String, CodingKey {
         case id, name, date, boatType, oarType, oarTotalLength, oarInboard, oarBladeType, oarSleevePitch, oarGripDiameter
-        case boatSpan, boatWorkHeight, boatPitch, boatLateralPitch, boatFootstretch, boatFootplateAngle, boatFootplateHeight
+        case boatSpan, boatWorkHeight, boatPitch, boatLateralPitch, boatFootstretch, boatFootplateAngle, boatFootplateHeight, boatSeatPosition
     }
     
     init(from decoder: Decoder) throws {
@@ -104,6 +107,7 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
         boatFootstretch = try container.decode(Double.self, forKey: .boatFootstretch)
         boatFootplateAngle = try container.decodeIfPresent(Double.self, forKey: .boatFootplateAngle) ?? 42.0
         boatFootplateHeight = try container.decodeIfPresent(Double.self, forKey: .boatFootplateHeight) ?? 15.0
+        boatSeatPosition = try container.decodeIfPresent(Double.self, forKey: .boatSeatPosition) ?? 28.0
         
         if let stringVal = try? container.decode(String.self, forKey: .boatLateralPitch) {
             boatLateralPitch = stringVal

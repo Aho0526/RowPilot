@@ -467,6 +467,16 @@ class LocalizationManager: ObservableObject {
         "Grip Diameter": [.japanese: "グリップ径", .english: "Grip Diameter"],
         "Lateral Pitch Highlight Description": [.japanese: "ラテラルピッチ: Concept2製オールロックで使用するブッシュ（4/4、5/3、6/2、7/1）の選択値です。オールのピッチ角を微調整します。", .english: "Lateral Pitch: Concept2 oarlock bushing insert setting (4/4, 5/3, 6/2, 7/1) used to adjust the oar pitch angle."],
         "Grip Diameter Highlight Description": [.japanese: "グリップ径: オールハンドルの握り部分の直径（通常は34mm〜37mm）です。", .english: "Grip Diameter: Diameter of the oar handle grip (typically 34mm to 37mm)."],
+        "Rigging Settings": [.japanese: "リギング設定", .english: "Rigging Settings"],
+        "Show all values when idle": [.japanese: "全体の値を表示する", .english: "Show all values when idle"],
+        "Footstretch Measurement": [.japanese: "フットストレッチ計測法", .english: "Footstretch Measurement"],
+        "From Heel": [.japanese: "踵から測る", .english: "From Heel"],
+        "From Shoe Center": [.japanese: "中心から測る", .english: "From Shoe Center"],
+        "Seat Position": [.japanese: "シート位置", .english: "Seat Position"],
+        "Seat Position Highlight Description": [.japanese: "シート位置: ピン中心線からシートまでの前後位置です。", .english: "Seat Position: Longitudinal distance from the pin centerline to the seat."],
+        "Customize how rigging values are displayed in the preview diagrams.": [.japanese: "プレビュー画面におけるリギング値の表示方法をカスタマイズします。", .english: "Customize how rigging values are displayed in the preview diagrams."],
+        "Displays configured values on the diagrams even when no field is selected.": [.japanese: "編集していない時でも、艇の各パーツに設定した寸法を表示します。", .english: "Displays configured values on the diagrams even when no field is selected."],
+        "Select the reference point for measuring footstretch length.": [.japanese: "フットストレッチ長を測定する際の基準点を選択します。", .english: "Select the reference point for measuring footstretch length."],
     ]
 
     

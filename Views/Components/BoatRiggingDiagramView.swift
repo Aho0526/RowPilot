@@ -8,6 +8,7 @@ enum BoatRiggingField {
     case footstretch
     case footplateAngle
     case footplateHeight
+    case seatPosition
     case oarLength
     case oarInboard
     case oarGripDiameter
@@ -26,6 +27,7 @@ struct BoatRiggingDiagramView: View {
     let oarGripDiameter: Double
     let oarType: OarType
     let selectedField: BoatRiggingField?
+    @Binding var seatPosition: Double
     @Binding var currentTab: Int
     
     @State private var dragRotationX: CGFloat = -15.0
@@ -34,6 +36,9 @@ struct BoatRiggingDiagramView: View {
     @State private var previousRotationY: CGFloat = 20.0
     @State private var userZoomFactor: CGFloat = 1.0
     @State private var pinchScale: CGFloat = 1.0
+    
+    @AppStorage("showAllRiggingValuesWhenIdle") private var showAllRiggingValuesWhenIdle: Bool = true
+    @AppStorage("footstretchMeasurementMethod") private var footstretchMeasurementMethod: String = "fromHeel"
     
     var body: some View {
         VStack(spacing: 12) {
@@ -138,7 +143,7 @@ struct BoatRiggingDiagramView: View {
             let pinLeftX = centerlineX - halfSpanPts
             
             let feetY = pinY - CGFloat(footstretch) * scale
-            let seatY = pinY + 28.0
+            let seatY = pinY + CGFloat(seatPosition) * scale
             
             let hullHalfWidthVal: CGFloat = isScull ? 15.0 : 25.0
             let hullHalfWidth = hullHalfWidthVal * scale
@@ -167,24 +172,33 @@ struct BoatRiggingDiagramView: View {
                 }
                 .stroke(Color.white.opacity(0.25), lineWidth: 1.5)
                 
-                // Seat
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "333333"))
-                    .frame(width: 34, height: 20)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(Color.gray.opacity(0.4), lineWidth: 1)
-                    )
-                    .position(x: centerlineX, y: seatY)
+                // Seat (Interactive dragging)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(selectedField == .seatPosition ? Theme.accent.opacity(0.4) : Color(hex: "333333"))
+                        .frame(width: 34, height: 20)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(selectedField == .seatPosition ? Theme.accent : Color.gray.opacity(0.4), lineWidth: 1)
+                        )
+                    
+                    Text("Seat".localized)
+                        .font(.system(size: 8))
+                        .foregroundColor(Theme.textSecondary.opacity(0.6))
+                }
+                .position(x: centerlineX, y: seatY)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            let newPos = (value.location.y - pinY) / scale
+                            seatPosition = max(0.0, min(60.0, Double(newPos)))
+                        }
+                )
                 
-                Text("Seat".localized)
-                    .font(.system(size: 8))
-                    .foregroundColor(Theme.textSecondary.opacity(0.6))
-                    .position(x: centerlineX, y: seatY)
-                
-                // Footplate Shoes (Foreshortened by Angle)
+                // Footplate Shoes (Foreshortened by Angle & aligned by measurement method)
                 let angleRad = CGFloat(footplateAngle) * .pi / 180.0
                 let shoeLen = max(6.0, 18.0 * cos(angleRad))
+                let shoeDrawY = footstretchMeasurementMethod == "fromHeel" ? feetY - shoeLen / 2 : feetY
                 
                 HStack(spacing: 6) {
                     // Left Shoe
@@ -207,24 +221,32 @@ struct BoatRiggingDiagramView: View {
                                 .stroke(selectedField == .footplateAngle ? Theme.accent : Color.gray.opacity(0.4), lineWidth: 1)
                         )
                 }
-                .position(x: centerlineX, y: feetY)
+                .position(x: centerlineX, y: shoeDrawY)
                 .shadow(color: selectedField == .footplateAngle ? Theme.accent.opacity(0.4) : Color.clear, radius: 4)
                 
                 // Riggers
                 // Right Rigger
+                let riggerBowAnchorY = shoeDrawY - shoeLen / 2 - 8
+                let riggerSeatAnchorY = pinY + 14 // slightly towards seat
                 Path { path in
-                    path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: pinY - 18))
+                    // Seat side stay
+                    path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerSeatAnchorY))
                     path.addLine(to: CGPoint(x: pinRightX, y: pinY))
-                    path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: pinY + 18))
+                    // Stretcher side stay: diagonal (slightly in front of the shoes)
+                    path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerBowAnchorY))
+                    path.addLine(to: CGPoint(x: pinRightX, y: pinY))
                 }
                 .stroke(selectedField == .span ? Theme.accent : Color(hex: "888888"), lineWidth: 2)
                 
                 // Left Rigger (Only for Scull)
                 if isScull {
                     Path { path in
-                        path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: pinY - 18))
+                        // Seat side stay
+                        path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: riggerSeatAnchorY))
                         path.addLine(to: CGPoint(x: pinLeftX, y: pinY))
-                        path.addLine(to: CGPoint(x: centerlineX - hullHalfWidth, y: pinY + 18))
+                        // Stretcher side stay: diagonal (slightly in front of the shoes)
+                        path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: riggerBowAnchorY))
+                        path.addLine(to: CGPoint(x: pinLeftX, y: pinY))
                     }
                     .stroke(selectedField == .span ? Theme.accent : Color(hex: "888888"), lineWidth: 2)
                 }
@@ -245,14 +267,15 @@ struct BoatRiggingDiagramView: View {
                 }
                 
                 // MARK: - Dimension Lines (Top View)
-                if selectedField == .span {
+                if selectedField == .span || (selectedField == nil && showAllRiggingValuesWhenIdle) {
+                    let isSpanActive = selectedField == .span
                     if isScull {
                         DimensionLine(
                             startX: pinLeftX,
                             endX: pinRightX,
                             y: pinY - 18,
                             label: String(format: "Span".localized + ": %.1f cm", span),
-                            isActive: true,
+                            isActive: isSpanActive,
                             arrowUp: true
                         )
                     } else {
@@ -261,36 +284,55 @@ struct BoatRiggingDiagramView: View {
                             endX: pinRightX,
                             y: pinY - 18,
                             label: String(format: "Spread".localized + ": %.1f cm", span),
-                            isActive: true,
+                            isActive: isSpanActive,
                             arrowUp: true
                         )
                     }
                 }
                 
-                if selectedField == .footstretch {
-                    Path { path in
-                        path.move(to: CGPoint(x: centerlineX - 40, y: pinY))
-                        path.addLine(to: CGPoint(x: centerlineX + 40, y: pinY))
-                    }
-                    .stroke(Theme.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1.0, dash: [2, 2]))
+                if selectedField == .footstretch || (selectedField == nil && showAllRiggingValuesWhenIdle) {
+                    let isFSActive = selectedField == .footstretch
+                    let fsColor = isFSActive ? Theme.accent : Color.gray.opacity(0.5)
                     
+                    // Pin-to-pin line (horizontal axis)
                     Path { path in
-                        path.move(to: CGPoint(x: centerlineX - 40, y: feetY))
-                        path.addLine(to: CGPoint(x: centerlineX + 40, y: feetY))
+                        path.move(to: CGPoint(x: pinLeftX, y: pinY))
+                        path.addLine(to: CGPoint(x: pinRightX, y: pinY))
                     }
-                    .stroke(Theme.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1.0, dash: [2, 2]))
+                    .stroke(fsColor.opacity(0.6), style: StrokeStyle(lineWidth: 1.2, dash: [4, 4]))
                     
+                    // Shoe reference line (horizontal axis)
+                    Path { path in
+                        path.move(to: CGPoint(x: centerlineX - 35, y: feetY))
+                        path.addLine(to: CGPoint(x: centerlineX + 35, y: feetY))
+                    }
+                    .stroke(fsColor.opacity(0.6), style: StrokeStyle(lineWidth: 1.2, dash: [4, 4]))
+                    
+                    // Vertical lines extending from shoes straight up to the pin line
+                    Path { path in
+                        // Left shoe reference point
+                        path.move(to: CGPoint(x: centerlineX - 8, y: feetY))
+                        path.addLine(to: CGPoint(x: centerlineX - 8, y: pinY))
+                        
+                        // Right shoe reference point
+                        path.move(to: CGPoint(x: centerlineX + 8, y: feetY))
+                        path.addLine(to: CGPoint(x: centerlineX + 8, y: pinY))
+                    }
+                    .stroke(fsColor.opacity(0.4), style: StrokeStyle(lineWidth: 1.0, dash: [2, 2]))
+                    
+                    // Vertical dimension line showing the footstretch
                     DimensionLineVertical(
                         startY: feetY,
                         endY: pinY,
-                        x: centerlineX - 30,
+                        x: centerlineX - 25,
                         label: String(format: "Footstretch".localized + ": %.1f cm", footstretch),
-                        isActive: true,
+                        isActive: isFSActive,
                         arrowLeft: true
                     )
                 }
                 
-                if selectedField == .footplateAngle {
+                if selectedField == .footplateAngle || (selectedField == nil && showAllRiggingValuesWhenIdle) {
+                    let isAngleActive = selectedField == .footplateAngle
                     // Horizontal reference line (seat-rail plane = 0°)
                     Path { path in
                         path.move(to: CGPoint(x: centerlineX + 8, y: feetY))
@@ -309,15 +351,34 @@ struct BoatRiggingDiagramView: View {
                             clockwise: true
                         )
                     }
-                    .stroke(Theme.accent, lineWidth: 1.5)
+                    .stroke(isAngleActive ? Theme.accent : Color.gray.opacity(0.6), lineWidth: isAngleActive ? 1.5 : 1.0)
                     
                     Text(String(format: "Footplate Angle".localized + ": %.0f°", footplateAngle))
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundColor(Theme.accent)
+                        .font(.system(size: 9, weight: isAngleActive ? .bold : .semibold, design: .rounded))
+                        .foregroundColor(isAngleActive ? Theme.accent : Theme.textSecondary)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(Color.black.opacity(0.6).cornerRadius(3))
                         .position(x: centerlineX + 68, y: feetY - 14)
+                }
+                
+                if selectedField == .seatPosition || (selectedField == nil && showAllRiggingValuesWhenIdle) {
+                    let isSeatActive = selectedField == .seatPosition
+                    
+                    Path { path in
+                        path.move(to: CGPoint(x: centerlineX - 40, y: seatY))
+                        path.addLine(to: CGPoint(x: centerlineX + 40, y: seatY))
+                    }
+                    .stroke(isSeatActive ? Theme.accent.opacity(0.3) : Color.gray.opacity(0.15), style: StrokeStyle(lineWidth: 1.0, dash: [2, 2]))
+                    
+                    DimensionLineVertical(
+                        startY: pinY,
+                        endY: seatY,
+                        x: centerlineX + 30,
+                        label: String(format: "Seat Position".localized + ": %.1f cm", seatPosition),
+                        isActive: isSeatActive,
+                        arrowLeft: false
+                    )
                 }
             }
         }
@@ -335,6 +396,8 @@ struct BoatRiggingDiagramView: View {
             
             let heelsY3d = -CGFloat(max(0.0, min(25.0, footplateHeight)))
             let z3d_foot = 20.0 + CGFloat(footstretch)
+            let z3d_pin: CGFloat = 40.0
+            let pinHeight3d = CGFloat(workHeight)
             
             // Check if user is focusing on footplate settings to zoom in closer
             let isZoomedIn = selectedField == .footplateAngle || selectedField == .footplateHeight
@@ -389,7 +452,7 @@ struct BoatRiggingDiagramView: View {
             
             // Clips a 3D polygon at the near clipping plane using Sutherland-Hodgman
             let clipPolygon = { (vertices: [Point3D]) -> [CGPoint] in
-                var inputList = vertices.map { getRotatedPoint($0) }
+                let inputList = vertices.map { getRotatedPoint($0) }
                 if inputList.isEmpty { return [] }
                 
                 var outputList: [RotatedPoint] = []
@@ -473,6 +536,7 @@ struct BoatRiggingDiagramView: View {
             
             let cosA = cos(angleRad)
             let sinA = sin(angleRad)
+            let riggerBowAnchorZ3D = z3d_foot + 19.5 * cosA + 6.0
             
             // Helper to get Point3D on the shoe surface relative to footplate surface
             let getShoePoint = { (shoeCenterX: CGFloat, u: CGFloat, v: CGFloat, height: CGFloat) -> Point3D in
@@ -681,8 +745,8 @@ struct BoatRiggingDiagramView: View {
                 }
             }
             
-            // Riggers are only rendered when NOT focusing on footplate settings
-            let showRiggers = !(selectedField == .footplateAngle || selectedField == .footplateHeight || selectedField == .footstretch)
+            // Riggers are only rendered when NOT focusing on footplate settings (but keep them when showing footstretch)
+            let showRiggers = !(selectedField == .footplateAngle || selectedField == .footplateHeight)
             
             ZStack {
                 // Drag Rotation Hint overlay
@@ -713,7 +777,7 @@ struct BoatRiggingDiagramView: View {
                 )
                 
                 // Slide Rails (Cut at appropriate position dynamically relative to footplate)
-                let seatZ: CGFloat = 20
+                let seatZ: CGFloat = 40.0 - CGFloat(seatPosition) * (20.0 / 28.0)
                 let railsEndZ = max(seatZ + 4, z3d_foot - 3.0)
                 
                 Path { path in
@@ -853,20 +917,22 @@ struct BoatRiggingDiagramView: View {
                 
                 // 3D Riggers (Only shown if focused setting doesn't hide them)
                 if showRiggers {
-                    let z3d_pin: CGFloat = 40
-                    let pinHeight3d = CGFloat(workHeight)
-                    
+                    let riggerSeatAnchorZ3D = z3d_pin - 14.0 // slightly towards seat
                     Path { path in
-                        drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: 22), Point3D(x: halfSpanVal, y: pinHeight3d, z: z3d_pin), &path)
-                        drawClippedLine(Point3D(x: halfSpanVal, y: pinHeight3d, z: z3d_pin), Point3D(x: hullHalfWidthVal, y: 12, z: 58), &path)
+                        // Seat side stay
+                        drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: riggerSeatAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3d, z: z3d_pin), &path)
+                        // Stretcher side stay: diagonal (slightly in front of the shoes)
+                        drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: riggerBowAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3d, z: z3d_pin), &path)
                     }
                     .stroke(LinearGradient(colors: [.gray, .white, .gray], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                     .shadow(radius: 2)
                     
                     if isScull {
                         Path { path in
-                            drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: 22), Point3D(x: -halfSpanVal, y: pinHeight3d, z: z3d_pin), &path)
-                            drawClippedLine(Point3D(x: -halfSpanVal, y: pinHeight3d, z: z3d_pin), Point3D(x: -hullHalfWidthVal, y: 12, z: 58), &path)
+                            // Seat side stay
+                            drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: riggerSeatAnchorZ3D), Point3D(x: -halfSpanVal, y: pinHeight3d, z: z3d_pin), &path)
+                            // Stretcher side stay: diagonal (slightly in front of the shoes)
+                            drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: riggerBowAnchorZ3D), Point3D(x: -halfSpanVal, y: pinHeight3d, z: z3d_pin), &path)
                         }
                         .stroke(LinearGradient(colors: [.gray, .white, .gray], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                         .shadow(radius: 2)
@@ -902,9 +968,12 @@ struct BoatRiggingDiagramView: View {
                 }
                 
                 // Footplate Height Indicator: vertical line from heel of left shoe up to seat level
-                if selectedField == .footplateHeight {
-                    // Heel point of the left shoe: shoeCenterX = -5, u=0, v=1.0 (heel end), height=0.8 (sole)
-                    let heelPt3D = getShoePoint(-5.0, 0, 1.0, 0.8)
+                if selectedField == .footplateHeight || (selectedField == nil && showAllRiggingValuesWhenIdle) {
+                    let isHeightActive = selectedField == .footplateHeight
+                    let activeColor = isHeightActive ? Theme.accent : Color.gray.opacity(0.5)
+                    
+                    // Heel point of the left shoe: shoeCenterX = -5, u=0, v=1.0 (heel end), height=3.2 (top back of heel cup)
+                    let heelPt3D = getShoePoint(-5.0, 0, 1.0, 3.2)
                     // Seat-level point directly above the heel (Y=4 is seat surface height)
                     let seatAboveHeel = Point3D(x: heelPt3D.x, y: 4.0, z: heelPt3D.z)
                     
@@ -912,7 +981,7 @@ struct BoatRiggingDiagramView: View {
                     Path { path in
                         drawClippedLine(heelPt3D, seatAboveHeel, &path)
                     }
-                    .stroke(Theme.accent, lineWidth: 2.0)
+                    .stroke(activeColor, lineWidth: isHeightActive ? 2.0 : 1.0)
                     
                     // Dashed horizontal guide at seat level
                     Path { path in
@@ -922,7 +991,7 @@ struct BoatRiggingDiagramView: View {
                             &path
                         )
                     }
-                    .stroke(Theme.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    .stroke(activeColor.opacity(0.5), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
                     
                     // Dashed horizontal guide at heel level
                     Path { path in
@@ -932,12 +1001,12 @@ struct BoatRiggingDiagramView: View {
                             &path
                         )
                     }
-                    .stroke(Theme.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    .stroke(activeColor.opacity(0.5), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
                     
                     // Heel dot marker
                     if isPointVisible(heelPt3D) {
                         Circle()
-                            .fill(Theme.accent)
+                            .fill(activeColor)
                             .frame(width: 5, height: 5)
                             .position(project(heelPt3D.x, heelPt3D.y, heelPt3D.z))
                     }
@@ -948,17 +1017,20 @@ struct BoatRiggingDiagramView: View {
                         let displayVal = max(0.0, min(25.0, footplateHeight))
                         let pMid = project(heelPt3D.x, midY3D, heelPt3D.z)
                         Text(String(format: "Heel Depth".localized + ": %.1f cm", displayVal))
-                            .font(.system(size: 8, weight: .bold, design: .rounded))
-                            .foregroundColor(Theme.accent)
+                            .font(.system(size: 8, weight: isHeightActive ? .bold : .semibold, design: .rounded))
+                            .foregroundColor(isHeightActive ? Theme.accent : Theme.textSecondary)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
                             .background(Color.black.opacity(0.6).cornerRadius(3))
-                            .position(x: pMid.x - 40, y: pMid.y)
+                            .position(x: pMid.x + 42, y: pMid.y) // Shift to right to avoid overlapping Footplate Angle
                     }
                 }
                 
-                // Footplate Angle Arc Indicator in 3D (shown when angle field focused)
-                if selectedField == .footplateAngle {
+                // Footplate Angle Arc Indicator in 3D (shown when angle field focused or idle)
+                if selectedField == .footplateAngle || (selectedField == nil && showAllRiggingValuesWhenIdle) {
+                    let isAngleActive = selectedField == .footplateAngle
+                    let angleColor = isAngleActive ? Theme.accent : Color.gray.opacity(0.5)
+                    
                     // Draw arc from horizontal (floor plane) to the footplate surface at the heel end
                     // Visualise using two reference lines: horizontal and along the plate, plus a 2D arc overlaid
                     // Horizontal reference at heel edge (z = z3d_foot, y = heelsY3d)
@@ -970,24 +1042,127 @@ struct BoatRiggingDiagramView: View {
                     Path { path in
                         drawClippedLine(arcOrigin3D, arcHoriz3D, &path)
                     }
-                    .stroke(Color.white.opacity(0.4), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    .stroke(Color.white.opacity(0.3), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
                     
                     // Line along footplate surface
                     Path { path in
                         drawClippedLine(arcOrigin3D, arcPlate3D, &path)
                     }
-                    .stroke(Theme.accent.opacity(0.7), lineWidth: 1.5)
+                    .stroke(angleColor.opacity(isAngleActive ? 0.7 : 0.4), lineWidth: isAngleActive ? 1.5 : 1.0)
                     
                     // Footplate angle label
                     if isPointVisible(arcOrigin3D) {
                         let pOrigin = project(arcOrigin3D.x, arcOrigin3D.y, arcOrigin3D.z)
                         Text(String(format: "%.0f°", footplateAngle))
-                            .font(.system(size: 9, weight: .black, design: .rounded))
-                            .foregroundColor(Theme.accent)
+                            .font(.system(size: 9, weight: isAngleActive ? .black : .bold, design: .rounded))
+                            .foregroundColor(isAngleActive ? Theme.accent : Theme.textSecondary)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
                             .background(Color.black.opacity(0.6).cornerRadius(3))
                             .position(x: pOrigin.x - 28, y: pOrigin.y - 10)
+                    }
+                }
+                
+                // Footstretch Length 3D Indicator
+                if selectedField == .footstretch || (selectedField == nil && showAllRiggingValuesWhenIdle) {
+                    let isFSActive = selectedField == .footstretch
+                    let fsColor = isFSActive ? Theme.accent : Color.gray.opacity(0.5)
+                    
+                    // Footstretch measurement target Z along the shoe
+                    let vTarget: CGFloat = footstretchMeasurementMethod == "fromHeel" ? 1.0 : 10.0
+                    let targetZ = z3d_foot + vTarget * cosA
+                    let targetY = heelsY3d + vTarget * sinA
+                    
+                    // Pin-to-pin axis line (horizontal axis in 3D)
+                    Path { path in
+                        drawClippedLine(
+                            Point3D(x: -halfSpanVal, y: pinHeight3d, z: 40.0),
+                            Point3D(x: halfSpanVal, y: pinHeight3d, z: 40.0),
+                            &path
+                        )
+                    }
+                    .stroke(fsColor.opacity(0.6), style: StrokeStyle(lineWidth: 1.2, dash: [4, 4]))
+                    
+                    // Shoe reference axis line (horizontal axis in 3D)
+                    Path { path in
+                        drawClippedLine(
+                            Point3D(x: -11.0, y: targetY, z: targetZ),
+                            Point3D(x: 11.0, y: targetY, z: targetZ),
+                            &path
+                        )
+                    }
+                    .stroke(fsColor.opacity(0.6), style: StrokeStyle(lineWidth: 1.2, dash: [4, 4]))
+                    
+                    // Vertical projection lines from shoes straight up to the pin level
+                    Path { path in
+                        drawClippedLine(
+                            Point3D(x: -5.0, y: targetY, z: targetZ),
+                            Point3D(x: -5.0, y: pinHeight3d, z: targetZ),
+                            &path
+                        )
+                        drawClippedLine(
+                            Point3D(x: 5.0, y: targetY, z: targetZ),
+                            Point3D(x: 5.0, y: pinHeight3d, z: targetZ),
+                            &path
+                        )
+                    }
+                    .stroke(fsColor.opacity(0.4), style: StrokeStyle(lineWidth: 1.0, dash: [2, 2]))
+                    
+                    // Longitudinal lines connecting shoe vertical projection to pin line (representing footstretch)
+                    Path { path in
+                        drawClippedLine(
+                            Point3D(x: -5.0, y: pinHeight3d, z: targetZ),
+                            Point3D(x: -5.0, y: pinHeight3d, z: 40.0),
+                            &path
+                        )
+                        drawClippedLine(
+                            Point3D(x: 5.0, y: pinHeight3d, z: targetZ),
+                            Point3D(x: 5.0, y: pinHeight3d, z: 40.0),
+                            &path
+                        )
+                    }
+                    .stroke(fsColor, lineWidth: isFSActive ? 2.0 : 1.0)
+                    
+                    // Ticks/Dots at the endpoints of the footstretch measurement lines
+                    Group {
+                        if isPointVisible(Point3D(x: -5.0, y: pinHeight3d, z: targetZ)) {
+                            Circle()
+                                .fill(fsColor)
+                                .frame(width: 4, height: 4)
+                                .position(project(-5.0, pinHeight3d, targetZ))
+                        }
+                        if isPointVisible(Point3D(x: 5.0, y: pinHeight3d, z: targetZ)) {
+                            Circle()
+                                .fill(fsColor)
+                                .frame(width: 4, height: 4)
+                                .position(project(5.0, pinHeight3d, targetZ))
+                        }
+                        if isPointVisible(Point3D(x: -5.0, y: pinHeight3d, z: 40.0)) {
+                            Circle()
+                                .fill(fsColor)
+                                .frame(width: 4, height: 4)
+                                .position(project(-5.0, pinHeight3d, 40.0))
+                        }
+                        if isPointVisible(Point3D(x: 5.0, y: pinHeight3d, z: 40.0)) {
+                            Circle()
+                                .fill(fsColor)
+                                .frame(width: 4, height: 4)
+                                .position(project(5.0, pinHeight3d, 40.0))
+                        }
+                    }
+                    
+                    // Midpoint label
+                    let midZ = (40.0 + targetZ) / 2.0
+                    let labelPt = Point3D(x: 6.5, y: pinHeight3d + 1.0, z: midZ)
+                    if isPointVisible(labelPt) {
+                        let pLabel = project(labelPt.x, labelPt.y, labelPt.z)
+                        Text(String(format: "Footstretch".localized + ": %.1f cm", footstretch))
+                            .font(.system(size: 8, weight: isFSActive ? .bold : .semibold, design: .rounded))
+                            .foregroundColor(isFSActive ? Theme.accent : Theme.textSecondary)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.black.opacity(0.6).cornerRadius(3))
+                            .position(x: pLabel.x + 36, y: pLabel.y)
                     }
                 }
                 
@@ -1124,20 +1299,22 @@ struct BoatRiggingDiagramView: View {
                 }
                 
                 // Height (Work Height) Indicator in Side View
-                if selectedField == .workHeight {
+                if selectedField == .workHeight || (selectedField == nil && showAllRiggingValuesWhenIdle) {
+                    let isHeightActive = selectedField == .workHeight
+                    
                     // Dashed line at seat level
                     Path { path in
                         path.move(to: CGPoint(x: centerX, y: seatY))
                         path.addLine(to: CGPoint(x: pinRightX + 15, y: seatY))
                     }
-                    .stroke(Theme.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    .stroke(isHeightActive ? Theme.accent.opacity(0.3) : Color.gray.opacity(0.15), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
                     
                     // Dashed line at pin level
                     Path { path in
                         path.move(to: CGPoint(x: pinRightX, y: pinY))
                         path.addLine(to: CGPoint(x: pinRightX + 15, y: pinY))
                     }
-                    .stroke(Theme.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
+                    .stroke(isHeightActive ? Theme.accent.opacity(0.3) : Color.gray.opacity(0.15), style: StrokeStyle(lineWidth: 1.0, dash: [3, 3]))
                     
                     // Vertical dimension line
                     DimensionLineVertical(
@@ -1145,7 +1322,7 @@ struct BoatRiggingDiagramView: View {
                         endY: seatY,
                         x: pinRightX + 12,
                         label: String(format: "Height".localized + ": %.1f cm", workHeight),
-                        isActive: true,
+                        isActive: isHeightActive,
                         arrowLeft: false
                     )
                 }
@@ -1191,21 +1368,34 @@ struct BoatRiggingDiagramView: View {
                     }
                 }
                 
-                if selectedField == .lateralPitch {
+                if selectedField == .lateralPitch || (selectedField == nil && showAllRiggingValuesWhenIdle) {
+                    let isLPActive = selectedField == .lateralPitch
                     Path { path in
                         path.addArc(center: CGPoint(x: pinRightX, y: pinY), radius: 18, startAngle: .degrees(-90), endAngle: .degrees(-90 - (lateralPitchDeg == 0 ? 4 : lateralPitchDeg * 8.0)), clockwise: true)
                     }
-                    .stroke(Theme.accent, lineWidth: 1.5)
+                    .stroke(isLPActive ? Theme.accent : Color.gray.opacity(0.5), lineWidth: isLPActive ? 1.5 : 1.0)
                     
                     let bushingLabel = lateralPitch
                     
                     Text("\("Lateral Pitch".localized): \(bushingLabel)")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundColor(Theme.accent)
+                        .font(.system(size: 8, weight: isLPActive ? .bold : .semibold, design: .rounded))
+                        .foregroundColor(isLPActive ? Theme.accent : Theme.textSecondary)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(Color.black.opacity(0.6).cornerRadius(3))
-                        .position(x: pinRightX + 32, y: pinY - 15)
+                        .position(x: pinRightX - 35, y: pinY - 15) // Position on the inside (left of pin) to prevent overlap with Work Height
+                }
+                
+                if selectedField == .pitch || (selectedField == nil && showAllRiggingValuesWhenIdle) {
+                    let isPitchActive = selectedField == .pitch
+                    
+                    Text(String(format: "Pitch".localized + ": %.1f°", pitch))
+                        .font(.system(size: 8, weight: isPitchActive ? .bold : .semibold, design: .rounded))
+                        .foregroundColor(isPitchActive ? Theme.accent : Theme.textSecondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.black.opacity(0.6).cornerRadius(3))
+                        .position(x: pinRightX - 35, y: pinY + 15) // Position on the inside (left of pin) to prevent overlap with Work Height
                 }
             }
         }
@@ -1228,6 +1418,8 @@ struct BoatRiggingDiagramView: View {
             return "Footplate Angle Highlight Description".localized
         case .footplateHeight:
             return "Footplate Height Highlight Description".localized
+        case .seatPosition:
+            return "Seat Position Highlight Description".localized
         case .oarLength:
             return "Total Length Highlight Description".localized
         case .oarInboard:
@@ -1352,7 +1544,7 @@ struct Rigging3DProjector {
     }
     
     func clipPolygon(_ vertices: [Point3D]) -> [CGPoint] {
-        var inputList = vertices.map { getRotatedPoint($0) }
+        let inputList = vertices.map { getRotatedPoint($0) }
         if inputList.isEmpty { return [] }
         
         var outputList: [RotatedPoint] = []

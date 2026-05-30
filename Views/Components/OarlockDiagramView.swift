@@ -65,8 +65,6 @@ struct OarlockDiagramView: View {
             // On screen, let's tilt left (representing sternward).
             let pitchRad = CGFloat(pitch) * .pi / 180.0
             
-            let verticalTop = CGPoint(x: cx, y: cy - pinLength)
-            
             let pinTopX = cx - pinLength * sin(pitchRad)
             let pinTopY = cy - pinLength * cos(pitchRad)
             let pinTop = CGPoint(x: pinTopX, y: pinTopY)
@@ -115,7 +113,7 @@ struct OarlockDiagramView: View {
                 // Tilted Oarlock Body Profile (Side view C-shape)
                 // The oarlock gate sits near the top of the pin. We place the centre
                 // of the C-shape at 75% of the pin length from the base.
-                let oarlockFrac: CGFloat = 0.75
+                let oarlockFrac: CGFloat = 0.4
                 let oarlockCenterY = cy - pinLength * oarlockFrac * cos(pitchRad)
                 let oarlockCenterX = cx - pinLength * oarlockFrac * sin(pitchRad)
                 
@@ -164,6 +162,7 @@ struct OarlockDiagramView: View {
                         .overlay(Circle().stroke(Color.gray.opacity(0.5), lineWidth: 0.8))
                         .position(x: 0, y: 0)
                 }
+                .frame(width: 0, height: 0)
                 .rotationEffect(.radians(Double(pitchRad)))
                 .position(x: oarlockCenterX, y: oarlockCenterY)
                 
@@ -244,7 +243,7 @@ struct OarlockDiagramView: View {
                 
                 // Bushing / Oarlock Zoomed-in structure (Rear View)
                 // Place oarlock at 75% of pin length (near the top, where the gate is)
-                let oarlockFrac: CGFloat = 0.75
+                let oarlockFrac: CGFloat = 0.4
                 let oarlockCenterY = cy - pinLength * oarlockFrac * cos(latPitchRad)
                 let oarlockCenterX = cx + pinLength * oarlockFrac * sin(latPitchRad)
                 
@@ -287,6 +286,7 @@ struct OarlockDiagramView: View {
                         }
                     }
                 }
+                .frame(width: 0, height: 0)
                 .rotationEffect(.radians(Double(latPitchRad)))
                 .position(x: oarlockCenterX, y: oarlockCenterY)
                 

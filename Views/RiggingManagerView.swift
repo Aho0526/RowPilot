@@ -3,6 +3,7 @@ import SwiftUI
 struct RiggingManagerView: View {
     @ObservedObject private var riggingManager = RiggingManager.shared
     @State private var showingEditor = false
+    @State private var showingSettings = false
     @State private var editorConfig: RiggingConfig? = nil
     
     var body: some View {
@@ -78,6 +79,14 @@ struct RiggingManagerView: View {
         }
         .navigationTitle("Rigging Setups List".localized)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: { showingSettings = true }) {
+                    Image(systemName: "gearshape")
+                        .foregroundColor(Theme.accent)
+                }
+            }
+        }
         .sheet(isPresented: $showingEditor) {
             NavigationStack {
                 if let config = editorConfig {
@@ -86,6 +95,9 @@ struct RiggingManagerView: View {
                     RiggingEditorView()
                 }
             }
+        }
+        .sheet(isPresented: $showingSettings) {
+            RiggingSettingsSheet()
         }
     }
 }
@@ -273,5 +285,82 @@ struct RoundedCorner: Shape {
     func path(in rect: CGRect) -> Path {
         let path = UIBezierPath(roundedRect: rect, byRoundingCorners: corners, cornerRadii: CGSize(width: radius, height: radius))
         return Path(path.cgPath)
+    }
+}
+
+// MARK: - Rigging Settings Sheet
+
+struct RiggingSettingsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("showAllRiggingValuesWhenIdle") private var showAllRiggingValuesWhenIdle: Bool = true
+    @AppStorage("footstretchMeasurementMethod") private var footstretchMeasurementMethod: String = "fromHeel"
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Customize how rigging values are displayed in the preview diagrams.".localized)
+                        .font(.footnote)
+                        .foregroundColor(Theme.textSecondary)
+                        .padding(.horizontal)
+                        .padding(.top, 16)
+                    
+                    VStack(spacing: 16) {
+                        // Toggle 1: Show all values when idle
+                        Toggle(isOn: $showAllRiggingValuesWhenIdle) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Show all values when idle".localized)
+                                    .font(.body)
+                                    .foregroundColor(Theme.textMain)
+                                Text("Displays configured values on the diagrams even when no field is selected.".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                        }
+                        .tint(Theme.accent)
+                        
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+                        
+                        // Picker: Footstretch measurement basis
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Footstretch Measurement".localized)
+                                .font(.body)
+                                .foregroundColor(Theme.textMain)
+                            
+                            Text("Select the reference point for measuring footstretch length.".localized)
+                                .font(.caption2)
+                                .foregroundColor(Theme.textSecondary)
+                                .padding(.bottom, 4)
+                            
+                            Picker("Footstretch Measurement".localized, selection: $footstretchMeasurementMethod) {
+                                Text("From Heel".localized).tag("fromHeel")
+                                Text("From Shoe Center".localized).tag("fromCenter")
+                            }
+                            .pickerStyle(SegmentedPickerStyle())
+                            .padding(.horizontal, 2)
+                        }
+                    }
+                    .padding()
+                    .background(Theme.cardBackground)
+                    .cornerRadius(16)
+                    .padding(.horizontal)
+                    
+                    Spacer()
+                }
+            }
+            .navigationTitle("Rigging Settings".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Close".localized) {
+                        dismiss()
+                    }
+                    .foregroundColor(Theme.accent)
+                }
+            }
+        }
     }
 }
