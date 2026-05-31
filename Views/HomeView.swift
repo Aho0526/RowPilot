@@ -112,7 +112,7 @@ struct HomeView: View {
                                     .foregroundColor(Theme.textMain)
                                 Spacer()
                                 Text(formatDistanceKm(monthStats.distance))
-                                    .font(.headline)
+                                    .font(.system(.headline, design: .monospaced))
                                     .foregroundColor(Theme.accent)
                             }
                             
@@ -122,31 +122,33 @@ struct HomeView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 GeometryReader { geo in
                                     ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Color.white.opacity(0.1))
-                                            .frame(height: 8)
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(Color.white.opacity(0.08))
+                                            .frame(height: 10)
                                         
-                                        RoundedRectangle(cornerRadius: 4)
+                                        RoundedRectangle(cornerRadius: 6)
                                             .fill(Theme.primaryGradient)
-                                            .frame(width: geo.size.width * CGFloat(progress), height: 8)
+                                            .frame(width: geo.size.width * CGFloat(progress), height: 10)
+                                            .shadow(color: Theme.accent.opacity(0.5), radius: 4, x: 0, y: 0)
                                     }
                                 }
-                                .frame(height: 8)
+                                .frame(height: 10)
                                 
                                 HStack {
                                     Text(String(format: isJA ? "目標 50km 中 %.1f%%" : "%.1f%% of 50km goal", progress * 100))
                                         .font(.caption2)
+                                        .fontWeight(.semibold)
                                         .foregroundColor(Theme.textSecondary)
                                     Spacer()
                                     Text("\(monthStats.count) " + (isJA ? "回のセッション" : "Sessions"))
                                         .font(.caption2)
+                                        .fontWeight(.semibold)
                                         .foregroundColor(Theme.textSecondary)
                                 }
                             }
                         }
                         .padding()
-                        .background(Theme.cardBackground)
-                        .cornerRadius(16)
+                        .glassCardStyle(glowColor: Theme.accent, opacity: 0.08, cornerRadius: 16)
                         .padding(.horizontal)
                         
                         // MARK: - Active Rigging Config Card
@@ -200,11 +202,11 @@ struct HomeView: View {
                                         .opacity(0.85)
                                     }
                                     .padding()
-                                    .background(Color.white.opacity(0.08))
+                                    .background(Color.white.opacity(0.04))
                                     .cornerRadius(12)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Theme.accent.opacity(0.3), lineWidth: 1)
+                                            .stroke(Theme.accent.opacity(0.25), lineWidth: 1)
                                     )
                                 }
                                 .buttonStyle(PlainButtonStyle())
@@ -226,7 +228,7 @@ struct HomeView: View {
                                             .foregroundColor(Theme.accent)
                                     }
                                     .padding()
-                                    .background(Color.white.opacity(0.05))
+                                    .background(Color.white.opacity(0.03))
                                     .cornerRadius(12)
                                 }
                                 .buttonStyle(PlainButtonStyle())
@@ -407,14 +409,15 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 16) {
             // Greeting & Weather
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(welcomeMessage)
                         .font(Theme.headerFont())
                         .foregroundColor(.white)
                     
                     if let tideData = tideManager.currentTideData {
                         Text(tideData.tideType)
-                            .font(.headline)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
                             .foregroundColor(Theme.accent)
                     } else if tideManager.isLoading {
                         Text("Fetching information...".localized)
@@ -436,14 +439,14 @@ struct HomeView: View {
                         } else {
                             if mode.showIcon {
                                 Image(systemName: weatherManager.currentSymbol)
-                                    .font(.system(size: 32))
+                                    .font(.system(size: 28))
                                     .foregroundStyle(Theme.primaryGradient)
                             }
                             if mode.showTemp, let temp = weatherManager.temperature {
                                 Text(String(format: "%.0f°C", temp))
                                     .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.white.opacity(0.9))
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
                             }
                             if mode.showRain, let rain = weatherManager.precipitationProbability {
                                 HStack(spacing: 2) {
@@ -451,16 +454,20 @@ struct HomeView: View {
                                         .font(.system(size: 9))
                                     Text("\(rain)%")
                                         .font(.caption2)
+                                        .fontWeight(.bold)
                                 }
-                                .foregroundColor(.cyan.opacity(0.9))
+                                .foregroundColor(.cyan)
                             }
                             if mode.showLabel {
                                 Text(weatherManager.currentLabel)
                                     .font(.caption2)
-                                    .foregroundColor(.white.opacity(0.7))
+                                    .foregroundColor(Theme.textSecondary)
                             }
                         }
                     }
+                    .padding(8)
+                    .background(Color.white.opacity(0.04))
+                    .cornerRadius(12)
                 }
             }
             
@@ -470,13 +477,12 @@ struct HomeView: View {
                     tideMiniInfo(title: "High".localized, time: tideData.highTides.first?.time ?? "--:--", icon: "arrow.up.circle.fill", color: .red)
                     tideMiniInfo(title: "Low".localized, time: tideData.lowTides.first?.time ?? "--:--", icon: "arrow.down.circle.fill", color: Theme.accent)
                 }
+                .padding(.top, 4)
             }
         }
         .padding()
-        .background(Theme.cardBackground)
-        .cornerRadius(20)
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.1, cornerRadius: 20)
         .padding(.horizontal)
-        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
     }
     
     private func tideMiniInfo(title: String, time: String, icon: String, color: Color) -> some View {
@@ -505,37 +511,35 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("\(shortMonthFormatter.string(from: selectedMonth))のサマリー")
                     .font(.caption)
-                    .fontWeight(.semibold)
+                    .fontWeight(.bold)
                     .foregroundColor(Theme.textSecondary)
                 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     compactStat(icon: "ruler", value: formatDistanceKm(monthStats.distance), color: Theme.accent)
                     compactStat(icon: "clock", value: formatDuration(monthStats.duration), color: Theme.secondaryAccent)
                     compactStat(icon: "number", value: "\(monthStats.count)件", color: .orange)
                 }
             }
-            .padding(12)
+            .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.cardBackground)
-            .cornerRadius(16)
+            .glassCardStyle(glowColor: Theme.accent, opacity: 0.06, cornerRadius: 16)
             
             // Cumulative Card
             VStack(alignment: .leading, spacing: 8) {
                 Text("累積のサマリー")
                     .font(.caption)
-                    .fontWeight(.semibold)
+                    .fontWeight(.bold)
                     .foregroundColor(Theme.textSecondary)
                 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     compactStat(icon: "ruler", value: formatDistanceKm(cumulativeStats.distance), color: Theme.accent)
                     compactStat(icon: "clock", value: formatDuration(cumulativeStats.duration), color: Theme.secondaryAccent)
                     compactStat(icon: "number", value: "\(cumulativeStats.count)件", color: .orange)
                 }
             }
-            .padding(12)
+            .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.cardBackground)
-            .cornerRadius(16)
+            .glassCardStyle(glowColor: Theme.secondaryAccent, opacity: 0.06, cornerRadius: 16)
         }
         .padding(.horizontal)
     }
@@ -645,10 +649,8 @@ struct HomeView: View {
             }
         }
         .padding()
-        .background(Theme.cardBackground)
-        .cornerRadius(20)
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.08, cornerRadius: 20)
         .padding(.horizontal)
-        .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
     }
     
     private var sheetHistorySection: some View {
@@ -954,7 +956,7 @@ struct QuickActionCardView: View {
                     .font(.title2)
                     .foregroundColor(color)
                     .padding(10)
-                    .background(color.opacity(0.15))
+                    .background(color.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 Spacer()
             }
@@ -966,17 +968,12 @@ struct QuickActionCardView: View {
                     .foregroundColor(Theme.textMain)
                 Text(subtitle)
                     .font(.caption2)
-                    .foregroundColor(Theme.textSecondary.opacity(0.8))
+                    .foregroundColor(Theme.textSecondary.opacity(0.85))
             }
         }
         .padding()
         .frame(maxWidth: .infinity)
-        .background(Theme.cardBackground)
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
+        .glassCardStyle(glowColor: color, opacity: 0.08, cornerRadius: 16)
     }
 }
 
@@ -995,7 +992,7 @@ struct StatCard: View {
                     .font(.title3)
                     .foregroundColor(color)
                     .padding(8)
-                    .background(color.opacity(0.2))
+                    .background(color.opacity(0.15))
                     .clipShape(Circle())
                 Spacer()
             }
@@ -1013,8 +1010,7 @@ struct StatCard: View {
             }
         }
         .padding()
-        .background(Theme.cardBackground)
-        .cornerRadius(16)
+        .glassCardStyle(glowColor: color, opacity: 0.08, cornerRadius: 16)
     }
 }
 
@@ -1024,13 +1020,14 @@ struct RecordRowCard: View {
     var body: some View {
         HStack {
             // Date Box
-            VStack {
+            VStack(spacing: 2) {
                 Text(dayStr(record.date))
-                    .font(.title3)
+                    .font(.system(.title3, design: .monospaced))
                     .bold()
                     .foregroundColor(Theme.textMain)
                 Text(monthStr(record.date))
-                    .font(.caption)
+                    .font(.caption2)
+                    .fontWeight(.bold)
                     .foregroundColor(Theme.textSecondary)
             }
             .frame(width: 50)
@@ -1041,8 +1038,10 @@ struct RecordRowCard: View {
                 HStack(spacing: 16) {
                     Label(record.formattedDistance, systemImage: "ruler")
                         .font(.system(.body, design: .monospaced))
+                        .fontWeight(.bold)
                     Label(record.formattedDuration, systemImage: "clock")
                         .font(.system(.body, design: .monospaced))
+                        .fontWeight(.bold)
                 }
                 .foregroundColor(Theme.accent)
                 
@@ -1060,8 +1059,7 @@ struct RecordRowCard: View {
                 .foregroundColor(Theme.textSecondary.opacity(0.5))
         }
         .padding()
-        .background(Theme.cardBackground)
-        .cornerRadius(12)
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.05, cornerRadius: 12)
     }
     
     private func dayStr(_ date: Date) -> String {
@@ -1083,13 +1081,14 @@ struct ManagerSessionRowCard: View {
     var body: some View {
         HStack {
             // Date Box
-            VStack {
+            VStack(spacing: 2) {
                 Text(dayStr(records.first?.date ?? Date()))
-                    .font(.title3)
+                    .font(.system(.title3, design: .monospaced))
                     .bold()
                     .foregroundColor(Theme.textMain)
                 Text(monthStr(records.first?.date ?? Date()))
-                    .font(.caption)
+                    .font(.caption2)
+                    .fontWeight(.bold)
                     .foregroundColor(Theme.textSecondary)
             }
             .frame(width: 50)
@@ -1115,17 +1114,7 @@ struct ManagerSessionRowCard: View {
                 .foregroundColor(Theme.textSecondary.opacity(0.5))
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Theme.cardBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(
-                    LinearGradient(colors: [Color.indigo.opacity(0.6), Color.purple.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                    lineWidth: 1.5
-                )
-        )
+        .glassCardStyle(glowColor: .indigo, opacity: 0.08, cornerRadius: 12)
     }
     
     private func dayStr(_ date: Date) -> String {

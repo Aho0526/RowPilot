@@ -14,6 +14,29 @@ enum BoatRiggingField {
     case oarGripDiameter
 }
 
+// MARK: - High-Tech Grid Pattern for CAD Feel
+struct TechGridView: View {
+    var glowColor: Color = Theme.accent
+    var body: some View {
+        GeometryReader { geo in
+            Path { path in
+                let step: CGFloat = 16
+                // Vertical lines
+                for x in stride(from: 0, to: geo.size.width, by: step) {
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: geo.size.height))
+                }
+                // Horizontal lines
+                for y in stride(from: 0, to: geo.size.height, by: step) {
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: geo.size.width, y: y))
+                }
+            }
+            .stroke(glowColor.opacity(0.04), lineWidth: 0.8)
+        }
+    }
+}
+
 struct BoatRiggingDiagramView: View {
     let span: Double
     let workHeight: Double
@@ -41,58 +64,58 @@ struct BoatRiggingDiagramView: View {
     @AppStorage("footstretchMeasurementMethod") private var footstretchMeasurementMethod: String = "fromHeel"
     
     var body: some View {
-        VStack(spacing: 12) {
-            // View Selector Tab
-            HStack(spacing: 8) {
-                Button(action: { currentTab = 0 }) {
-                    Text("Top View".localized)
-                        .font(.caption)
-                        .fontWeight(currentTab == 0 ? .bold : .medium)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(currentTab == 0 ? Theme.accent.opacity(0.2) : Color.clear)
-                        .foregroundColor(currentTab == 0 ? Theme.accent : Theme.textSecondary)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(currentTab == 0 ? Theme.accent : Color.gray.opacity(0.3), lineWidth: 1)
-                        )
-                }
-                
-                Button(action: { currentTab = 1 }) {
-                    Text("Diagonal View".localized)
-                        .font(.caption)
-                        .fontWeight(currentTab == 1 ? .bold : .medium)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(currentTab == 1 ? Theme.accent.opacity(0.2) : Color.clear)
-                        .foregroundColor(currentTab == 1 ? Theme.accent : Theme.textSecondary)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(currentTab == 1 ? Theme.accent : Color.gray.opacity(0.3), lineWidth: 1)
-                        )
-                }
-                
-                Button(action: { currentTab = 2 }) {
-                    Text("Side View".localized)
-                        .font(.caption)
-                        .fontWeight(currentTab == 2 ? .bold : .medium)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(currentTab == 2 ? Theme.accent.opacity(0.2) : Color.clear)
-                        .foregroundColor(currentTab == 2 ? Theme.accent : Theme.textSecondary)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(currentTab == 2 ? Theme.accent : Color.gray.opacity(0.3), lineWidth: 1)
-                        )
+        VStack(spacing: 14) {
+            // View Selector Tab (Futuristic Glass Capsule Style)
+            HStack(spacing: 4) {
+                ForEach(0..<3) { tabIndex in
+                    let isSelected = currentTab == tabIndex
+                    let tabTitle: String = {
+                        switch tabIndex {
+                        case 0: return "Top View".localized
+                        case 1: return "Diagonal View".localized
+                        default: return "Side View".localized
+                        }
+                    }()
+                    
+                    Button(action: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            currentTab = tabIndex
+                        }
+                    }) {
+                        Text(tabTitle)
+                            .font(.caption2)
+                            .fontWeight(isSelected ? .bold : .semibold)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                ZStack {
+                                    if isSelected {
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(Theme.primaryGradient)
+                                            .shadow(color: Theme.accent.opacity(0.4), radius: 4, x: 0, y: 0)
+                                    }
+                                }
+                            )
+                            .foregroundColor(isSelected ? .black : Theme.textSecondary)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
+            .padding(4)
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
             .padding(.top, 4)
             
             // Diagram Area
             ZStack {
+                // High-tech telemetry grid background
+                TechGridView(glowColor: Theme.accent)
+                
                 if currentTab == 0 {
                     topViewDiagram
                 } else if currentTab == 1 {
@@ -105,12 +128,9 @@ struct BoatRiggingDiagramView: View {
                     }
                 }
             }
-            .frame(height: 180)
+            .frame(height: 200)
             .clipped()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.black.opacity(0.15))
-            )
+            .glassCardStyle(glowColor: Theme.accent, opacity: 0.08, cornerRadius: 16)
             
             // Description of active field
             if let desc = getHighlightDescription() {
@@ -154,11 +174,11 @@ struct BoatRiggingDiagramView: View {
                     path.move(to: CGPoint(x: centerlineX, y: 10))
                     path.addLine(to: CGPoint(x: centerlineX, y: h - 10))
                 }
-                .stroke(Color.white.opacity(0.15), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 4]))
+                .stroke(Theme.accent.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 4]))
                 
                 Text("Centerline".localized)
                     .font(.system(size: 8))
-                    .foregroundColor(Theme.textSecondary.opacity(0.3))
+                    .foregroundColor(Theme.textSecondary.opacity(0.4))
                     .position(x: centerlineX - 30, y: 15)
                 
                 // Hull outline (Top View)
@@ -170,21 +190,21 @@ struct BoatRiggingDiagramView: View {
                     path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: 10))
                     path.addQuadCurve(to: CGPoint(x: centerlineX + hullHalfWidth + 3, y: h - 10), control: CGPoint(x: centerlineX + hullHalfWidth + 6, y: h * 0.5))
                 }
-                .stroke(Color.white.opacity(0.25), lineWidth: 1.5)
+                .stroke(Color.white.opacity(0.18), lineWidth: 1.5)
                 
                 // Seat (Interactive dragging)
                 ZStack {
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(selectedField == .seatPosition ? Theme.accent.opacity(0.4) : Color(hex: "333333"))
+                        .fill(selectedField == .seatPosition ? Theme.accent.opacity(0.35) : Color.white.opacity(0.1))
                         .frame(width: 34, height: 20)
                         .overlay(
                             RoundedRectangle(cornerRadius: 4)
-                                .stroke(selectedField == .seatPosition ? Theme.accent : Color.gray.opacity(0.4), lineWidth: 1)
+                                .stroke(selectedField == .seatPosition ? Theme.accent : Color.white.opacity(0.25), lineWidth: 1)
                         )
                     
                     Text("Seat".localized)
-                        .font(.system(size: 8))
-                        .foregroundColor(Theme.textSecondary.opacity(0.6))
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary.opacity(0.7))
                 }
                 .position(x: centerlineX, y: seatY)
                 .gesture(
@@ -203,26 +223,26 @@ struct BoatRiggingDiagramView: View {
                 HStack(spacing: 6) {
                     // Left Shoe
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(selectedField == .footplateAngle ? Theme.accent.opacity(0.3) : Color(hex: "1F1F1F"))
+                        .fill(selectedField == .footplateAngle ? Theme.accent.opacity(0.25) : Color.white.opacity(0.08))
                         .frame(width: 8, height: shoeLen)
                         .rotationEffect(.degrees(-5))
                         .overlay(
                             RoundedRectangle(cornerRadius: 2)
-                                .stroke(selectedField == .footplateAngle ? Theme.accent : Color.gray.opacity(0.4), lineWidth: 1)
+                                .stroke(selectedField == .footplateAngle ? Theme.accent : Color.white.opacity(0.2), lineWidth: 1)
                         )
                     
                     // Right Shoe
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(selectedField == .footplateAngle ? Theme.accent.opacity(0.3) : Color(hex: "1F1F1F"))
+                        .fill(selectedField == .footplateAngle ? Theme.accent.opacity(0.25) : Color.white.opacity(0.08))
                         .frame(width: 8, height: shoeLen)
                         .rotationEffect(.degrees(5))
                         .overlay(
                             RoundedRectangle(cornerRadius: 2)
-                                .stroke(selectedField == .footplateAngle ? Theme.accent : Color.gray.opacity(0.4), lineWidth: 1)
+                                .stroke(selectedField == .footplateAngle ? Theme.accent : Color.white.opacity(0.2), lineWidth: 1)
                         )
                 }
                 .position(x: centerlineX, y: shoeDrawY)
-                .shadow(color: selectedField == .footplateAngle ? Theme.accent.opacity(0.4) : Color.clear, radius: 4)
+                .shadow(color: selectedField == .footplateAngle ? Theme.accent.opacity(0.3) : Color.clear, radius: 4)
                 
                 // Riggers
                 // Right Rigger
@@ -236,7 +256,7 @@ struct BoatRiggingDiagramView: View {
                     path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerBowAnchorY))
                     path.addLine(to: CGPoint(x: pinRightX, y: pinY))
                 }
-                .stroke(selectedField == .span ? Theme.accent : Color(hex: "888888"), lineWidth: 2)
+                .stroke(selectedField == .span ? Theme.accent : Color.white.opacity(0.35), lineWidth: 2)
                 
                 // Left Rigger (Only for Scull)
                 if isScull {
@@ -248,7 +268,7 @@ struct BoatRiggingDiagramView: View {
                         path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: riggerBowAnchorY))
                         path.addLine(to: CGPoint(x: pinLeftX, y: pinY))
                     }
-                    .stroke(selectedField == .span ? Theme.accent : Color(hex: "888888"), lineWidth: 2)
+                    .stroke(selectedField == .span ? Theme.accent : Color.white.opacity(0.35), lineWidth: 2)
                 }
                 
                 // Pins
@@ -758,7 +778,7 @@ struct BoatRiggingDiagramView: View {
                     .background(Color.black.opacity(0.3).cornerRadius(6))
                     .position(x: w - 75, y: 15)
                 
-                // 3D Cockpit Deck Floor (Clipped)
+                // 3D Cockpit Deck Floor (Clipped - Semi-translucent panel look)
                 let floorVertices = [
                     Point3D(x: -hullHalfWidthVal, y: 0, z: 5),
                     Point3D(x: hullHalfWidthVal, y: 0, z: 5),
@@ -770,7 +790,7 @@ struct BoatRiggingDiagramView: View {
                 }
                 .fill(
                     LinearGradient(
-                        colors: [Color(hex: "1F2E35"), Color(hex: "0D161A")],
+                        colors: [Theme.accent.opacity(0.12), Color.white.opacity(0.01)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -783,12 +803,12 @@ struct BoatRiggingDiagramView: View {
                 Path { path in
                     drawClippedLine(Point3D(x: -6, y: 2, z: 8), Point3D(x: -6, y: 2, z: railsEndZ), &path)
                 }
-                .stroke(LinearGradient(colors: [.gray, .white, .gray], startPoint: .top, endPoint: .bottom), lineWidth: 2)
+                .stroke(LinearGradient(colors: [Theme.accent.opacity(0.8), Theme.secondaryAccent.opacity(0.8)], startPoint: .top, endPoint: .bottom), lineWidth: 2)
                 
                 Path { path in
                     drawClippedLine(Point3D(x: 6, y: 2, z: 8), Point3D(x: 6, y: 2, z: railsEndZ), &path)
                 }
-                .stroke(LinearGradient(colors: [.gray, .white, .gray], startPoint: .top, endPoint: .bottom), lineWidth: 2)
+                .stroke(LinearGradient(colors: [Theme.accent.opacity(0.8), Theme.secondaryAccent.opacity(0.8)], startPoint: .top, endPoint: .bottom), lineWidth: 2)
                 
                 // Seat
                 let seatVertices = [
@@ -800,7 +820,13 @@ struct BoatRiggingDiagramView: View {
                 Path { path in
                     drawClippedPolygon(seatVertices, &path)
                 }
-                .fill(Color(hex: "333333"))
+                .fill(Color.white.opacity(0.15))
+                .overlay(
+                    Path { path in
+                        drawClippedPolygon(seatVertices, &path)
+                    }
+                    .stroke(selectedField == .seatPosition ? Theme.accent : Theme.textSecondary.opacity(0.3), lineWidth: 1)
+                )
                 
                 // Seat wheels (Visibility checked)
                 Group {
@@ -837,17 +863,17 @@ struct BoatRiggingDiagramView: View {
                 Path { path in
                     drawClippedLine(Point3D(x: -hullHalfWidthVal + 1.5, y: heelsY3d - 3, z: z3d_foot - 3), Point3D(x: -hullHalfWidthVal + 1.5, y: y3d_top + 3, z: z3d_top + 3), &path)
                 }
-                .stroke(Color.gray.opacity(0.6), lineWidth: 1.5)
+                .stroke(Color.white.opacity(0.2), lineWidth: 1.5)
                 
                 Path { path in
                     drawClippedLine(Point3D(x: hullHalfWidthVal - 1.5, y: heelsY3d - 3, z: z3d_foot - 3), Point3D(x: hullHalfWidthVal - 1.5, y: y3d_top + 3, z: z3d_top + 3), &path)
                 }
-                .stroke(Color.gray.opacity(0.6), lineWidth: 1.5)
+                .stroke(Color.white.opacity(0.2), lineWidth: 1.5)
                 
                 Path { path in
                     drawClippedLine(Point3D(x: -hullHalfWidthVal + 1.5, y: heelsY3d, z: z3d_foot), Point3D(x: hullHalfWidthVal - 1.5, y: heelsY3d, z: z3d_foot), &path)
                 }
-                .stroke(Color.gray, lineWidth: 2)
+                .stroke(Color.white.opacity(0.3), lineWidth: 2)
                 
                 // Footplate Board (Clipped)
                 let footplateVertices = [
@@ -859,12 +885,12 @@ struct BoatRiggingDiagramView: View {
                 Path { path in
                     drawClippedPolygon(footplateVertices, &path)
                 }
-                .fill(isFootplateSelected ? Theme.accent.opacity(0.15) : Color(hex: "2A2A2A"))
+                .fill(isFootplateSelected ? Theme.accent.opacity(0.2) : Color.white.opacity(0.06))
                 .overlay(
                     Path { path in
                         drawClippedPolygon(footplateVertices, &path)
                     }
-                    .stroke(isFootplateSelected ? Theme.accent : Color.gray.opacity(0.5), lineWidth: isFootplateSelected ? 2.0 : 1.0)
+                    .stroke(isFootplateSelected ? Theme.accent : Color.white.opacity(0.2), lineWidth: isFootplateSelected ? 2.0 : 1.0)
                 )
                 
                 // Side thickness for 3D look (Clipped)
@@ -877,7 +903,7 @@ struct BoatRiggingDiagramView: View {
                 Path { path in
                     drawClippedPolygon(boardLeftThickness, &path)
                 }
-                .fill(Color(hex: "1C1C1C"))
+                .fill(Color.white.opacity(0.1))
                 
                 let boardRightThickness = [
                     Point3D(x: 11, y: heelsY3d, z: z3d_foot),
@@ -888,7 +914,7 @@ struct BoatRiggingDiagramView: View {
                 Path { path in
                     drawClippedPolygon(boardRightThickness, &path)
                 }
-                .fill(Color(hex: "1C1C1C"))
+                .fill(Color.white.opacity(0.1))
                 
                 // 3D Shoes (Left and Right, rendered back-to-front / component sorted)
                 // Left Shoe
@@ -896,11 +922,11 @@ struct BoatRiggingDiagramView: View {
                 Path { path in drawDetailedShoe(-5.0, &path, "sole") }.fill(Color(hex: "1C1C1C"))
                 Path { path in drawDetailedShoe(-5.0, &path, "toe_cap") }.fill(Color(hex: "222222"))
                 Path { path in drawDetailedShoe(-5.0, &path, "toe_cap") }.stroke(Color.white.opacity(0.12), lineWidth: 1.0)
-                Path { path in drawDetailedShoe(-5.0, &path, "body") }.fill(Color(hex: "007AFF"))
+                Path { path in drawDetailedShoe(-5.0, &path, "body") }.fill(Theme.accent.opacity(0.85))
                 Path { path in drawDetailedShoe(-5.0, &path, "body") }.stroke(Color.white.opacity(0.15), lineWidth: 1.0)
                 Path { path in drawDetailedShoe(-5.0, &path, "heel") }.fill(Color(hex: "181818"))
                 Path { path in drawDetailedShoe(-5.0, &path, "heel") }.stroke(Color.white.opacity(0.12), lineWidth: 1.0)
-                Path { path in drawDetailedShoe(-5.0, &path, "straps") }.fill(Color.orange)
+                Path { path in drawDetailedShoe(-5.0, &path, "straps") }.fill(Theme.secondaryAccent)
                 Path { path in drawDetailedShoe(-5.0, &path, "stripes") }.stroke(Color.white.opacity(0.85), lineWidth: 1.2)
                 
                 // Right Shoe
@@ -908,11 +934,11 @@ struct BoatRiggingDiagramView: View {
                 Path { path in drawDetailedShoe(5.0, &path, "sole") }.fill(Color(hex: "1C1C1C"))
                 Path { path in drawDetailedShoe(5.0, &path, "toe_cap") }.fill(Color(hex: "222222"))
                 Path { path in drawDetailedShoe(5.0, &path, "toe_cap") }.stroke(Color.white.opacity(0.12), lineWidth: 1.0)
-                Path { path in drawDetailedShoe(5.0, &path, "body") }.fill(Color(hex: "007AFF"))
+                Path { path in drawDetailedShoe(5.0, &path, "body") }.fill(Theme.accent.opacity(0.85))
                 Path { path in drawDetailedShoe(5.0, &path, "body") }.stroke(Color.white.opacity(0.15), lineWidth: 1.0)
                 Path { path in drawDetailedShoe(5.0, &path, "heel") }.fill(Color(hex: "181818"))
                 Path { path in drawDetailedShoe(5.0, &path, "heel") }.stroke(Color.white.opacity(0.12), lineWidth: 1.0)
-                Path { path in drawDetailedShoe(5.0, &path, "straps") }.fill(Color.orange)
+                Path { path in drawDetailedShoe(5.0, &path, "straps") }.fill(Theme.secondaryAccent)
                 Path { path in drawDetailedShoe(5.0, &path, "stripes") }.stroke(Color.white.opacity(0.85), lineWidth: 1.2)
                 
                 // 3D Riggers (Only shown if focused setting doesn't hide them)
@@ -924,7 +950,7 @@ struct BoatRiggingDiagramView: View {
                         // Stretcher side stay: diagonal (slightly in front of the shoes)
                         drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: riggerBowAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3d, z: z3d_pin), &path)
                     }
-                    .stroke(LinearGradient(colors: [.gray, .white, .gray], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    .stroke(LinearGradient(colors: [Theme.accent, Theme.secondaryAccent.opacity(0.5)], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                     .shadow(radius: 2)
                     
                     if isScull {
@@ -934,7 +960,7 @@ struct BoatRiggingDiagramView: View {
                             // Stretcher side stay: diagonal (slightly in front of the shoes)
                             drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: riggerBowAnchorZ3D), Point3D(x: -halfSpanVal, y: pinHeight3d, z: z3d_pin), &path)
                         }
-                        .stroke(LinearGradient(colors: [.gray, .white, .gray], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                        .stroke(LinearGradient(colors: [Theme.accent, Theme.secondaryAccent.opacity(0.5)], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                         .shadow(radius: 2)
                     }
                     

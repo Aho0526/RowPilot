@@ -214,9 +214,8 @@ struct RecordDetailView: View {
                                 Image(systemName: "chevron.right")
                             }
                             .padding()
-                            .background(Theme.cardBackground)
+                            .glassCardStyle(glowColor: Theme.accent, opacity: 0.08, cornerRadius: 20)
                             .foregroundColor(Theme.accent)
-                            .cornerRadius(20)
                         }
                     }
                     
@@ -291,8 +290,7 @@ struct RecordDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
-        .background(Theme.cardBackground)
-        .cornerRadius(20)
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.08, cornerRadius: 20)
     }
     
     // MARK: - Map Section
@@ -315,14 +313,13 @@ struct RecordDetailView: View {
                 }
         }
         .padding()
-        .background(Theme.cardBackground)
-        .cornerRadius(20)
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.08, cornerRadius: 20)
     }
     
     // MARK: - Metrics Section
     private var metricsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Performance".localized, systemImage: "chart.bar.fill")
+            Label("Performance".localized, systemImage: "figure.outdoor.rowing")
                 .font(Theme.subHeaderFont())
                 .foregroundColor(Theme.textMain)
             
@@ -337,8 +334,7 @@ struct RecordDetailView: View {
             }
         }
         .padding()
-        .background(Theme.cardBackground)
-        .cornerRadius(20)
+        .glassCardStyle(glowColor: Theme.secondaryAccent, opacity: 0.08, cornerRadius: 20)
     }
     
     // MARK: - Crew Section
@@ -358,9 +354,9 @@ struct RecordDetailView: View {
                     }) {
                         HStack(spacing: 4) {
                             Text("Edit".localized)
-                                .font(.subheadline)
+                               .font(.subheadline)
                             Image(systemName: "pencil")
-                                .font(.caption)
+                               .font(.caption)
                         }
                         .foregroundColor(Theme.accent)
                     }
@@ -407,8 +403,7 @@ struct RecordDetailView: View {
             }
         }
         .padding()
-        .background(Theme.cardBackground)
-        .cornerRadius(20)
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.08, cornerRadius: 20)
     }
     
     // MARK: - Tags Section
@@ -453,8 +448,7 @@ struct RecordDetailView: View {
             }
         }
         .padding()
-        .background(Theme.cardBackground)
-        .cornerRadius(20)
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.08, cornerRadius: 20)
     }
     
     // MARK: - Notes Section
@@ -479,8 +473,7 @@ struct RecordDetailView: View {
             }
         }
         .padding()
-        .background(Theme.cardBackground)
-        .cornerRadius(20)
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.08, cornerRadius: 20)
     }
     
     // MARK: - Save
@@ -488,7 +481,7 @@ struct RecordDetailView: View {
         app.recordManager.updateRecord(record.id, notes: editedNotes, tags: editedTags)
     }
 }
-
+ 
 // MARK: - Metric Card
 struct MetricCard: View {
     let icon: String
@@ -511,10 +504,10 @@ struct MetricCard: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(Theme.background.opacity(0.5))
-        .cornerRadius(12)
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.05, cornerRadius: 12)
     }
 }
+
 
 // MARK: - Tag Chip
 struct TagChip: View {

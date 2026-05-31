@@ -13,33 +13,33 @@ enum ThemePreset: String, CaseIterable, Identifiable {
     var backgroundColors: [Color] {
         switch self {
         case .darkMarine:
-            return [Color(hex: "0F2027"), Color(hex: "203A43"), Color(hex: "2C5364")]
+            return [Color(hex: "040B14"), Color(hex: "0A172A"), Color(hex: "081120")]
         case .sunset:
-            return [Color(hex: "2b1055"), Color(hex: "7597de")] // Night to day transition style or deep purple
+            return [Color(hex: "0E0814"), Color(hex: "1C0E2D"), Color(hex: "180B22")]
         case .forest:
-            return [Color(hex: "134E5E"), Color(hex: "71B280")]
+            return [Color(hex: "040D08"), Color(hex: "0B2215"), Color(hex: "07180F")]
         case .monochrome:
-            return [Color(hex: "000000"), Color(hex: "434343")]
+            return [Color(hex: "080808"), Color(hex: "171717"), Color(hex: "101010")]
         }
     }
     
     // Accent Color
     var accentColor: Color {
         switch self {
-        case .darkMarine: return Color(hex: "00d2ff")
-        case .sunset: return Color(hex: "FF512F") // Orange/Red
-        case .forest: return Color(hex: "A8E063") // Light Green
-        case .monochrome: return Color(hex: "FFFFFF")
+        case .darkMarine: return Color(hex: "00F2FE") // Electric Cyan
+        case .sunset: return Color(hex: "FF0844") // Neon Pink
+        case .forest: return Color(hex: "00FF87") // Laser Green
+        case .monochrome: return Color(hex: "D4AF37") // Premium Gold
         }
     }
     
     // Secondary Accent
     var secondaryAccentColor: Color {
         switch self {
-        case .darkMarine: return Color(hex: "3a7bd5")
-        case .sunset: return Color(hex: "F09819")
-        case .forest: return Color(hex: "56ab2f")
-        case .monochrome: return Color(hex: "bdc3c7")
+        case .darkMarine: return Color(hex: "4FACFE") // Neon Blue
+        case .sunset: return Color(hex: "FFB199") // Electric Peach
+        case .forest: return Color(hex: "60EFFF") // Electric Teal
+        case .monochrome: return Color(hex: "E0E0E0") // Platinum
         }
     }
 }
@@ -57,14 +57,6 @@ class ThemeManager: ObservableObject {
 
 // MARK: - Theme Accessor
 struct Theme {
-    // Current Preset Access Helper
-    // Note: In Views, prefer using @ObservedObject or @AppStorage to react to changes.
-    // Static properties here read from the source of truth (UserDefaults via AppStorage wrapper logic or direct access)
-    // To enable reactivity without passing ThemeManager everywhere, we can make these computed properties 
-    // but Views won't update automatically unless they observe the manager.
-    // For simplicity in this codebase, we'll keep static access for properties, 
-    // AND integrate ThemeManager in root view or EnvironmentObject.
-    
     static var current: ThemePreset {
         ThemeManager.shared.currentPreset
     }
@@ -98,7 +90,7 @@ struct Theme {
     }
     
     static var textSecondary: Color {
-        return .white.opacity(0.7)
+        return .white.opacity(0.65)
     }
     
     static var primaryGradient: LinearGradient {
@@ -115,7 +107,28 @@ struct Theme {
     }
     
     static func subHeaderFont() -> Font {
-        return .system(size: 18, weight: .semibold, design: .rounded)
+        return .system(size: 17, weight: .semibold, design: .rounded)
+    }
+}
+
+// MARK: - View Extension for futuristic UI modifiers
+extension View {
+    func glassCardStyle(glowColor: Color = .white, opacity: Double = 0.1, cornerRadius: CGFloat = 16) -> some View {
+        self
+            .background(Theme.cardBackground)
+            .cornerRadius(cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.18), .clear, glowColor.opacity(opacity * 2)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: glowColor.opacity(opacity), radius: 10, x: 0, y: 4)
     }
 }
 
@@ -146,3 +159,4 @@ extension Color {
         )
     }
 }
+

@@ -271,8 +271,7 @@ struct PracticeSection<Content: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
-            .background(Theme.cardBackground)
-            .cornerRadius(16)
+            .glassCardStyle(glowColor: Theme.accent, opacity: 0.08, cornerRadius: 16)
         }
     }
 }
@@ -335,8 +334,7 @@ struct ActiveWorkoutView: View {
                 }
             }
             .padding()
-            .background(Theme.cardBackground)
-            .cornerRadius(20)
+            .glassCardStyle(glowColor: Theme.accent, opacity: 0.12, cornerRadius: 20)
             
             // Grid of Metrics
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -425,8 +423,7 @@ struct ActiveMetricBox: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(Theme.cardBackground)
-        .cornerRadius(16)
+        .glassCardStyle(glowColor: color, opacity: 0.08, cornerRadius: 16)
     }
 }
 
@@ -583,9 +580,7 @@ struct HelpSectionView<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(20)
-        .background(Theme.cardBackground)
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.06, cornerRadius: 16)
     }
 }
 
