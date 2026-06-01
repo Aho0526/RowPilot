@@ -591,3 +591,8 @@ struct NumericTextField: View {
         return f.string(from: NSNumber(value: val)) ?? String(format: "%.1f", val)
     }
 }
+#Preview {
+    NavigationStack {
+        RiggingEditorView()
+    }
+}

@@ -1233,4 +1233,7 @@ struct SwipeToDelete<Content: View>: View {
         }
     }
 }
+#Preview {
+    HomeView()
+}
 
