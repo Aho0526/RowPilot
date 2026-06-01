@@ -99,7 +99,7 @@ struct SingleDistanceSetupView: View {
                         .onChange(of: distance) { _, newValue in
                             if let d = Int(newValue) {
                                 let autoSplit = d / 5
-                                splitDistance = "\(max(autoSplit, 50))"
+                                splitDistance = "\(max(autoSplit, 100))"
                             }
                         }
                 }
@@ -107,7 +107,7 @@ struct SingleDistanceSetupView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Split Distance".localized + " (m)")
                         .foregroundColor(Theme.textSecondary)
-                    TextField("Min 50m", text: $splitDistance)
+                    TextField("Min 100m", text: $splitDistance)
                         .keyboardType(.numberPad)
                         .textFieldStyle(.plain)
                         .padding()
@@ -123,7 +123,8 @@ struct SingleDistanceSetupView: View {
                 
                 Button(action: {
                     if let d = Int(distance), let s = Int(splitDistance) {
-                        ergManager.setWorkoutDistance(meters: d, split: s)
+                        let finalSplit = max(s, 100)
+                        ergManager.setWorkoutDistance(meters: d, split: finalSplit)
                         dismiss()
                     }
                 }) {

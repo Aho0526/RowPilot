@@ -50,6 +50,12 @@ class RowErgManager: NSObject, ObservableObject {
     @Published var distance: Double = 0.0
     @Published var elapsedTime: Double = 0.0
     @Published var power: Int = 0
+    @Published var dragFactor: Int = 0
+    @Published var heartRate: Int = 0
+    @Published var totalCalories: Double = 0.0
+    @Published var averagePower: Double = 0.0
+    @Published var projectedWorkTime: Double = 0.0
+    @Published var projectedWorkDistance: Double = 0.0
     
     // Target Values (Workout Setup)
     @Published var targetDistance: Double? = nil
@@ -585,6 +591,8 @@ class RowErgManager: NSObject, ObservableObject {
             parseGeneralStatus(rawValue)
         } else if characteristic.uuid == C2_CHAR_ROWING_STATUS_0x32 {
             parseRowingStatus0x32(rawValue)
+        } else if characteristic.uuid == C2_CHAR_POWER_DATA_0x33 {
+            parseStrokeData0x33(rawValue)
         } else if characteristic.uuid == C2_CHAR_STROKE_DATA {
             parseStrokeData(rawValue)
         } else if characteristic.uuid == C2_CHAR_ADDITIONAL_STROKE_DATA_0x36 {
@@ -1030,6 +1038,12 @@ class RowErgManager: NSObject, ObservableObject {
             self.elapsedTime = 0
             self.strokeRate = 0
             self.power = 0
+            self.dragFactor = 0
+            self.heartRate = 0
+            self.totalCalories = 0.0
+            self.averagePower = 0.0
+            self.projectedWorkTime = 0.0
+            self.projectedWorkDistance = 0.0
             self.lastStrokeCount = -1
         }
     }
@@ -1260,7 +1274,7 @@ extension RowErgManager: CBPeripheralDelegate {
         guard let services = peripheral.services else { return }
         for service in services {
             if service.uuid == C2_SERVICE_UUID {
-                peripheral.discoverCharacteristics([C2_CHAR_GENERAL_STATUS, C2_CHAR_ROWING_STATUS_0x32, C2_CHAR_STROKE_DATA, C2_CHAR_ADDITIONAL_STROKE_DATA_0x36, C2_CHAR_FORCE_CURVE], for: service)
+                peripheral.discoverCharacteristics([C2_CHAR_GENERAL_STATUS, C2_CHAR_ROWING_STATUS_0x32, C2_CHAR_POWER_DATA_0x33, C2_CHAR_STROKE_DATA, C2_CHAR_ADDITIONAL_STROKE_DATA_0x36, C2_CHAR_FORCE_CURVE], for: service)
             } else if service.uuid == C2_DEVICE_CONTROL_SERVICE {
                 // Device Control Service から Control Point, Data Point を探す
                 peripheral.discoverCharacteristics([C2_CHAR_CONTROL_POINT, C2_CHAR_DATA_POINT], for: service)
@@ -1277,6 +1291,7 @@ extension RowErgManager: CBPeripheralDelegate {
             
             if characteristic.uuid == C2_CHAR_GENERAL_STATUS ||
                characteristic.uuid == C2_CHAR_ROWING_STATUS_0x32 ||
+               characteristic.uuid == C2_CHAR_POWER_DATA_0x33 ||
                characteristic.uuid == C2_CHAR_STROKE_DATA ||
                characteristic.uuid == C2_CHAR_ADDITIONAL_STROKE_DATA_0x36 ||
                characteristic.uuid == C2_CHAR_FORCE_CURVE ||
@@ -1325,6 +1340,14 @@ extension RowErgManager: CBPeripheralDelegate {
     private func parseGeneralStatus(_ data: Data) {
         let hex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
         DispatchQueue.main.async { self.lastGeneralStatusBytes = hex }
+        
+        // Drag Factor: Byte 18
+        if data.count >= 19 {
+            let drag = Int(data[18])
+            DispatchQueue.main.async {
+                self.dragFactor = drag
+            }
+        }
         
         // 初回通知を受信したことを記録
         if !hasReceivedInitialGeneralStatus {
@@ -1396,10 +1419,12 @@ extension RowErgManager: CBPeripheralDelegate {
         // User formula for Pace: ((Byte 8 * 256) + Byte 7) / 100
         guard data.count >= 9 else { return }
         let rate = Int(data[5])
+        let hr = Int(data[6])
         let paceRaw = UInt16(data[7]) | (UInt16(data[8]) << 8)
         let paceSec = Double(paceRaw) / 100.0
         
         DispatchQueue.main.async {
+            self.heartRate = hr
             if rate > 0 {
                 self.strokeRate = rate
                 
@@ -1450,6 +1475,33 @@ extension RowErgManager: CBPeripheralDelegate {
             
             DispatchQueue.main.async {
                 self.power = watts
+            }
+        }
+        
+        // Projected Work Time: bytes 9-11, Projected Work Distance: bytes 12-14
+        if data.count >= 15 {
+            let timeRaw = UInt32(data[9]) | (UInt32(data[10]) << 8) | (UInt32(data[11]) << 16)
+            let distRaw = UInt32(data[12]) | (UInt32(data[13]) << 8) | (UInt32(data[14]) << 16)
+            
+            DispatchQueue.main.async {
+                self.projectedWorkTime = Double(timeRaw)
+                self.projectedWorkDistance = Double(distRaw)
+            }
+        }
+    }
+
+    private func parseStrokeData0x33(_ data: Data) {
+        let hex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+        DispatchQueue.main.async { self.lastStrokeData0x33Bytes = hex }
+        
+        // Extra Status 2: avgPower is byte 4-5, totalCalories is byte 6-7
+        if data.count >= 8 {
+            let avgPowerRaw = UInt16(data[4]) | (UInt16(data[5]) << 8)
+            let totalCalRaw = UInt16(data[6]) | (UInt16(data[7]) << 8)
+            
+            DispatchQueue.main.async {
+                self.averagePower = Double(avgPowerRaw)
+                self.totalCalories = Double(totalCalRaw)
             }
         }
     }
