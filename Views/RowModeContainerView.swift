@@ -95,7 +95,13 @@ struct RowModeContainerView: View {
                     .padding(20)
                 }
                 .zIndex(10)
-            }
+        }
+        }
+        .onAppear {
+            AppDelegate.orientationLock = .allButUpsideDown
+        }
+        .onDisappear {
+            AppDelegate.orientationLock = .portrait
         }
     }
 }

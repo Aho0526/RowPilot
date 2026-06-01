@@ -8,6 +8,8 @@ struct SettingView: View {
     @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
     @State private var showingResetAlert = false
     @State private var showingDeleteAllAlert = false
+    @State private var showingTargetEditAlert = false
+    @State private var targetDistanceInput = ""
     
     var body: some View {
         NavigationStack(path: $app.settingsNavigationPath) {
@@ -28,6 +30,18 @@ struct SettingView: View {
                 Button("Cancel".localized, role: .cancel) {}
             } message: {
                 Text("Reset Alert Message".localized)
+            }
+            .alert(localizationManager.language == .japanese ? "月間目標距離の変更" : "Change Monthly Goal", isPresented: $showingTargetEditAlert) {
+                TextField(localizationManager.language == .japanese ? "目標距離 (km)" : "Target Distance (km)", text: $targetDistanceInput)
+                    .keyboardType(.decimalPad)
+                Button(localizationManager.language == .japanese ? "保存" : "Save") {
+                    if let km = Double(targetDistanceInput), km > 0 {
+                        settingsManager.settings.monthlyTargetDistance = km * 1000.0
+                    }
+                }
+                Button(localizationManager.language == .japanese ? "キャンセル" : "Cancel", role: .cancel) {}
+            } message: {
+                Text(localizationManager.language == .japanese ? "新しい月間目標距離をキロメートル(km)単位で入力してください。" : "Please enter the new monthly target distance in kilometers (km).")
             }
             .alert("Delete All Workouts".localized, isPresented: $showingDeleteAllAlert) {
                 Button("Delete".localized, role: .destructive) {
@@ -167,6 +181,21 @@ struct SettingView: View {
             // 計測設定
             SettingsSection(title: "Measurement".localized, icon: "stopwatch.fill") {
                 SettingsToggleRow(title: "Auto Start".localized, isOn: $settingsManager.settings.autoStartOnMotion)
+                
+                Divider().background(Theme.textSecondary.opacity(0.3))
+                
+                HStack {
+                    Text(localizationManager.language == .japanese ? "月間目標距離" : "Monthly Target Distance")
+                        .foregroundColor(Theme.textMain)
+                    Spacer()
+                    Button(action: {
+                        targetDistanceInput = String(Int(settingsManager.settings.monthlyTargetDistance / 1000))
+                        showingTargetEditAlert = true
+                    }) {
+                        Text("\(Int(settingsManager.settings.monthlyTargetDistance / 1000)) km")
+                            .foregroundColor(Theme.accent)
+                    }
+                }
             }
             
             // マネージャー設定（サブスク解放時のみ表示）

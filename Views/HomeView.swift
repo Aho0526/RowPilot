@@ -24,6 +24,9 @@ struct HomeView: View {
     @State private var selectedRecord: RowingRecord? = nil
     @State private var selectedManagerSession: ManagerSessionItem? = nil
     
+    @State private var showingTargetEditAlert = false
+    @State private var targetDistanceInput = ""
+    
     private var isJA: Bool {
         LocalizationManager.shared.language == .japanese
     }
@@ -110,13 +113,23 @@ struct HomeView: View {
                                 Text(isJA ? "今月の進捗" : "Monthly Progress")
                                     .font(Theme.subHeaderFont())
                                     .foregroundColor(Theme.textMain)
+                                
+                                Button(action: {
+                                    targetDistanceInput = String(Int(settingsManager.settings.monthlyTargetDistance / 1000))
+                                    showingTargetEditAlert = true
+                                }) {
+                                    Image(systemName: "pencil.circle.fill")
+                                        .font(.subheadline)
+                                        .foregroundColor(Theme.accent)
+                                }
+                                
                                 Spacer()
                                 Text(formatDistanceKm(monthStats.distance))
                                     .font(.system(.headline, design: .monospaced))
                                     .foregroundColor(Theme.accent)
                             }
                             
-                            let targetDistance: Double = 50000.0 // 50km
+                            let targetDistance = settingsManager.settings.monthlyTargetDistance
                             let progress = min(1.0, monthStats.distance / targetDistance)
                             
                             VStack(alignment: .leading, spacing: 8) {
@@ -135,7 +148,8 @@ struct HomeView: View {
                                 .frame(height: 10)
                                 
                                 HStack {
-                                    Text(String(format: isJA ? "目標 50km 中 %.1f%%" : "%.1f%% of 50km goal", progress * 100))
+                                    let targetKm = Int(targetDistance / 1000)
+                                    Text(String(format: isJA ? "目標 \(targetKm)km 中 %.1f%%" : "%.1f%% of \(targetKm)km goal", progress * 100))
                                         .font(.caption2)
                                         .fontWeight(.semibold)
                                         .foregroundColor(Theme.textSecondary)
@@ -258,7 +272,7 @@ struct HomeView: View {
                                 }
                             }
                             
-                            let recentItems = Array(groupedRecords.prefix(3))
+                            let recentItems = Array(groupedRecords.prefix(20))
                             if recentItems.isEmpty {
                                 emptyHistoryView
                             } else {
@@ -400,6 +414,18 @@ struct HomeView: View {
                     Text(String(format: "Delete Session Message".localized, records.count))
                 }
             }
+        }
+        .alert(isJA ? "月間目標距離の変更" : "Change Monthly Goal", isPresented: $showingTargetEditAlert) {
+            TextField(isJA ? "目標距離 (km)" : "Target Distance (km)", text: $targetDistanceInput)
+                .keyboardType(.decimalPad)
+            Button(isJA ? "保存" : "Save") {
+                if let km = Double(targetDistanceInput), km > 0 {
+                    settingsManager.settings.monthlyTargetDistance = km * 1000.0
+                }
+            }
+            Button(isJA ? "キャンセル" : "Cancel", role: .cancel) {}
+        } message: {
+            Text(isJA ? "新しい月間目標距離をキロメートル(km)単位で入力してください。" : "Please enter the new monthly target distance in kilometers (km).")
         }
     }
     
@@ -747,14 +773,7 @@ struct HomeView: View {
         var items: [RecordListItem] = []
         var managerGroups: [UUID: [RowingRecord]] = [:]
         
-        let filteredRecords: [RowingRecord]
-        if let day = selectedDay {
-            filteredRecords = recordManager.records(for: selectedMonth, filter: selectedFilter).filter {
-                Calendar.current.isDate($0.date, inSameDayAs: day)
-            }
-        } else {
-            filteredRecords = recordManager.allRecords(filter: selectedFilter)
-        }
+        let filteredRecords = recordManager.allRecords(filter: selectedFilter)
         
         for record in filteredRecords {
             if record.isManagerMode, let sessionId = record.managerSessionId {

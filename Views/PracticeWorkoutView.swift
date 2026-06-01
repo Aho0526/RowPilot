@@ -29,44 +29,37 @@ struct PracticeWorkoutView: View {
     
     var body: some View {
         GeometryReader { geometry in
-            let isPortrait = geometry.size.height > geometry.size.width
-            let w = isPortrait ? geometry.size.height : geometry.size.width
-            let h = isPortrait ? geometry.size.width : geometry.size.height
-            
             ZStack {
                 Theme.background.ignoresSafeArea()
                 
                 TabView(selection: $activeTab) {
                     // Tab 0: Splits Table (表画面)
-                    splitsTableView(width: w, height: h)
+                    splitsTableView(width: geometry.size.width, height: geometry.size.height)
                         .tag(0)
                     
                     // Tab 1: 5-Metrics Grid (5つのデータ)
-                    fiveMetricsView(width: w, height: h)
+                    fiveMetricsView(width: geometry.size.width, height: geometry.size.height)
                         .tag(1)
                     
                     // Tab 2: Force Curve Graph (ワークアウトグラフ)
-                    graphView(width: w, height: h)
+                    graphView(width: geometry.size.width, height: geometry.size.height)
                         .tag(2)
                     
                     // Tab 3: 3-Metrics Grid (3つのデータ)
-                    threeMetricsView(width: w, height: h)
+                    threeMetricsView(width: geometry.size.width, height: geometry.size.height)
                         .tag(3)
                     
                     // Tab 4: Many-Metrics Grid (多数のデータ)
-                    manyMetricsView(width: w, height: h)
+                    manyMetricsView(width: geometry.size.width, height: geometry.size.height)
                         .tag(4)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
-                .frame(width: w, height: h)
-                .rotationEffect(isPortrait ? .degrees(90) : .degrees(0))
-                .frame(width: geometry.size.width, height: geometry.size.height)
             }
             .ignoresSafeArea()
         }
         .navigationBarHidden(true)
         .onAppear {
-            setOrientation(.landscapeRight)
+            setOrientation(.landscape)
             splits = [WorkoutSplit(number: 1, time: 0, distance: 0, averagePace: 0, spm: 0, heartRate: "-")]
         }
         .onDisappear {
@@ -534,12 +527,14 @@ struct PracticeWorkoutView: View {
     }
     
     private func setOrientation(_ orientation: UIInterfaceOrientationMask) {
+        AppDelegate.orientationLock = orientation
         #if os(iOS)
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
             windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { error in
                 print("Failed to change orientation: \(error)")
             }
         }
+        UIViewController.attemptRotationToDeviceOrientation()
         #endif
     }
 }
