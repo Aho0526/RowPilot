@@ -383,6 +383,14 @@ class LocalizationManager: ObservableObject {
         "Race View is Locked": [.japanese: "レースビューはロックされています", .english: "Race View is Locked"],
         "Upgrade to RowPilot MAX to visualize real-time racing, competitive leaderboards, and detailed gap tracking.": [.japanese: "RowPilot MAXにアップグレードして、リアルタイムレース、順位表、タイム差表示を解放しましょう。", .english: "Upgrade to RowPilot MAX to visualize real-time racing, competitive leaderboards, and detailed gap tracking."],
         "Unlock Race View (MAX)": [.japanese: "レースビューを解放 (MAX)", .english: "Unlock Race View (MAX)"],
+        "Ghost Race is Locked": [.japanese: "ゴーストレースはロックされています", .english: "Ghost Race is Locked"],
+        "Upgrade to Pro or above to race against your past indoor records in real-time.": [.japanese: "Proプラン以上にアップグレードして、過去の屋内練習記録とリアルタイムで競い合いましょう。", .english: "Upgrade to Pro or above to race against your past indoor records in real-time."],
+        "Unlock Ghost Race": [.japanese: "ゴーストレースを解放", .english: "Unlock Ghost Race"],
+        "Select Past Record for Race": [.japanese: "過去の練習記録を選択", .english: "Select Past Record for Race"],
+        "No past indoor records found.": [.japanese: "過去の屋内練習記録が見つかりません。", .english: "No past indoor records found."],
+        "Manager Session (%d devices)": [.japanese: "マネージャーセッション (%d台のデバイス)", .english: "Manager Session (%d devices)"],
+        "Race with Past Self": [.japanese: "過去の自分とレース", .english: "Race with Past Self"],
+        "Opponent: %@ (%.0fm)": [.japanese: "対戦相手: %@ (%.0fm)", .english: "Opponent: %@ (%.0fm)"],
         
         // MARK: - Sharing & Import
         "About Export Formats": [.japanese: "出力形式について", .english: "About Export Formats"],

@@ -824,7 +824,10 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetSplitDistance = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = [] // 新しいワークアウト開始時に前回のデータを消去
+            self.workoutDataPoints = []
         }
+        
+        startDataRecordingTimer()
         
         // ワークアウト変更・開始前に強制終了コマンドを送信
         sendTerminateWorkout()
@@ -896,8 +899,10 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetTime = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = []
+            self.workoutDataPoints = []
         }
         
+        startDataRecordingTimer()
         sendTerminateWorkout()
         
         let cmd = generateIntervalWorkoutCommand(distanceMeters: limitedMeters, restSeconds: limitedRest)
@@ -915,8 +920,10 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetDistance = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = []
+            self.workoutDataPoints = []
         }
         
+        startDataRecordingTimer()
         sendTerminateWorkout()
         
         let cmd = generateIntervalWorkoutCommand(timeSeconds: limitedSeconds, restSeconds: limitedRest)
@@ -999,8 +1006,10 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetTime = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = []
+            self.workoutDataPoints = []
         }
         
+        startDataRecordingTimer()
         sendTerminateWorkout()
         
         let payloads = generateVariableIntervalPayloads(intervals: intervals)
@@ -1052,7 +1061,7 @@ class RowErgManager: NSObject, ObservableObject {
     private func startDataRecordingTimer() {
         stopDataRecordingTimer()
         DispatchQueue.main.async {
-            self.dataRecordingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self.dataRecordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 self?.recordDataPoint()
             }
         }
@@ -1073,7 +1082,8 @@ class RowErgManager: NSObject, ObservableObject {
             timeOffset: elapsedTime,
             pace: pace500m,
             spm: strokeRate,
-            power: power
+            power: power,
+            distance: distance
         )
         
         DispatchQueue.main.async {

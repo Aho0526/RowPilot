@@ -72,6 +72,9 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
     var lastStrokeTime: Double = 0
     var lastStrokeDistance: Double = 0
     
+    // ワークアウト中の時系列データポイント
+    @Published var workoutDataPoints: [WorkoutDataPoint] = []
+    
     init(id: UUID, name: String) {
         self.id = id
         self.name = name
@@ -162,6 +165,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     
     /// 取得スピード (Hz) - 1~4 の値
     @Published var retrievalSpeedHz: Int = 2
+    
+    // 時系列データ記録タイマー
+    private var dataRecordingTimer: Timer?
     
     /// ワークアウト開始時間
     var workoutStartTime: Date? = nil
@@ -887,6 +893,45 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 deviceMetrics[device.identifier] = PM5DeviceMetrics(
                     id: device.identifier, name: device.name ?? "Unknown PM5"
                 )
+            } else {
+                deviceMetrics[device.identifier]?.workoutDataPoints = []
+            }
+        }
+        startDataRecordingTimer()
+    }
+    
+    private func startDataRecordingTimer() {
+        stopDataRecordingTimer()
+        DispatchQueue.main.async {
+            self.dataRecordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                self?.recordDataPoints()
+            }
+        }
+    }
+    
+    private func stopDataRecordingTimer() {
+        DispatchQueue.main.async {
+            self.dataRecordingTimer?.invalidate()
+            self.dataRecordingTimer = nil
+        }
+    }
+    
+    private func recordDataPoints() {
+        for device in connectedDevices {
+            guard let metrics = deviceMetrics[device.identifier] else { continue }
+            let state = metrics.machineState
+            guard state == .inUse || state == .ready || state == .idle || state == .finish || state == .pause else { continue }
+            
+            let point = WorkoutDataPoint(
+                timeOffset: metrics.elapsedTime,
+                pace: metrics.pace500m,
+                spm: metrics.strokeRate,
+                power: metrics.power,
+                distance: metrics.distance
+            )
+            
+            DispatchQueue.main.async {
+                metrics.workoutDataPoints.append(point)
             }
         }
     }
@@ -895,6 +940,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     func resetAllDevices() {
         print("PM5ManagerVM: Resetting all devices (Unconditional STOP)")
         lastHaltTime = Date()
+        stopDataRecordingTimer()
         
         guard let terminateFrame = buildTerminateExtendedFrame() else {
             print("PM5ManagerVM: ⛔ Failed to build TERMINATE frame")
@@ -912,6 +958,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                     metrics.strokeRate = 0
                     metrics.lastStrokeCount = -1
                     metrics.configStatus = .resetting
+                    metrics.workoutDataPoints = []
                 }
             }
         }
@@ -1221,7 +1268,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                     managerSessionId: sessionId,
                     pm5SerialNumber: metrics.name, // Usually PM5 XXXX
                     pm5CustomName: customName,
-                    averageWatt: recordPower
+                    averageWatt: recordPower,
+                    dataPoints: metrics.workoutDataPoints
                 )
                 recordManager.addRecord(record)
                 savedRecords.append(record)

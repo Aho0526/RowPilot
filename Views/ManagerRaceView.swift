@@ -46,9 +46,17 @@ struct ManagerRaceView: View {
         }
     }
     
-    /// ズーム適用後の表示対象デバイス（上位N名）
+    /// ズーム適用後の表示対象デバイス（先頭からzoomDistanceBehindメートル以内、最大zoomMaxBoats艇）
     private var visibleDevices: [(peripheral: CBPeripheral, metrics: PM5DeviceMetrics, rank: Int)] {
-        return rankedDevices.prefix(zoomMaxBoats).map { $0 }
+        let ranked = rankedDevices
+        guard zoomEnabled else {
+            return ranked
+        }
+        let leaderDist = leaderDistance
+        let limitDist = leaderDist - zoomDistanceBehind
+        return ranked.filter { entry in
+            entry.metrics.distance >= limitDist
+        }.prefix(zoomMaxBoats).map { $0 }
     }
     
     private func getSmoothPacemakerDistance(at date: Date) -> Double {
@@ -186,12 +194,12 @@ struct ManagerRaceView: View {
                         }
                         .padding(.trailing, 16)
                     }
-                    .frame(height: 10 * unit)
+                    .frame(height: 8 * unit)
                     .background(Color(white: 0.12)) // シックなグレー
                     
                     // MARK: - Distance Scale Header (10/67 to 16/67)
                     raceScaleHeader(width: geo.size.width)
-                        .frame(height: 6 * unit)
+                        .frame(height: 5 * unit)
                     
                     // MARK: - Separator Area (16/67 to 18/67)
                     ZStack(alignment: .top) {
@@ -307,7 +315,7 @@ struct ManagerRaceView: View {
                         : CGFloat(dist / targetDistance)
                     let xPos = trackWidth * normalizedProgress
                     
-                    VStack(spacing: 0) {
+                    VStack(spacing: 2) {
                         Text("\(Int(remaining))m")
                             .font(.system(size: zoomEnabled ? 10 : 9, weight: .medium, design: .monospaced))
                             .foregroundColor(Color.white.opacity(0.5))
@@ -316,7 +324,8 @@ struct ManagerRaceView: View {
                             .fill(Color.white.opacity(0.25))
                             .frame(width: 1, height: 6)
                     }
-                    .position(x: xPos, y: 8)
+                    .frame(width: 40)
+                    .offset(x: xPos - 20)
                 }
             }
             .frame(width: trackWidth, height: 28)
@@ -429,15 +438,15 @@ struct RaceRowView: View {
                         let paceX = barTrackWidth * CGFloat(paceProgress)
                         Rectangle()
                             .fill(Color.gray)
-                            .frame(width: 2, height: 29)
-                            .position(x: paceX, y: 14.5)
+                            .frame(width: 2, height: 28)
+                            .offset(x: paceX)
                             .zIndex(0)
                     } else if paceProgress > 1.0 {
                         let paceX = barTrackWidth
                         Rectangle()
                             .fill(Color.gray)
-                            .frame(width: 2, height: 29)
-                            .position(x: paceX, y: 14.5)
+                            .frame(width: 2, height: 28)
+                            .offset(x: paceX)
                             .zIndex(0)
                     }
                 }
@@ -446,14 +455,15 @@ struct RaceRowView: View {
                     // ボートとテキスト
                     let maxBoatX = barTrackWidth - 22
                     let boatX = max(maxBoatX * CGFloat(displayProgress), 0)
+                    let rowHeight: CGFloat = 28
                     
-                    ZStack {
+                    ZStack(alignment: .leading) {
                         // ゴールタイム
                         if progress >= 1.0 {
                             Text(formatFinishTime(seconds: metrics.elapsedTime))
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundColor(.white)
-                                .position(x: boatX - 28, y: 14)
+                                .offset(x: max(boatX - 56, 0), y: (rowHeight - 14) / 2)
                         }
                         
                         // ボート
@@ -461,14 +471,14 @@ struct RaceRowView: View {
                             .fill(boatColor)
                             .frame(width: 22, height: 12)
                             .shadow(color: boatColor.opacity(0.4), radius: 2, x: 0, y: 0)
-                            .position(x: boatX + 11, y: 10)
+                            .offset(x: boatX, y: (rowHeight - 12) / 2)
                         
                         // 差分
                         if rank > 1 && gapToLeader > 0 && progress < 1.0 {
                             Text(zoomEnabled ? String(format: "%.1fm", gapToLeader) : "\(Int(gapToLeader))m")
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .foregroundColor(Color.white.opacity(0.7))
-                                .position(x: boatX + 22 + 16, y: 10)
+                                .offset(x: boatX + 22 + 8, y: (rowHeight - 12) / 2)
                         }
                     }
                     .animation(.easeInOut(duration: 0.5), value: displayProgress)

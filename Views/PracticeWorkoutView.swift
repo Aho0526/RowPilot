@@ -26,6 +26,29 @@ struct PracticeWorkoutView: View {
 
     @State private var activeTab: Int = 1
     @State private var splits: [WorkoutSplit] = []
+    
+    // ゴーストレース用
+    @State private var selectedGhostRecord: RowingRecord? = nil
+    @State private var ghostTracker: GhostRaceTracker? = nil
+    @State private var expandedSessionIds: Set<UUID> = []
+    @State private var showingSubscriptionFromRace = false
+    
+    // ゴーストレース拡大・時間差用
+    @State private var raceElapsedTime: TimeInterval = 0
+    @State private var myFinishTime: TimeInterval? = nil
+    @State private var ghostFinishTime: TimeInterval? = nil
+    @State private var raceTimer: Timer? = nil
+
+    // MARK: - Ghost Race Features
+    @AppStorage("raceZoomEnabled") private var zoomEnabled: Bool = false
+    @AppStorage("raceZoomDistanceBehind") private var zoomDistanceBehind: Double = 100
+    @AppStorage("raceZoomMaxBoats") private var zoomMaxBoats: Int = 10
+    @AppStorage("raceLaneLockEnabled") private var laneLockEnabled: Bool = false
+    @AppStorage("racePacemakerEnabled") private var pacemakerEnabled: Bool = false
+    @AppStorage("racePacemakerPaceString") private var paceString: String = "2:00.0"
+    
+    @State private var showPaceSettings = false
+    @State private var showZoomSettings = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -61,6 +84,10 @@ struct PracticeWorkoutView: View {
                     // Tab 4: Many-Metrics Grid
                     manyMetricsView(width: geometry.size.width, height: geometry.size.height)
                         .tag(4)
+
+                    // Tab 5: Ghost Race
+                    ghostRaceView(width: geometry.size.width, height: geometry.size.height)
+                        .tag(5)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
             }
@@ -73,21 +100,46 @@ struct PracticeWorkoutView: View {
         }
         .onDisappear {
             setOrientation(.portrait)
+            stopRaceTimer()
         }
         .onChange(of: ergManager.distance) { oldValue, newValue in
+            let targetDist = ergManager.targetDistance ?? (ghostTracker?.record.distance ?? 0)
             if newValue == 0 {
                 splits = [WorkoutSplit(number: 1, time: 0, distance: 0, averagePace: 0, spm: 0, heartRate: "-")]
+                raceElapsedTime = 0
+                myFinishTime = nil
+                ghostFinishTime = nil
+                stopRaceTimer()
             } else {
                 updateSplits()
+                if targetDist > 0, newValue >= targetDist {
+                    if myFinishTime == nil {
+                        myFinishTime = raceElapsedTime
+                        if let tracker = ghostTracker {
+                            let ghostStatus = tracker.getStatus(at: raceElapsedTime)
+                            if ghostStatus.distance < targetDist {
+                                startRaceTimer()
+                            } else {
+                                ghostFinishTime = tracker.record.duration
+                            }
+                        }
+                    }
+                }
             }
         }
-        .onChange(of: ergManager.elapsedTime) { _, _ in
+        .onChange(of: ergManager.elapsedTime) { _, newValue in
+            let targetDist = ergManager.targetDistance ?? (ghostTracker?.record.distance ?? 0)
+            if targetDist > 0 {
+                if ergManager.distance < targetDist {
+                    raceElapsedTime = newValue
+                }
+            } else {
+                raceElapsedTime = newValue
+            }
             updateSplits()
         }
         .onChange(of: ergManager.isWorkoutFinished) { _, finished in
-            if finished {
-                showSaveAlert = true
-            }
+            // ワークアウト終了直後の自動保存アラートは廃止（退出時に選択させる）
         }
         .confirmationDialog("Workout Menu".localized, isPresented: $showingActionMenu, titleVisibility: .visible) {
             Button("Finish Workout".localized, role: .destructive) {
@@ -131,6 +183,11 @@ struct PracticeWorkoutView: View {
             Button("Cancel".localized, role: .cancel) {}
         } message: {
             Text("Would you like to save this workout record?".localized)
+        }
+        .sheet(isPresented: $showingSubscriptionFromRace) {
+            NavigationStack {
+                SubscriptionView()
+            }
         }
     }
 
@@ -680,6 +737,7 @@ struct RPWorkoutSidebar: View {
     let averagePace: Double
     var onMenuTap: () -> Void
     var sidebarWidth: CGFloat = 130
+    var hideAveragePace: Bool = false
 
     // 進捗計算
     private var progress: Double {
@@ -728,10 +786,16 @@ struct RPWorkoutSidebar: View {
             .padding(.bottom, 2)
 
             // Metric boxes
-            SidebarMetricBoxRP(value: formatDistance(ergManager.distance), unit: ergManager.targetDistance != nil ? "残り m" : "m", accentColor: Theme.secondaryAccent)
-            SidebarMetricBoxRP(value: formatPace(ergManager.pace500m), unit: "/500 m", accentColor: Theme.accent)
-            SidebarMetricBoxRP(value: formatPace(averagePace), unit: "平均/500m", accentColor: Theme.accent.opacity(0.6))
-            SidebarMetricBoxRP(value: "\(ergManager.strokeRate)", unit: "s/m", accentColor: .orange)
+            if !hideAveragePace {
+                SidebarMetricBoxRP(value: formatDistance(ergManager.distance), unit: ergManager.targetDistance != nil ? "残り m" : "m", accentColor: Theme.secondaryAccent)
+                SidebarMetricBoxRP(value: formatPace(ergManager.pace500m), unit: "/500 m", accentColor: Theme.accent)
+                SidebarMetricBoxRP(value: formatPace(averagePace), unit: "平均/500m", accentColor: Theme.accent.opacity(0.6))
+                SidebarMetricBoxRP(value: "\(ergManager.strokeRate)", unit: "s/m", accentColor: .orange)
+            } else {
+                SidebarMetricBoxRP(value: formatDistance(ergManager.distance), unit: ergManager.targetDistance != nil ? "残り m" : "m", accentColor: Theme.secondaryAccent, isLarge: true)
+                SidebarMetricBoxRP(value: formatPace(ergManager.pace500m), unit: "/500 m", accentColor: Theme.accent, isLarge: true)
+                SidebarMetricBoxRP(value: "\(ergManager.strokeRate)", unit: "s/m", accentColor: .orange, isLarge: true)
+            }
 
             Spacer()
         }
@@ -906,11 +970,12 @@ struct SidebarMetricBoxRP: View {
     let value: String
     let unit: String
     let accentColor: Color
+    var isLarge: Bool = false
 
     var body: some View {
         VStack(alignment: .center, spacing: 2) {
             Text(value)
-                .font(.system(size: 22, weight: .black, design: .monospaced))
+                .font(.system(size: isLarge ? 32 : 22, weight: .black, design: .monospaced))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [accentColor, accentColor.opacity(0.7)],
@@ -924,13 +989,13 @@ struct SidebarMetricBoxRP: View {
                 .shadow(color: accentColor.opacity(0.3), radius: 4, x: 0, y: 0)
 
             Text(unit)
-                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .font(.system(size: isLarge ? 12 : 9, weight: .bold, design: .rounded))
                 .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, 6)
-        .padding(.vertical, 7)
+        .padding(.vertical, isLarge ? 18 : 7)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
@@ -1138,6 +1203,748 @@ struct CompactLockedForceCurveView: View {
             let x = Double(i) * 0.06
             let y = sin(Double(i) * Double.pi / 15.0) * 80.0
             return ForcePoint(timeRaw: x, forceLbf: Int(y))
+        }
+    }
+}
+
+extension PracticeWorkoutView {
+    // MARK: - Tab 5: Ghost Race View
+    @ViewBuilder
+    private func ghostRaceView(width: CGFloat, height: CGFloat) -> some View {
+        if currentPlan == .free {
+            ghostLockedView(width: width, height: height)
+        } else {
+            ghostActiveView(width: width, height: height)
+        }
+    }
+
+    private func ghostLockedView(width: CGFloat, height: CGFloat) -> some View {
+        VStack(spacing: 20) {
+            Image(systemName: "crown.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.yellow)
+                .shadow(color: .yellow.opacity(0.3), radius: 10)
+            
+            Text("Ghost Race is Locked".localized)
+                .font(.title2.bold())
+                .foregroundColor(Theme.textMain)
+            
+            Text("Upgrade to Pro or above to race against your past indoor records in real-time.".localized)
+                .font(.subheadline)
+                .foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+            
+            Button {
+                showingSubscriptionFromRace = true
+            } label: {
+                Text("Unlock Ghost Race".localized)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 30)
+                    .padding(.vertical, 12)
+                    .background(Theme.primaryGradient)
+                    .cornerRadius(12)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 24)
+    }
+
+    private func ghostActiveView(width: CGFloat, height: CGFloat) -> some View {
+        let totalWidth = width - 16
+        let sidebarWidth = totalWidth * 0.3
+        let contentAreaWidth = totalWidth * 0.7
+
+        return HStack(spacing: 0) {
+            // Sidebar
+            RPWorkoutSidebar(
+                ergManager: ergManager,
+                averagePace: averagePace500m,
+                onMenuTap: { showingActionMenu = true },
+                sidebarWidth: sidebarWidth,
+                hideAveragePace: true
+            )
+
+            // Divider
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [Theme.accent.opacity(0.3), Theme.accent.opacity(0.05)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 1)
+                .padding(.vertical, 12)
+
+            // Content Area (Race Track or Ghost Selector)
+            VStack(alignment: .leading, spacing: 8) {
+                if let ghost = ghostTracker {
+                    HStack(spacing: 6) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Theme.accent)
+                            .frame(width: 3, height: 14)
+                        Text("Race View".localized)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundColor(Theme.textSecondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
+
+                    ZStack {
+                        ghostRaceTrackView(tracker: ghost, width: contentAreaWidth - 24)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Theme.accent.opacity(0.4), Theme.accent.opacity(0.1)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+                    .shadow(color: Theme.accent.opacity(0.12), radius: 12, x: 0, y: 4)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                } else {
+                    ghostSelectorView(width: contentAreaWidth)
+                }
+            }
+            .frame(width: contentAreaWidth)
+            .padding(.top, 8)
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
+        .padding(.top, 16)
+    }
+
+    private func ghostSelectorView(width: CGFloat) -> some View {
+        let items = groupedIndoorRecords
+        
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Theme.accent)
+                    .frame(width: 3, height: 14)
+                Text("Select Past Record for Race".localized)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundColor(Theme.textMain)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            
+            if items.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "figure.rower")
+                        .font(.title)
+                        .foregroundColor(Theme.textSecondary.opacity(0.5))
+                    Text("No past indoor records found.".localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(items) { item in
+                            switch item {
+                            case .individual(let record):
+                                Button {
+                                    selectGhostRecord(record)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "figure.rower")
+                                            .foregroundColor(Theme.accent)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(formatDate(record.date))
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Text(String(format: "%.0fm (%.1f km/h) - %@", record.distance, record.averageSpeed, record.formattedDuration))
+                                                .font(.subheadline.bold())
+                                                .foregroundColor(Theme.textMain)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.bold))
+                                            .foregroundColor(Theme.accent)
+                                    }
+                                    .padding()
+                                    .background(Color.white.opacity(0.04))
+                                    .cornerRadius(12)
+                                }
+                                .buttonStyle(.plain)
+                                
+                            case .session(let sessionId, let date, let sessionRecords):
+                                let isExpanded = expandedSessionIds.contains(sessionId)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Button {
+                                        withAnimation {
+                                            if isExpanded {
+                                                expandedSessionIds.remove(sessionId)
+                                            } else {
+                                                expandedSessionIds.insert(sessionId)
+                                            }
+                                        }
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "person.3.fill")
+                                                .foregroundColor(.purple)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(formatDate(date))
+                                                    .font(.caption)
+                                                    .foregroundColor(Theme.textSecondary)
+                                                Text("Manager Session (\(sessionRecords.count) devices)".localized)
+                                                    .font(.subheadline.bold())
+                                                    .foregroundColor(Theme.textMain)
+                                            }
+                                            Spacer()
+                                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                                .font(.caption.weight(.bold))
+                                                .foregroundColor(.purple)
+                                        }
+                                        .padding()
+                                        .background(Color.white.opacity(0.06))
+                                        .cornerRadius(12)
+                                    }
+                                    .buttonStyle(.plain)
+                                    
+                                    if isExpanded {
+                                        VStack(spacing: 2) {
+                                            ForEach(sessionRecords) { record in
+                                                Button {
+                                                    selectGhostRecord(record)
+                                                } label: {
+                                                    HStack {
+                                                        Image(systemName: "iphone.circle")
+                                                            .foregroundColor(Theme.accent)
+                                                            .padding(.leading, 12)
+                                                        VStack(alignment: .leading, spacing: 2) {
+                                                            Text(record.pm5CustomName ?? record.pm5SerialNumber ?? "Unknown Device")
+                                                                .font(.subheadline.bold())
+                                                                .foregroundColor(Theme.textMain)
+                                                            Text(String(format: "%.0fm - %@", record.distance, record.formattedDuration))
+                                                                .font(.caption)
+                                                                .foregroundColor(Theme.textSecondary)
+                                                        }
+                                                        Spacer()
+                                                        Image(systemName: "chevron.right")
+                                                            .font(.caption.weight(.bold))
+                                                            .foregroundColor(Theme.accent)
+                                                    }
+                                                    .padding()
+                                                    .background(Color.white.opacity(0.02))
+                                                    .cornerRadius(8)
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                        .padding(.leading, 8)
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Theme.accent.opacity(0.2), lineWidth: 1)
+        )
+        .padding(.horizontal, 12)
+        .padding(.bottom, 12)
+    }
+
+    private func ghostRaceTrackView(tracker: GhostRaceTracker, width: CGFloat) -> some View {
+        let ghostStatus = tracker.getStatus(at: raceElapsedTime)
+        let targetDist = ergManager.targetDistance ?? tracker.record.distance
+        
+        let nameColumnWidth: CGFloat = 130
+        let rightInfoWidth: CGFloat = 120
+        let trackWidth = width - nameColumnWidth - rightInfoWidth - 16
+        
+        let leaderDistance = max(ergManager.distance, ghostStatus.distance)
+        let visibleRangeStart: Double
+        let visibleRangeEnd: Double
+        
+        if zoomEnabled {
+            let actualSpan = min(zoomDistanceBehind, targetDist)
+            let frontMargin = actualSpan * 0.1
+            let rangeEnd = min(leaderDistance + frontMargin, targetDist)
+            let rangeStart = max(rangeEnd - actualSpan, 0)
+            if rangeStart == 0 {
+                visibleRangeStart = 0
+                visibleRangeEnd = min(actualSpan, targetDist)
+            } else {
+                visibleRangeStart = rangeStart
+                visibleRangeEnd = rangeEnd
+            }
+        } else {
+            visibleRangeStart = 0
+            visibleRangeEnd = targetDist
+        }
+        
+        let displaySpan = visibleRangeEnd - visibleRangeStart
+        let getProgress = { (dist: Double) -> Double in
+            guard targetDist > 0 else { return 0 }
+            if zoomEnabled {
+                guard displaySpan > 0 else { return 0 }
+                return min(max((dist - visibleRangeStart) / displaySpan, 0), 1.0)
+            } else {
+                return min(dist / targetDist, 1.0)
+            }
+        }
+        
+        let myProgress = getProgress(ergManager.distance)
+        let ghostProgress = getProgress(ghostStatus.distance)
+        
+        let distanceDiff = ergManager.distance - ghostStatus.distance
+        
+        let laneHeight: CGFloat = 36
+        let boatWidth: CGFloat = 28
+        let boatHeight: CGFloat = 16
+        let nameFont: Font = .system(size: 13, weight: .bold)
+        let metricsFont: Font = .system(size: 13, weight: .bold, design: .monospaced)
+        
+        let isYouLeading = ergManager.distance >= ghostStatus.distance
+        let lane1IsYou = laneLockEnabled ? true : isYouLeading
+        
+        // ペースメーカー
+        let pmDist = getSmoothPacemakerDistance(at: raceElapsedTime)
+        let pmProgress = getProgress(pmDist)
+        
+        return VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Race with Past Self".localized)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Theme.textMain)
+                    Text(String(format: "Opponent: %@ (%.0fm)".localized, formatDateShort(tracker.record.date), tracker.record.distance))
+                        .font(.system(size: 10))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                
+                Spacer()
+                
+                HStack(spacing: 8) {
+                    // Zoom & Pacemaker Controls
+                    Button(action: { showPaceSettings = true }) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 14))
+                            .foregroundColor(pacemakerEnabled ? Color(hex: "4FC3F7") : Theme.textSecondary)
+                    }
+                    .popover(isPresented: $showPaceSettings) {
+                        PacemakerSettingsView()
+                    }
+                    
+                    Button(action: { showZoomSettings = true }) {
+                        Image(systemName: "ruler")
+                            .font(.system(size: 14))
+                            .foregroundColor(zoomEnabled ? Color(hex: "4FC3F7") : Theme.textSecondary)
+                    }
+                    .popover(isPresented: $showZoomSettings) {
+                        ZoomSettingsView()
+                    }
+                    
+                    // タイム差
+                    if myFinishTime != nil || ghostFinishTime != nil || (ergManager.distance >= targetDist || ghostStatus.distance >= targetDist) {
+                        HStack(spacing: 4) {
+                            Text("Diff:".localized)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Theme.textSecondary)
+                            let diffStr = calculateTimeDifference()
+                            Text(diffStr)
+                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                .foregroundColor(diffStr.hasPrefix("-") ? .green : .red)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(6)
+                    }
+                    
+                    // 変更ボタン
+                    Button {
+                        withAnimation {
+                            selectedGhostRecord = nil
+                            self.ghostTracker = nil
+                            stopRaceTimer()
+                            myFinishTime = nil
+                            ghostFinishTime = nil
+                            raceElapsedTime = 0
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.left")
+                            Text("Change".localized)
+                        }
+                        .font(.caption.bold())
+                        .foregroundColor(Theme.accent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.accent.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 16)
+            
+            Spacer(minLength: 8)
+            
+            // Lanes Area (Aligned to Absolute Center)
+            VStack(spacing: 0) {
+                // Scale header (Progress bar)
+                raceScaleHeaderGhost(
+                    trackWidth: trackWidth,
+                    nameWidth: nameColumnWidth,
+                    rightWidth: rightInfoWidth,
+                    targetDistance: targetDist,
+                    visibleRangeStart: visibleRangeStart,
+                    visibleRangeEnd: visibleRangeEnd,
+                    zoomEnabled: zoomEnabled
+                )
+                
+                // Lane 1
+                ghostLaneView(
+                    isYou: lane1IsYou,
+                    rank: lane1IsYou ? (isYouLeading ? 1 : 2) : (!isYouLeading ? 1 : 2),
+                    progress: lane1IsYou ? myProgress : ghostProgress,
+                    distanceDiff: lane1IsYou ? distanceDiff : -distanceDiff,
+                    spm: lane1IsYou ? ergManager.strokeRate : ghostStatus.spm,
+                    pace: lane1IsYou ? ergManager.pace500m : ghostStatus.pace,
+                    trackWidth: trackWidth,
+                    nameColumnWidth: nameColumnWidth,
+                    rightInfoWidth: rightInfoWidth,
+                    laneHeight: laneHeight,
+                    boatWidth: boatWidth,
+                    boatHeight: boatHeight,
+                    nameFont: nameFont,
+                    metricsFont: metricsFont,
+                    pmProgress: pacemakerEnabled ? pmProgress : nil
+                )
+                
+                Divider().background(Color.white.opacity(0.1))
+                
+                // Lane 2
+                ghostLaneView(
+                    isYou: !lane1IsYou,
+                    rank: !lane1IsYou ? (isYouLeading ? 1 : 2) : (!isYouLeading ? 1 : 2),
+                    progress: !lane1IsYou ? myProgress : ghostProgress,
+                    distanceDiff: !lane1IsYou ? distanceDiff : -distanceDiff,
+                    spm: !lane1IsYou ? ergManager.strokeRate : ghostStatus.spm,
+                    pace: !lane1IsYou ? ergManager.pace500m : ghostStatus.pace,
+                    trackWidth: trackWidth,
+                    nameColumnWidth: nameColumnWidth,
+                    rightInfoWidth: rightInfoWidth,
+                    laneHeight: laneHeight,
+                    boatWidth: boatWidth,
+                    boatHeight: boatHeight,
+                    nameFont: nameFont,
+                    metricsFont: metricsFont,
+                    pmProgress: pacemakerEnabled ? pmProgress : nil
+                )
+                
+                // 差分の表示
+                let absDist = abs(distanceDiff)
+                let ghostSpeed = ghostStatus.pace > 0 ? (500.0 / ghostStatus.pace) : 4.0
+                let timeDiff = absDist / ghostSpeed
+                
+                HStack(spacing: 6) {
+                    Text("Ghostとの差:".localized)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Theme.textSecondary)
+                    
+                    Text(String(format: "%@%.1fs (%.1fm)", isYouLeading ? "+" : "-", timeDiff, absDist))
+                        .font(.system(size: 13, weight: .black, design: .monospaced))
+                        .foregroundColor(isYouLeading ? .green : .red)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 12)
+            }
+            .padding(.bottom, 12)
+            
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 12)
+    }
+
+    private func ghostLaneView(
+        isYou: Bool,
+        rank: Int,
+        progress: Double,
+        distanceDiff: Double,
+        spm: Int,
+        pace: Double,
+        trackWidth: CGFloat,
+        nameColumnWidth: CGFloat,
+        rightInfoWidth: CGFloat,
+        laneHeight: CGFloat,
+        boatWidth: CGFloat,
+        boatHeight: CGFloat,
+        nameFont: Font,
+        metricsFont: Font,
+        pmProgress: Double?
+    ) -> some View {
+        let isGold = rank == 1 && !laneLockEnabled
+        let badgeColor = laneLockEnabled ? Color.white.opacity(0.3) : (rank == 1 ? Color(hex: "FFD700") : Color.white.opacity(0.3))
+        let badgeTextColor = (rank == 1 && !laneLockEnabled) ? Color.black : Color.white
+        let boatColor = laneLockEnabled ? (isYou ? Color(hex: "FFD700") : Color(hex: "4FC3F7")) : (rank == 1 ? Color(hex: "FFD700") : Color(hex: "4FC3F7"))
+        
+        return HStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Text("\(rank)")
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundColor(badgeTextColor)
+                    .frame(width: 18, height: 18)
+                    .background(badgeColor)
+                    .cornerRadius(3)
+                Text(isYou ? "You".localized : "Ghost".localized)
+                    .font(nameFont)
+                    .foregroundColor(isYou ? .white : .white.opacity(0.7))
+            }
+            .frame(width: nameColumnWidth, alignment: .leading)
+            
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Color.white.opacity(0.04))
+                    .frame(height: laneHeight)
+                
+                if let pmProgress = pmProgress {
+                    let clamped = min(max(pmProgress, 0), 1.0)
+                    let paceX = trackWidth * CGFloat(clamped)
+                    Rectangle()
+                        .fill(Color.gray)
+                        .frame(width: 2, height: laneHeight)
+                        .offset(x: paceX)
+                        .zIndex(0)
+                }
+                
+                let boatX = max((trackWidth - boatWidth) * CGFloat(progress), 0)
+                BoatShape()
+                    .fill(boatColor)
+                    .frame(width: boatWidth, height: boatHeight)
+                    .offset(x: boatX)
+                    .animation(.linear(duration: 0.5), value: progress)
+            }
+            .frame(width: trackWidth, height: laneHeight)
+            
+            HStack(spacing: 8) {
+                Text("\(spm)")
+                    .font(metricsFont)
+                    .foregroundColor(isYou ? .white : .white.opacity(0.7))
+                    .frame(width: 24, alignment: .trailing)
+                Text(formatPace(pace))
+                    .font(metricsFont)
+                    .foregroundColor(isYou ? .white : .white.opacity(0.7))
+                    .frame(width: 44, alignment: .trailing)
+            }
+            .frame(width: rightInfoWidth, alignment: .trailing)
+        }
+        .padding(.horizontal, 8)
+        .background(isGold ? Color(hex: "FFD700").opacity(0.04) : Color.clear)
+    }
+
+    private func raceScaleHeaderGhost(
+        trackWidth: CGFloat, nameWidth: CGFloat, rightWidth: CGFloat,
+        targetDistance: Double, visibleRangeStart: Double, visibleRangeEnd: Double, zoomEnabled: Bool
+    ) -> some View {
+        let rangeSpan = visibleRangeEnd - visibleRangeStart
+        let markerStep: Double
+        if zoomEnabled {
+            if rangeSpan <= 30 { markerStep = 5 }
+            else if rangeSpan <= 60 { markerStep = 10 }
+            else if rangeSpan <= 150 { markerStep = 25 }
+            else if rangeSpan <= 300 { markerStep = 50 }
+            else { markerStep = 100 }
+        } else {
+            markerStep = targetDistance / 5.0
+        }
+        
+        let firstMarker = ceil(visibleRangeStart / markerStep) * markerStep
+        var markers: [Double] = []
+        var m = firstMarker
+        while m <= visibleRangeEnd && m <= targetDistance {
+            markers.append(m)
+            m += markerStep
+        }
+        
+        return HStack(spacing: 0) {
+            Color.clear.frame(width: nameWidth)
+            
+            ZStack(alignment: .bottomLeading) {
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 1)
+                
+                ForEach(Array(markers.enumerated()), id: \.offset) { _, dist in
+                    let normalizedProgress: CGFloat = zoomEnabled
+                        ? (rangeSpan > 0 ? CGFloat((dist - visibleRangeStart) / rangeSpan) : 0)
+                        : CGFloat(dist / targetDistance)
+                    let xPos = trackWidth * normalizedProgress
+                    
+                    VStack(spacing: 0) {
+                        Text("\(Int(targetDistance - dist))m")
+                            .font(.system(size: zoomEnabled ? 10 : 8, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.5))
+                            .padding(.bottom, 2)
+                        
+                        Rectangle()
+                            .fill(Color.white.opacity(0.25))
+                            .frame(width: 1, height: 4)
+                    }
+                    .frame(width: 40)
+                    .offset(x: xPos - 20)
+                }
+            }
+            .frame(width: trackWidth, height: 24)
+            
+            Color.clear.frame(width: rightWidth)
+        }
+        .frame(height: 24)
+    }
+
+    private func getSmoothPacemakerDistance(at elapsedTime: TimeInterval) -> Double {
+        guard elapsedTime > 0 else { return 0 }
+        let pace = pacemakerPaceSeconds
+        guard pace > 0 else { return 0 }
+        let distancePerSecond = 500.0 / pace
+        return elapsedTime * distancePerSecond
+    }
+    
+    private var pacemakerPaceSeconds: Double {
+        let cleanStr = paceString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = cleanStr.split(separator: ":")
+        if parts.count == 2,
+           let min = Double(parts[0]),
+           let sec = Double(parts[1]) {
+            return min * 60.0 + sec
+        } else if parts.count == 1, let sec = Double(parts[0]) {
+            return sec
+        } else {
+            return 120.0
+        }
+    }
+
+    private func selectGhostRecord(_ record: RowingRecord) {
+        withAnimation {
+            self.selectedGhostRecord = record
+            self.ghostTracker = GhostRaceTracker(record: record)
+            self.raceElapsedTime = 0
+            self.myFinishTime = nil
+            self.ghostFinishTime = nil
+            stopRaceTimer()
+        }
+    }
+    
+    private func startRaceTimer() {
+        stopRaceTimer()
+        let timer = Timer(timeInterval: 0.1, repeats: true) { _ in
+            DispatchQueue.main.async {
+                let targetDist = self.ergManager.targetDistance ?? (self.ghostTracker?.record.distance ?? 0)
+                self.raceElapsedTime += 0.1
+                
+                if let tracker = self.ghostTracker {
+                    let ghostStatus = tracker.getStatus(at: self.raceElapsedTime)
+                    if ghostStatus.distance >= targetDist {
+                        self.ghostFinishTime = self.raceElapsedTime
+                        self.stopRaceTimer()
+                    }
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.raceTimer = timer
+    }
+    
+    private func stopRaceTimer() {
+        raceTimer?.invalidate()
+        raceTimer = nil
+    }
+    
+    private func calculateTimeDifference() -> String {
+        let myTime = myFinishTime ?? raceElapsedTime
+        let ghostTime = ghostFinishTime ?? (ghostTracker?.record.duration ?? 0)
+        let diff = myTime - ghostTime
+        if diff < 0 {
+            return String(format: "-%.1fs", -diff)
+        } else {
+            return String(format: "+%.1fs", diff)
+        }
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy/MM/dd HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private func formatDateShort(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy/MM/dd"
+        return formatter.string(from: date)
+    }
+
+    // Grouping structure for list
+    private var groupedIndoorRecords: [GroupedRecordItem] {
+        let records = appViewModel.recordManager.allRecords(filter: .indoor)
+        var result: [GroupedRecordItem] = []
+        
+        var sessions: [UUID: [RowingRecord]] = [:]
+        var individualRecords: [RowingRecord] = []
+        
+        for r in records {
+            if let sessionId = r.managerSessionId {
+                sessions[sessionId, default: []].append(r)
+            } else {
+                individualRecords.append(r)
+            }
+        }
+        
+        for (sessionId, sessionRecords) in sessions {
+            if let first = sessionRecords.first {
+                result.append(.session(id: sessionId, date: first.date, records: sessionRecords))
+            }
+        }
+        
+        for r in individualRecords {
+            result.append(.individual(record: r))
+        }
+        
+        return result.sorted { $0.date > $1.date }
+    }
+
+    enum GroupedRecordItem: Identifiable {
+        case individual(record: RowingRecord)
+        case session(id: UUID, date: Date, records: [RowingRecord])
+        
+        var id: String {
+            switch self {
+            case .individual(let r): return "ind-\(r.id.uuidString)"
+            case .session(let id, _, _): return "sess-\(id.uuidString)"
+            }
+        }
+        
+        var date: Date {
+            switch self {
+            case .individual(let r): return r.date
+            case .session(_, let d, _): return d
+            }
         }
     }
 }
