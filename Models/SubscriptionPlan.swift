@@ -66,5 +66,10 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
     var hasRaceView: Bool {
         return self == .max
     }
+    
+    /// MAXプランのみでCSV形式出力を解放
+    var hasCSVExport: Bool {
+        return self == .max
+    }
 }
 

@@ -246,15 +246,21 @@ struct SubscriptionDetailView: View {
             }
         case .pro:
             VStack(alignment: .leading, spacing: 12) {
-                Text("Freeプランで使用できる全機能に加え、ForceCurveを表示したりStravaとの同期が可能になります。")
+                Text("Freeプランで使用できる全機能に加え、ForceCurveを表示したり過去の自分とレースしたりできます。")
                     .foregroundColor(.white.opacity(0.8))
-                // ユーザーがここに詳細を書く
+                Text("Stravaとの同期は準備中です。")
+                    .foregroundColor(.white.opacity(0.8))
             }
         case .manager:
             VStack(alignment: .leading, spacing: 12) {
-                Text("世界で唯一の機能であるPM5との複数台接続ができるようになります。 \n詳細を確認した上で購入してください。")
+                Text("業界初のPM5との複数台接続ができるようになります。")
                     .foregroundColor(.white.opacity(0.8))
-                // ユーザーがここに詳細を書く
+                Text("1台の端末から最大10台の")
+                    .foregroundColor(.white.opacity(0.8))
+                Text("記録をリアルタイムに確認したり、")
+                    .foregroundColor(.white.opacity(0.8))
+                Text("チーム全員で一斉にトレーニングを行うことができます。")
+                    .foregroundColor(.white.opacity(0.8))
             }
         case .team:
             VStack(alignment: .leading, spacing: 12) {

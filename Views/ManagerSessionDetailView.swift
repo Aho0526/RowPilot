@@ -3,6 +3,11 @@ import SwiftUI
 struct ManagerSessionDetailView: View {
     let records: [RowingRecord]
     
+    @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
+    @State private var showMaxPlanAlert = false
+    @State private var showSubscriptionView = false
+    @State private var showingShareHelp = false
+    
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
@@ -52,15 +57,46 @@ struct ManagerSessionDetailView: View {
                                     }
                                     Spacer()
                                     
-                                    Button {
-                                        let prepared = WorkoutShareManager.shared.prepareManagerRecord(record)
-                                        WorkoutShareManager.shared.presentShareSheet(for: prepared)
-                                    } label: {
-                                        Image(systemName: "square.and.arrow.up")
-                                            .font(.title3)
-                                            .foregroundColor(Theme.accent)
-                                            .padding(6)
-                                            .contentShape(Rectangle())
+                                    HStack(spacing: 4) {
+                                        Menu {
+                                            Button {
+                                                let prepared = WorkoutShareManager.shared.prepareManagerRecord(record)
+                                                WorkoutShareManager.shared.presentShareSheet(for: prepared)
+                                            } label: {
+                                                Label("Share RowPilot Data (.rowpilot)".localized, systemImage: "doc.text")
+                                            }
+                                            
+                                            Button {
+                                                if currentPlan.hasCSVExport {
+                                                    let prepared = WorkoutShareManager.shared.prepareManagerRecord(record)
+                                                    WorkoutShareManager.shared.presentCSVShareSheet(for: prepared)
+                                                } else {
+                                                    showMaxPlanAlert = true
+                                                }
+                                            } label: {
+                                                if currentPlan.hasCSVExport {
+                                                    Label("Export CSV (.csv)".localized, systemImage: "tablecells")
+                                                } else {
+                                                    Label("Export CSV (.csv) 👑".localized, systemImage: "tablecells")
+                                                }
+                                            }
+                                        } label: {
+                                            Image(systemName: "square.and.arrow.up")
+                                                .font(.title3)
+                                                .foregroundColor(Theme.accent)
+                                                .padding(6)
+                                                .contentShape(Rectangle())
+                                        }
+                                        
+                                        Button {
+                                            showingShareHelp = true
+                                        } label: {
+                                            Image(systemName: "questionmark.circle")
+                                                .font(.title3)
+                                                .foregroundColor(Theme.accent)
+                                                .padding(6)
+                                                .contentShape(Rectangle())
+                                        }
                                     }
                                 }
                                 
@@ -93,6 +129,22 @@ struct ManagerSessionDetailView: View {
         }
         .navigationTitle("Manager Session Detail".localized)
         .navigationBarTitleDisplayMode(.inline)
+        .alert("RowPilot MAX Exclusive".localized, isPresented: $showMaxPlanAlert) {
+            Button("Cancel".localized, role: .cancel) { }
+            Button("View Plans".localized) {
+                showSubscriptionView = true
+            }
+        } message: {
+            Text("CSV export is a RowPilot MAX exclusive feature. Upgrade to unlock this feature.".localized)
+        }
+        .sheet(isPresented: $showSubscriptionView) {
+            NavigationStack {
+                SubscriptionView()
+            }
+        }
+        .sheet(isPresented: $showingShareHelp) {
+            ShareHelpView()
+        }
     }
 }
 

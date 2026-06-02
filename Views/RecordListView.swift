@@ -164,6 +164,11 @@ struct RecordDetailView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var app: AppViewModel
     
+    @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
+    @State private var showMaxPlanAlert = false
+    @State private var showSubscriptionView = false
+    @State private var showingShareHelp = false
+    
     @State private var editedNotes: String = ""
     @State private var editedTags: [String] = []
     @State private var newTag: String = ""
@@ -234,12 +239,39 @@ struct RecordDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
-                    // 共有ボタン
-                    Button {
-                        WorkoutShareManager.shared.presentShareSheet(for: record)
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .foregroundColor(Theme.accent)
+                    // 共有メニュー
+                    HStack(spacing: 8) {
+                        Menu {
+                            Button {
+                                WorkoutShareManager.shared.presentShareSheet(for: record)
+                            } label: {
+                                Label("Share RowPilot Data (.rowpilot)".localized, systemImage: "doc.text")
+                            }
+                            
+                            Button {
+                                if currentPlan.hasCSVExport {
+                                    WorkoutShareManager.shared.presentCSVShareSheet(for: record)
+                                } else {
+                                    showMaxPlanAlert = true
+                                }
+                            } label: {
+                                if currentPlan.hasCSVExport {
+                                    Label("Export CSV (.csv)".localized, systemImage: "tablecells")
+                                } else {
+                                    Label("Export CSV (.csv) 👑".localized, systemImage: "tablecells")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundColor(Theme.accent)
+                        }
+                        
+                        Button {
+                            showingShareHelp = true
+                        } label: {
+                            Image(systemName: "questionmark.circle")
+                                .foregroundColor(Theme.accent)
+                        }
                     }
                     
                     // 編集/保存ボタン
@@ -274,6 +306,22 @@ struct RecordDetailView: View {
         }
         .sheet(isPresented: $showingExpandedMap) {
             ExpandedMapView(record: record)
+        }
+        .alert("RowPilot MAX Exclusive".localized, isPresented: $showMaxPlanAlert) {
+            Button("Cancel".localized, role: .cancel) { }
+            Button("View Plans".localized) {
+                showSubscriptionView = true
+            }
+        } message: {
+            Text("CSV export is a RowPilot MAX exclusive feature. Upgrade to unlock this feature.".localized)
+        }
+        .sheet(isPresented: $showSubscriptionView) {
+            NavigationStack {
+                SubscriptionView()
+            }
+        }
+        .sheet(isPresented: $showingShareHelp) {
+            ShareHelpView()
         }
     }
     

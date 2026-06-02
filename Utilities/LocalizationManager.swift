@@ -385,6 +385,15 @@ class LocalizationManager: ObservableObject {
         "Unlock Race View (MAX)": [.japanese: "レースビューを解放 (MAX)", .english: "Unlock Race View (MAX)"],
         
         // MARK: - Sharing & Import
+        "About Export Formats": [.japanese: "出力形式について", .english: "About Export Formats"],
+        "rowpilot_desc": [.japanese: "【.rowpilot形式】\nRowPilotアプリ間で完全なデータを共有するための専用形式です。グラフ用の時系列データ（ストロークごとの情報）や位置情報、クルー情報などが全て含まれます。他の端末のRowPilotアプリへデータ移行・インポートしたい場合に選択してください。", .english: "[.rowpilot format]\nA proprietary format for sharing complete data between RowPilot apps. It includes all time-series data for graphs (stroke-by-stroke info), location data, and crew details. Choose this if you want to import/transfer data to RowPilot on another device."],
+        "csv_desc": [.japanese: "【.csv形式 (RowPilot MAX限定)】\nExcelやGoogleスプレッドシートなどの表計算ソフトで管理するための一般的な形式です。日付、時間、距離、平均ペース、平均SPM、デバイス情報、メモなどのサマリーのみが保存されます。PC等で複数の練習データを一覧化して管理したい場合に適しています。", .english: "[.csv format (RowPilot MAX only)]\nA standard format for managing data in spreadsheets like Excel or Google Sheets. It saves only the workout summary (date, duration, distance, average pace, SPM, device info, and notes). Best for logging and tracking multiple records on a computer."],
+        "Share RowPilot Data (.rowpilot)": [.japanese: "RowPilotデータとして共有 (.rowpilot)", .english: "Share RowPilot Data (.rowpilot)"],
+        "Export CSV (.csv)": [.japanese: "CSV形式でエクスポート (.csv)", .english: "Export CSV (.csv)"],
+        "Export CSV (.csv) 👑": [.japanese: "CSV形式でエクスポート (.csv) 👑", .english: "Export CSV (.csv) 👑"],
+        "RowPilot MAX Exclusive": [.japanese: "RowPilot MAX限定機能", .english: "RowPilot MAX Exclusive"],
+        "CSV export is a RowPilot MAX exclusive feature. Upgrade to unlock this feature.": [.japanese: "CSV出力はRowPilot MAX限定機能です。アップグレードして機能を開放しましょう。", .english: "CSV export is a RowPilot MAX exclusive feature. Upgrade to unlock this feature."],
+        "View Plans": [.japanese: "プランを見る", .english: "View Plans"],
         "Share Confirmation": [.japanese: "共有の確認", .english: "Share Confirmation"],
         "Share to \"%@\"?": [.japanese: "\"%@\" に共有しますか？", .english: "Share to \"%@\"?"],
         "Sharing": [.japanese: "ワークアウト共有", .english: "Workout Sharing"],

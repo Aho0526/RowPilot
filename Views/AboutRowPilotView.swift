@@ -107,7 +107,7 @@ struct AboutAppView: View {
         .navigationTitle("About App")
     }
 }
-
+//MARK: - Technical Challenges
 struct TechnicalChallengesView: View {
     var body: some View {
         ZStack {
@@ -169,7 +169,7 @@ struct TechnicalChallengesView: View {
         .navigationTitle("技術的な挑戦")
     }
 }
-
+//MARK: - Special Thanks
 struct AboutSpecialThanksView: View {
     var body: some View {
         ZStack {
@@ -226,7 +226,7 @@ struct AboutSpecialThanksView: View {
         .navigationTitle("謝辞")
     }
 }
-
+//MARK: - From Developer
 struct FromDeveloperView: View {
     var body: some View {
         ZStack {

@@ -203,6 +203,83 @@ class WorkoutShareManager {
         }
     }
     
+    /// RowingRecordをCSVファイルとしてtempディレクトリに書き出して共有
+    func presentCSVShareSheet(for record: RowingRecord, from sourceView: UIView? = nil) {
+        guard let fileURL = exportRecordToCSV(record) else { return }
+        
+        let activityVC = UIActivityViewController(
+            activityItems: [fileURL],
+            applicationActivities: nil
+        )
+        
+        // iPad対応
+        if let sourceView = sourceView {
+            activityVC.popoverPresentationController?.sourceView = sourceView
+            activityVC.popoverPresentationController?.sourceRect = sourceView.bounds
+        }
+        
+        activityVC.completionWithItemsHandler = { _, _, _, _ in
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        
+        DispatchQueue.main.async {
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootVC = windowScene.windows.first?.rootViewController {
+                let presenter = rootVC.presentedViewController ?? rootVC
+                presenter.present(activityVC, animated: true)
+            }
+        }
+    }
+    
+    /// RowingRecordをCSV形式で保存し、その一時ファイルのURLを返す
+    func exportRecordToCSV(_ record: RowingRecord) -> URL? {
+        let recordToShare = record
+        var csvString = ""
+        
+        // メタデータ部
+        csvString += "RowPilot Workout Record Summary\n"
+        csvString += "Date,Duration (seconds),Distance (meters),Avg SPM,Avg Pace (seconds/500m),Avg Pace (formatted),Avg Speed (km/h),Avg Watt,Device,Notes\n"
+        
+        let dateStr = formatDateForFileName(recordToShare.date)
+        let durationVal = recordToShare.duration
+        let distanceVal = recordToShare.distance
+        let avgSPM = recordToShare.averageSPM
+        let avgPaceSec = recordToShare.averagePace
+        let avgPaceFormatted = recordToShare.formattedPace
+        let avgSpeed = recordToShare.averageSpeed
+        let avgWatt = recordToShare.averageWatt ?? 0
+        let device = recordToShare.pm5CustomName ?? recordToShare.pm5SerialNumber ?? "N/A"
+        
+        // notesの改行とダブルクォーテーションをエスケープ
+        let notesClean = (recordToShare.notes ?? "")
+            .replacingOccurrences(of: "\"", with: "\"\"")
+        let notesVal = "\"\(notesClean)\""
+        
+        csvString += "\(dateStr),\(durationVal),\(distanceVal),\(avgSPM),\(avgPaceSec),\(avgPaceFormatted),\(avgSpeed),\(avgWatt),\(device),\(notesVal)\n"
+        
+        // Excelで文字化けしないようにBOM付き of UTF-8にする
+        let bom = "\u{FEFF}"
+        let finalCSVString = bom + csvString
+        
+        let fileName = "RowPilot_\(formatDateForFileName(record.date))_\(record.id.uuidString.prefix(8)).csv"
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        
+        do {
+            try finalCSVString.write(to: tempURL, atomically: true, encoding: .utf8)
+            return tempURL
+        } catch {
+            print("WorkoutShareManager: Failed to write CSV file: \(error)")
+            return nil
+        }
+    }
+    
+    private func formatPace(_ pace: TimeInterval) -> String {
+        let totalSeconds = Int(pace)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+    
     // MARK: - Manager Mode Sequential Share Flow
     
     /// 最前面に表示されているUIViewControllerを再帰的に取得
