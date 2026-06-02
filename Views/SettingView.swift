@@ -277,6 +277,20 @@ struct SettingView: View {
                      .font(.caption)
                      .foregroundColor(Theme.textSecondary)
              }
+             
+             // 利用規約 (目立ちやすいようにセクション化)
+             SettingsSection(title: "Terms of Service".localized, icon: "doc.text.fill") {
+                 NavigationLink(destination: TermsView()) {
+                     HStack {
+                         Text("Terms of Service".localized)
+                             .foregroundColor(Theme.textMain)
+                         Spacer()
+                         Image(systemName: "chevron.right")
+                             .font(.caption)
+                             .foregroundColor(Theme.textSecondary)
+                     }
+                 }
+             }
             
             // リセット
             Button(action: {
@@ -304,16 +318,16 @@ struct SettingView: View {
             
             // アプリ情報
             VStack(spacing: 8) {
-                NavigationLink(destination: TermsView()) {
-                    Text("Terms of Service".localized)
+                NavigationLink(destination: AboutRowPilotView()) {
+                    Text("About RowPilot")
                         .underline()
                 }
                 NavigationLink(destination: CreditsView()) {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("version 1.2.1")
-                Text("Build from May 30")
+                Text("version 1.3.1")
+                Text("Build from June 2")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)
