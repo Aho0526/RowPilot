@@ -149,6 +149,9 @@ class AppViewModel: ObservableObject {
             lastBackgroundTime = Date()
             print("AppViewModel: Entered background at \(lastBackgroundTime!)")
         case .active:
+            // Check subscription expiration and sync shared plan
+            SubscriptionManager.shared.checkSubscriptionStatus()
+            
             if let lastTime = lastBackgroundTime {
                 let diff = Date().timeIntervalSince(lastTime)
                 print("AppViewModel: Returned to active. Stayed in background for \(Int(diff))s")

@@ -202,6 +202,20 @@ struct SettingView: View {
             if currentPlan.hasManagerMode {
                 SettingsSection(title: "Manager Mode".localized, icon: "person.3.sequence.fill") {
                     SettingsToggleRow(title: "Save 0-Record PM5s".localized, isOn: $settingsManager.settings.saveZeroRecordPM5s)
+                    
+                    if currentPlan == .team || currentPlan == .max {
+                        Divider().background(Theme.textSecondary.opacity(0.3))
+                        NavigationLink(destination: TeamMaxManagerView()) {
+                            HStack {
+                                Text("Manage Teammates".localized)
+                                    .foregroundColor(Theme.textMain)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                        }
+                    }
                 }
             }
             

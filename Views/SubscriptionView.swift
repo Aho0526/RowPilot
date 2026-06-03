@@ -3,7 +3,7 @@ import LocalAuthentication
 
 struct SubscriptionView: View {
     @Environment(\.dismiss) var dismiss
-    @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
+    @ObservedObject var subManager = SubscriptionManager.shared
     
     var body: some View {
         ZStack {
@@ -25,18 +25,72 @@ struct SubscriptionView: View {
                     .padding(.top, 40)
                     
                     // Current Plan Info
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("CURRENT PLAN".localized)
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white.opacity(0.6))
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("CURRENT PLAN".localized)
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white.opacity(0.6))
+                                
+                                Text(subManager.currentPlan.displayName)
+                                    .font(.headline)
+                                    .foregroundColor(Theme.accent)
+                            }
+                            Spacer()
                             
-                            Text(currentPlan.displayName)
-                                .font(.headline)
-                                .foregroundColor(Theme.accent)
+                            if subManager.isSharedManagerPlan {
+                                Text("Shared Plan".localized)
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Theme.accent.opacity(0.2))
+                                    .foregroundColor(Theme.accent)
+                                    .cornerRadius(6)
+                            }
                         }
-                        Spacer()
+                        
+                        if let expDate = subManager.expirationDate {
+                            Divider().background(Color.white.opacity(0.2))
+                            
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Expiration Date".localized)
+                                        .font(.caption2)
+                                        .foregroundColor(.white.opacity(0.6))
+                                    Text(expDate, style: .date)
+                                        .font(.subheadline)
+                                        .foregroundColor(.white)
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("Auto Renew".localized)
+                                        .font(.caption2)
+                                        .foregroundColor(.white.opacity(0.6))
+                                    Text(subManager.isAutoRenew ? "Enabled".localized : "Disabled".localized)
+                                        .font(.subheadline)
+                                        .foregroundColor(subManager.isAutoRenew ? .green : .red)
+                                }
+                            }
+                        }
+                        
+                        // Team, MAX の場合は共有管理ページへのリンクを追加
+                        if subManager.currentPlan == .team || subManager.currentPlan == .max {
+                            Divider().background(Color.white.opacity(0.2))
+                            NavigationLink(destination: TeamMaxManagerView()) {
+                                HStack {
+                                    Image(systemName: "person.3.sequence.fill")
+                                    Text("Manage Teammates".localized)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                }
+                                .font(.subheadline)
+                                .fontWeight(.bold)
+                                .foregroundColor(Theme.accent)
+                                .padding(.vertical, 4)
+                            }
+                        }
                     }
                     .padding()
                     .background(.ultraThinMaterial)
@@ -46,17 +100,17 @@ struct SubscriptionView: View {
                     VStack(spacing: 16) {
                         // Individual Plans
                         PlanSectionHeader(title: "Individual".localized)
-                        //SubscriptionCard(plan: .free, current: currentPlan)
-                        SubscriptionCard(plan: .pro, current: currentPlan)
+                        SubscriptionCard(plan: .free, current: subManager.currentPlan)
+                        SubscriptionCard(plan: .pro, current: subManager.currentPlan)
                         
                         // Manager Plans
                         PlanSectionHeader(title: "For Managers".localized)
-                        SubscriptionCard(plan: .manager, current: currentPlan)
-                        //SubscriptionCard(plan: .team, current: currentPlan)
+                        SubscriptionCard(plan: .manager, current: subManager.currentPlan)
+                        SubscriptionCard(plan: .team, current: subManager.currentPlan)
                         
                         // Professional Plans
                         PlanSectionHeader(title: "For Coaches & Teams".localized)
-                        SubscriptionCard(plan: .max, current: currentPlan)
+                        SubscriptionCard(plan: .max, current: subManager.currentPlan)
                     }
                     .padding(.bottom, 40)
                 }
@@ -69,6 +123,9 @@ struct SubscriptionView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Done".localized) { dismiss() }
             }
+        }
+        .onAppear {
+            subManager.checkSubscriptionStatus()
         }
     }
 }
@@ -142,11 +199,11 @@ struct SubscriptionCard: View {
 struct SubscriptionDetailView: View {
     let plan: SubscriptionPlan
     @Environment(\.dismiss) var dismiss
-    @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
+    @ObservedObject var subManager = SubscriptionManager.shared
     @State private var showingAuthError = false
     @State private var authErrorMessage = ""
     
-    var isSelected: Bool { currentPlan == plan }
+    var isSelected: Bool { subManager.currentPlan == plan }
     
     var body: some View {
         ZStack {
@@ -169,7 +226,7 @@ struct SubscriptionDetailView: View {
                     
                     Divider().background(Color.white.opacity(0.2))
                     
-                    // Detailed Content Section (User will write here)
+                    // Detailed Content Section
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Plan Details".localized)
                             .font(.headline)
@@ -210,17 +267,48 @@ struct SubscriptionDetailView: View {
                                 .shadow(color: Theme.accent.opacity(0.4), radius: 10, x: 0, y: 5)
                         }
                     } else {
-                        HStack {
-                            Image(systemName: "checkmark.seal.fill")
-                                .foregroundColor(.green)
-                            Text("Current Plan".localized)
-                                .fontWeight(.bold)
-                                .foregroundColor(.green)
+                        // 現在購入中かつ Free 以外のときにキャンセル（自動更新の停止）ボタンを設置
+                        VStack(spacing: 16) {
+                            HStack {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .foregroundColor(.green)
+                                Text("Current Plan".localized)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.green)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(12)
+                            
+                            if plan != .free {
+                                if subManager.isAutoRenew {
+                                    Button(action: {
+                                        withAnimation {
+                                            subManager.cancelSubscription()
+                                        }
+                                    }) {
+                                        Text("Cancel Subscription".localized)
+                                            .font(.headline)
+                                            .foregroundColor(.red)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 14)
+                                            .background(Color.red.opacity(0.1))
+                                            .cornerRadius(12)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                                            )
+                                    }
+                                } else {
+                                    Text("Subscription will end at the end of the period.".localized)
+                                        .font(.caption)
+                                        .foregroundColor(.red)
+                                        .multilineTextAlignment(.center)
+                                        .frame(maxWidth: .infinity)
+                                }
+                            }
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.green.opacity(0.1))
-                        .cornerRadius(12)
                     }
                 }
                 .padding(24)
@@ -242,7 +330,6 @@ struct SubscriptionDetailView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("RowPilotの中核となる基本的な機能を使用できます。")
                     .foregroundColor(.white.opacity(0.8))
-                // ユーザーがここに詳細を書く
             }
         case .pro:
             VStack(alignment: .leading, spacing: 12) {
@@ -264,15 +351,17 @@ struct SubscriptionDetailView: View {
             }
         case .team:
             VStack(alignment: .leading, spacing: 12) {
-                Text("複数人にマネージャーモードを共有することが出来ます。\nまた、チーム単位で記録を保存できるようになります。")
+                Text("最大3名のメンバーにマネージャーモード（ManagerPlan）を共有することができます。")
                     .foregroundColor(.white.opacity(0.8))
-                // ユーザーがここに詳細を書く
+                Text("チーム全員でデータを共有し、練習の効率化を図ることができます。")
+                    .foregroundColor(.white.opacity(0.8))
             }
         case .max:
             VStack(alignment: .leading, spacing: 12) {
-                Text("Teamプランで使用できる全機能に加え、CSVで記録を出力したり臨場感あふれるレースのような画面を閲覧できるようになります。\n ※この機能は顧問や団体に向けた機能です。")
+                Text("最大5名のメンバーにマネージャーモード（ManagerPlan）を共有することができます。")
                     .foregroundColor(.white.opacity(0.8))
-                // ユーザーがここに詳細を書く
+                Text("Teamの全機能に加え、記録のCSV書き出し、グラフィカルなレースビューの表示が可能になります。")
+                    .foregroundColor(.white.opacity(0.8))
             }
         }
     }
@@ -287,17 +376,25 @@ struct SubscriptionDetailView: View {
                 DispatchQueue.main.async {
                     if success {
                         withAnimation {
-                            currentPlan = plan
+                            subManager.purchasePlan(plan)
                         }
-                        // 1秒待ってからサブスクリプション一覧へ戻る
+                        // 1秒待ってから画面を閉じる
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                            // dismiss detail view
+                            dismiss()
                         }
                     } else if let error = authenticationError as? LAError, error.code != .userCancel {
                         authErrorMessage = error.localizedDescription
                         showingAuthError = true
                     }
                 }
+            }
+        } else {
+            // パスコード等の生体認証が利用できない場合はテスト用にそのまま購入成功させる
+            withAnimation {
+                subManager.purchasePlan(plan)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                dismiss()
             }
         }
     }
