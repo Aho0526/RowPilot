@@ -753,14 +753,16 @@ class RowErgManager: NSObject, ObservableObject {
         payload.append(contentsOf: [0x05, 0x05])
         if let dm = distanceMeters {
             payload.append(0x80) // Distance Split Type
-            // Ensure minimum 50m split and not exceeding total distance
-            let sVal = splitMeters.map { min(max($0, 50), dm) } ?? dm
+            // Ensure minimum 100m split and maximum 50 splits
+            let minSplit = max(100, Int(ceil(Double(dm) / 50.0)))
+            let sVal = splitMeters.map { min(max($0, minSplit), dm) } ?? dm
             appendUInt32(UInt32(sVal))
         } else if let tm = timeSeconds {
             payload.append(0x00) // Time Split Type
-            // Ensure minimum 10s split and not exceeding total time
-            let sVal = splitSeconds.map { min(max($0, 10), tm - 1) } ?? (tm / 2)
-            appendUInt32(UInt32(max(sVal, 1) * 100)) // centi-seconds
+            // Ensure minimum 20s split and maximum 50 splits
+            let minSplit = max(20, Int(ceil(Double(tm) / 50.0)))
+            let sVal = splitSeconds.map { min(max($0, minSplit), tm) } ?? tm
+            appendUInt32(UInt32(sVal * 100)) // centi-seconds
         }
         
         // 4. CSAFE_PM_CONFIGURE_WORKOUT (0x14)
@@ -785,7 +787,8 @@ class RowErgManager: NSObject, ObservableObject {
 
     func setWorkoutDistance(meters: Int, split: Int? = nil) {
         let limitedMeters = min(max(meters, 100), 60000)
-        let limitedSplit = split != nil ? min(max(split!, 50), limitedMeters) : limitedMeters
+        let minSplit = max(100, Int(ceil(Double(limitedMeters) / 50.0)))
+        let limitedSplit = split != nil ? min(max(split!, minSplit), limitedMeters) : min(max(limitedMeters / 5, minSplit), limitedMeters)
         print("RowErgManager: Setting workout distance to \(limitedMeters)m (Split: \(limitedSplit)m)")
         
         DispatchQueue.main.async {
@@ -814,7 +817,8 @@ class RowErgManager: NSObject, ObservableObject {
     
     func setWorkoutTime(seconds: Int, split: Int? = nil) {
         let limitedSeconds = min(max(seconds, 20), 36000)
-        let limitedSplit = split != nil ? min(max(split!, 10), limitedSeconds) : (limitedSeconds / 2)
+        let minSplit = max(20, Int(ceil(Double(limitedSeconds) / 50.0)))
+        let limitedSplit = split != nil ? min(max(split!, minSplit), limitedSeconds) : min(max(limitedSeconds / 5, minSplit), limitedSeconds)
         print("RowErgManager: Setting workout time to \(limitedSeconds)s (Split: \(limitedSplit)s)")
         
         DispatchQueue.main.async {

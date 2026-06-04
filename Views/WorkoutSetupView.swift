@@ -77,6 +77,19 @@ struct SingleDistanceSetupView: View {
     @State private var splitDistance: String = ""
     @Environment(\.dismiss) var dismiss
     
+    private var isSendDisabled: Bool {
+        guard let d = Int(distance), d >= 100 else { return true }
+        if let s = Int(splitDistance) {
+            let minSplit = max(100, Int(ceil(Double(d) / 50.0)))
+            if s < minSplit || s > d {
+                return true
+            }
+        } else {
+            return true
+        }
+        return false
+    }
+    
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
@@ -123,7 +136,8 @@ struct SingleDistanceSetupView: View {
                 
                 Button(action: {
                     if let d = Int(distance), let s = Int(splitDistance) {
-                        let finalSplit = max(s, 100)
+                        let minSplit = max(100, Int(ceil(Double(d) / 50.0)))
+                        let finalSplit = min(max(s, minSplit), d)
                         ergManager.setWorkoutDistance(meters: d, split: finalSplit)
                         dismiss()
                     }
@@ -136,7 +150,7 @@ struct SingleDistanceSetupView: View {
                         .background(Theme.primaryGradient)
                         .cornerRadius(12)
                 }
-                .disabled(Int(distance) == nil)
+                .disabled(isSendDisabled)
                 
                 Spacer()
             }
@@ -155,6 +169,19 @@ struct SingleTimeSetupView: View {
     @State private var splitSeconds: Int = 30
     @State private var isAutoSplit: Bool = true
     @Environment(\.dismiss) var dismiss
+    
+    private var isSendDisabled: Bool {
+        let total = totalSeconds
+        if total < 20 { return true }
+        if !isAutoSplit {
+            let split = splitMinutes * 60 + splitSeconds
+            let minSplit = max(20, Int(ceil(Double(total) / 50.0)))
+            if split < minSplit || split > total {
+                return true
+            }
+        }
+        return false
+    }
     
     private var totalSeconds: Int {
         (hours * 3600) + (minutes * 60) + seconds
@@ -180,7 +207,9 @@ struct SingleTimeSetupView: View {
                 .cornerRadius(16)
                 .onChange(of: totalSeconds) { _, newValue in
                     if isAutoSplit {
-                        let autoSplit = newValue / 5
+                        let minSplit = max(20, Int(ceil(Double(newValue) / 50.0)))
+                        let rawSplit = newValue / 5
+                        let autoSplit = min(max(rawSplit, minSplit), newValue)
                         splitMinutes = autoSplit / 60
                         splitSeconds = autoSplit % 60
                     }
@@ -218,7 +247,8 @@ struct SingleTimeSetupView: View {
                 Button(action: {
                     let totalSeconds = (hours * 3600) + (minutes * 60) + seconds
                     if totalSeconds >= 20 {
-                        let split = splitMinutes * 60 + splitSeconds
+                        let minSplit = max(20, Int(ceil(Double(totalSeconds) / 50.0)))
+                        let split = min(max(splitMinutes * 60 + splitSeconds, minSplit), totalSeconds)
                         ergManager.setWorkoutTime(seconds: totalSeconds, split: split)
                         dismiss()
                     }
@@ -231,7 +261,7 @@ struct SingleTimeSetupView: View {
                         .background(Theme.primaryGradient)
                         .cornerRadius(12)
                 }
-                .disabled((hours * 3600 + minutes * 60 + seconds) < 20)
+                .disabled(isSendDisabled)
                 
                 Text("Min Time Message".localized)
                     .font(.caption)

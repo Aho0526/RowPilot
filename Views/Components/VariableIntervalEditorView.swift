@@ -145,10 +145,21 @@ struct VariableIntervalEditorView: View {
                     Button("Save".localized) {
                         save()
                     }
+                    .disabled(isSaveDisabled)
                 }
             }
         }
         .preferredColorScheme(.dark)
+    }
+    
+    private var isSaveDisabled: Bool {
+        if useDistance {
+            guard let dist = Int(distanceStr) else { return true }
+            return dist < 100 || dist > 60000
+        } else {
+            let totalSecs = timeH * 3600 + timeM * 60 + timeS
+            return totalSecs < 20 || totalSecs > 36000
+        }
     }
     
     private func save() {
@@ -156,7 +167,7 @@ struct VariableIntervalEditorView: View {
         let paceSecs = showPace ? (paceM * 60 + paceS) : nil
         
         if useDistance {
-            if let dist = Int(distanceStr) {
+            if let dist = Int(distanceStr), dist >= 100 {
                 let entry = VariableIntervalEntry(distanceMeters: dist, timeSeconds: nil, restSeconds: restSecs, targetPace500mSeconds: paceSecs)
                 onSave(entry)
                 dismiss()

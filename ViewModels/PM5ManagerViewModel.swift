@@ -547,12 +547,14 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         payload.append(contentsOf: [0x05, 0x05])
         if let dm = distanceMeters {
             payload.append(0x80)
-            let splitValue = splitMeters ?? dm
+            let minSplit = max(100, Int(ceil(Double(dm) / 50.0)))
+            let splitValue = splitMeters.map { min(max($0, minSplit), dm) } ?? dm
             appendUInt32(UInt32(splitValue))
         } else if let tm = timeSeconds {
             payload.append(0x00)
-            let splitValue = splitSeconds ?? (tm / 2)
-            appendUInt32(UInt32(max(splitValue, 1) * 100))
+            let minSplit = max(20, Int(ceil(Double(tm) / 50.0)))
+            let splitValue = splitSeconds.map { min(max($0, minSplit), tm) } ?? tm
+            appendUInt32(UInt32(splitValue * 100))
         }
         
         // 4. CSAFE_PM_CONFIGURE_WORKOUT
@@ -819,7 +821,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// 距離ワークアウトを全PM5に送信（Phase 2: CONFIG）
     private func setWorkoutDistance(meters: Int, split: Int? = nil) {
         let limitedMeters = min(max(meters, 100), 60000)
-        let limitedSplit = split != nil ? min(max(split!, 100), limitedMeters) : limitedMeters
+        let minSplit = max(100, Int(ceil(Double(limitedMeters) / 50.0)))
+        let limitedSplit = split != nil ? min(max(split!, minSplit), limitedMeters) : min(max(limitedMeters / 5, minSplit), limitedMeters)
         
         // 楽観的UI更新: 送信開始時にダッシュボードを即座に表示
         isSending = true
@@ -854,7 +857,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// 時間ワークアウトを全PM5に送信（Phase 2: CONFIG）
     private func setWorkoutTime(seconds: Int, split: Int? = nil) {
         let limitedSeconds = min(max(seconds, 20), 36000)
-        let limitedSplit = split != nil ? min(max(split!, 10), limitedSeconds) : (limitedSeconds / 2)
+        let minSplit = max(20, Int(ceil(Double(limitedSeconds) / 50.0)))
+        let limitedSplit = split != nil ? min(max(split!, minSplit), limitedSeconds) : min(max(limitedSeconds / 5, minSplit), limitedSeconds)
         
         // 楽観的UI更新: 送信開始時にダッシュボードを即座に表示
         isSending = true
