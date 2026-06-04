@@ -423,7 +423,7 @@ struct VariableIntervalSetupView: View {
                         editingIndex = nil
                         isShowingEditor = true
                     }) {
-                        Text("Add Next Interval".localized)
+                        Text(intervals.isEmpty ? "Add Interval".localized : "Add Next Interval".localized)
                             .font(.headline)
                             .foregroundColor(Theme.mainBackground)
                             .frame(maxWidth: .infinity)

@@ -15,6 +15,8 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
     @Published var power: Int = 0                 // ワット
     @Published var strokeRate: Int = 0            // SPM
     @Published var workoutState: UInt8 = 0       // index 8 of 0x31
+    @Published var heartRate: Int = 0             // BPM（心拍数）
+    @Published var predictedFinishTime: Double = 0.0  // 秒（予測完了時間）
     
     /// ワークアウト送信ステータス
     enum ConfigStatus: Equatable {
@@ -100,6 +102,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     private let C2_CHAR_ADDITIONAL_STROKE_DATA_0x36 = CBUUID(string: "CE060036-43E5-11E4-916C-0800200C9A66")
     private let C2_CHAR_END_OF_WORKOUT = CBUUID(string: "CE060037-43E5-11E4-916C-0800200C9A66")
     private let C2_CHAR_ROWING_STATUS_SAMPLE_RATE = CBUUID(string: "CE060034-43E5-11E4-916C-0800200C9A66")
+    
+    // Heart Rate BLE Service / Characteristic (標準BLE)
+    private let HR_SERVICE_UUID = CBUUID(string: "180D")
+    private let HR_CHAR_MEASUREMENT = CBUUID(string: "2A37")
     
     // MARK: - CoreBluetooth
     private var centralManager: CBCentralManager!
@@ -1325,9 +1331,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             connectedDevices.append(peripheral)
         }
         
-        // サービス検出（Control + Data）
+        // サービス検出（Control + Data + HeartRate）
         peripheral.delegate = self
-        peripheral.discoverServices([C2_DEVICE_CONTROL_SERVICE, C2_SERVICE_UUID])
+        peripheral.discoverServices([C2_DEVICE_CONTROL_SERVICE, C2_SERVICE_UUID, HR_SERVICE_UUID])
     }
     
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -1378,6 +1384,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                     for: service
                 )
             }
+            if service.uuid == HR_SERVICE_UUID {
+                peripheral.discoverCharacteristics([HR_CHAR_MEASUREMENT], for: service)
+                print("PM5ManagerVM: HeartRate Service発見 → \(peripheral.name ?? "Unknown")")
+            }
         }
     }
     
@@ -1402,6 +1412,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 let val = sampleRateValue(for: retrievalSpeedHz)
                 peripheral.writeValue(Data([val]), for: characteristic, type: .withResponse)
                 print("PM5ManagerVM: Sample Rate発見 & 設定適用 (\(retrievalSpeedHz)Hz, 値: \(val)) → \(peripheral.name ?? "Unknown")")
+            }
+            if characteristic.uuid == HR_CHAR_MEASUREMENT {
+                peripheral.setNotifyValue(true, for: characteristic)
+                print("PM5ManagerVM: HeartRate Measurement発見 & Notify購読開始 → \(peripheral.name ?? "Unknown")")
             }
         }
     }
@@ -1429,6 +1443,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             parseManagerDataPoint(data, for: deviceID)
         } else if characteristic.uuid == C2_CHAR_ADDITIONAL_STROKE_DATA_0x36 {
             parseManagerStrokeData0x36(data, for: deviceID)
+        } else if characteristic.uuid == HR_CHAR_MEASUREMENT {
+            parseHeartRate(data, for: deviceID)
         }
     }
     
@@ -1470,8 +1486,18 @@ extension PM5ManagerViewModel {
             if data.count >= 9 {
                 let ws = data[8]
                 metrics.workoutState = ws
-                // Note: Removed non-existent properties lastGeneralStatusByte8, isWaitingForResetAfterHalt, and resetRowingMetrics for compile success.
             }
+            
+            // 予測完了時間の計算（距離ワークアウトの場合のみ）
+            // 予測 = 経過時間 + 残り距離 × 現在ペース / 500
+            if let targetDist = self.workoutDistance, metrics.pace500m > 0 {
+                let remaining = max(Double(targetDist) - distMeters, 0)
+                let predictedExtra = remaining * (metrics.pace500m / 500.0)
+                metrics.predictedFinishTime = timeSec + predictedExtra
+            } else {
+                metrics.predictedFinishTime = 0
+            }
+            
             self.objectWillChange.send()
         }
     }
@@ -1560,3 +1586,26 @@ extension PM5ManagerViewModel {
     }
 }
 
+// MARK: - Heart Rate Parsing
+extension PM5ManagerViewModel {
+    
+    /// Heart Rate Measurement (0x2A37) をパースして heartRate を更新
+    /// BLE仕様: Flags byte(bit0=0 → 8bit HR, bit0=1 → 16bit HR)
+    private func parseHeartRate(_ data: Data, for deviceID: UUID) {
+        guard data.count >= 2 else { return }
+        let flags = data[0]
+        let is16bit = (flags & 0x01) != 0
+        let bpm: Int
+        if is16bit {
+            guard data.count >= 3 else { return }
+            bpm = Int(data[1]) | (Int(data[2]) << 8)
+        } else {
+            bpm = Int(data[1])
+        }
+        guard bpm > 0 && bpm < 300 else { return } // 誘起値フィルタ
+        
+        DispatchQueue.main.async { [weak self] in
+            self?.deviceMetrics[deviceID]?.heartRate = bpm
+        }
+    }
+}

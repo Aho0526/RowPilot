@@ -161,17 +161,22 @@ struct ManagerWorkoutDashboardView: View {
                 // MARK: - Portrait Toolbar
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: {
-                        if viewModel.isSaved {
-                            viewModel.resetAllDevices()
-                            dismiss()
+                        if isLocked {
+                            showLockWarning()
                         } else {
-                            showBackAlert = true
+                            if viewModel.isSaved {
+                                viewModel.resetAllDevices()
+                                dismiss()
+                            } else {
+                                showBackAlert = true
+                            }
                         }
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
                             Text("Back".localized)
                         }
+                        .foregroundColor(isLocked ? .gray : Theme.accent)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -579,9 +584,10 @@ struct PM5MetricsCardView: View {
     let targetTime: Int?
     let isDisconnected: Bool
     
-    @AppStorage("pm5DisplayMode") private var pm5DisplayMode: Int = 1 // 0: Small, 1: Normal, 2: Large
-    @AppStorage("pm5ShowPace") private var pm5ShowPace: Bool = true
+    @AppStorage("pm5DisplayMode") private var pm5DisplayMode: Int = 1
     @AppStorage("pm5ShowWatts") private var pm5ShowWatts: Bool = true
+    @AppStorage("pm5ShowPredicted") private var pm5ShowPredicted: Bool = true
+    @AppStorage("pm5ShowHR") private var pm5ShowHR: Bool = true
     
     private var baseFontSize: CGFloat {
         switch pm5DisplayMode {
@@ -594,16 +600,15 @@ struct PM5MetricsCardView: View {
     private var valueFontSize: CGFloat {
         switch pm5DisplayMode {
         case 0: return 13
-        case 2: return 20 // 調整
+        case 2: return 20
         default: return 15
         }
     }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Device header (compact)
+            // Device header
             HStack(spacing: 6) {
-                // 番号バッジ
                 Text("#\(deviceNumber)")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
@@ -637,11 +642,12 @@ struct PM5MetricsCardView: View {
             .padding(.vertical, 6)
             .background(isDisconnected ? Color.gray.opacity(0.12) : Color.green.opacity(0.08))
             
-            // Metrics (compact 2x2 grid) or Syncing Status
+            // Metrics grid
             ZStack {
-                HStack(spacing: 6) {
-                    // 左カラム: 残距離/残時間 + ペース
-                    VStack(spacing: 4) {
+                VStack(spacing: 4) {
+                    // 常時表示行1: 残り + 経過時間
+                    HStack(spacing: 6) {
+                        // 残り距離 or 残り時間
                         if let targetDist = targetDistance {
                             let remaining = max(Double(targetDist) - metrics.distance, 0)
                             CompactMetricView(
@@ -666,23 +672,8 @@ struct PM5MetricsCardView: View {
                             )
                         }
                         
-                        if pm5ShowPace {
-                            CompactMetricView(
-                                label: "Pace".localized,
-                                value: formatPace(seconds: metrics.pace500m),
-                                icon: "speedometer",
-                                color: .orange,
-                                isDisconnected: isDisconnected,
-                                labelFontSize: baseFontSize - 4,
-                                valueFontSize: valueFontSize
-                            )
-                        }
-                    }
-                    
-                    // 右カラム: 経過時間 + ワット
-                    VStack(spacing: 4) {
+                        // 経過時間 or 距離
                         if targetTime != nil {
-                            // 単一時間設定の時は「進んだ距離」を表示
                             CompactMetricView(
                                 label: "Distance".localized,
                                 value: String(format: "%.0fm", metrics.distance),
@@ -703,7 +694,21 @@ struct PM5MetricsCardView: View {
                                 valueFontSize: valueFontSize
                             )
                         }
+                    }
+                    
+                    // 常時表示行2: 500mペース（常時）
+                    HStack(spacing: 6) {
+                        CompactMetricView(
+                            label: "Pace".localized,
+                            value: formatPace(seconds: metrics.pace500m),
+                            icon: "speedometer",
+                            color: .orange,
+                            isDisconnected: isDisconnected,
+                            labelFontSize: baseFontSize - 4,
+                            valueFontSize: valueFontSize
+                        )
                         
+                        // サブスロットの左側は空白かワット
                         if pm5ShowWatts {
                             CompactMetricView(
                                 label: "Watts",
@@ -714,6 +719,44 @@ struct PM5MetricsCardView: View {
                                 labelFontSize: baseFontSize - 4,
                                 valueFontSize: valueFontSize
                             )
+                        } else {
+                            Spacer()
+                        }
+                    }
+                    
+                    // 選択式行: 予測完了時間 + HR
+                    let showPredicted = pm5ShowPredicted && targetDistance != nil && metrics.predictedFinishTime > 0
+                    let showHR = pm5ShowHR && metrics.heartRate > 0
+                    
+                    if showPredicted || showHR {
+                        HStack(spacing: 6) {
+                            if showPredicted {
+                                CompactMetricView(
+                                    label: "予測時間",
+                                    value: formatCompactTime(seconds: Int(metrics.predictedFinishTime)),
+                                    icon: "hourglass",
+                                    color: .purple,
+                                    isDisconnected: isDisconnected,
+                                    labelFontSize: baseFontSize - 4,
+                                    valueFontSize: valueFontSize
+                                )
+                            } else {
+                                Spacer()
+                            }
+                            
+                            if showHR {
+                                CompactMetricView(
+                                    label: "HR",
+                                    value: "\(metrics.heartRate)bpm",
+                                    icon: "heart.fill",
+                                    color: .red,
+                                    isDisconnected: isDisconnected,
+                                    labelFontSize: baseFontSize - 4,
+                                    valueFontSize: valueFontSize
+                                )
+                            } else {
+                                Spacer()
+                            }
                         }
                     }
                 }
@@ -769,7 +812,6 @@ struct PM5MetricsCardView: View {
         .opacity(isDisconnected ? 0.7 : 1.0)
     }
     
-    /// 経過時間をミリ秒（小数点以下1桁）まで表示
     private func formatElapsedWithMs(seconds: Double) -> String {
         let totalSeconds = Int(seconds)
         let fraction = Int((seconds - Double(totalSeconds)) * 10)
@@ -849,8 +891,9 @@ struct ManagerModeSettingsView: View {
     
     @AppStorage("pm5DisplayMode") private var pm5DisplayMode: Int = 1
     @AppStorage("pm5GridColumns") private var pm5GridColumns: Int = 2
-    @AppStorage("pm5ShowPace") private var pm5ShowPace: Bool = true
     @AppStorage("pm5ShowWatts") private var pm5ShowWatts: Bool = true
+    @AppStorage("pm5ShowPredicted") private var pm5ShowPredicted: Bool = true
+    @AppStorage("pm5ShowHR") private var pm5ShowHR: Bool = true
     
     private func showLockWarning() {
         withAnimation(.spring()) {
@@ -909,8 +952,12 @@ struct ManagerModeSettingsView: View {
                 }
                 
                 Section(header: Text("表示内容のカスタマイズ")) {
-                    Toggle("ペース(500m)を表示", isOn: $pm5ShowPace)
                     Toggle("ワットを表示", isOn: $pm5ShowWatts)
+                    Toggle("予測時間を表示", isOn: $pm5ShowPredicted)
+                    Toggle("HR（心拍数）を表示", isOn: $pm5ShowHR)
+                    Text("ワット・予測時間・HRはデータが利用可能な場合のみ表示されます")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
                 
                 Section(header: Text("データ取得スピード (Hz)")) {

@@ -349,8 +349,8 @@ struct SettingView: View {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("version 1.3.1")
-                Text("Build from June 2")
+                Text("version 1.0")
+                Text("Build from June 6")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

@@ -1173,6 +1173,8 @@ struct SwipeToDelete<Content: View>: View {
     
     @State private var offset: CGFloat = 0
     @State private var isSwiped = false
+    /// ドラッグが水平方向と確定しているかどうか
+    @State private var isDraggingHorizontally: Bool? = nil
     
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -1190,36 +1192,45 @@ struct SwipeToDelete<Content: View>: View {
                         onTap()
                     }
                 }
-                .gesture(
-                DragGesture(minimumDistance: 15, coordinateSpace: .local)
-                    .onChanged { value in
-                        let xTrans = value.translation.width
-                        let yTrans = value.translation.height
-                        
-                        // Prevent horizontal swipe gesture from triggering during vertical scroll
-                        guard abs(xTrans) > abs(yTrans) else { return }
-                        
-                        // Only allow swipe to left
-                        withAnimation(.interactiveSpring()) {
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 10, coordinateSpace: .local)
+                        .onChanged { value in
+                            let xTrans = value.translation.width
+                            let yTrans = value.translation.height
+
+                            // 方向が未確定の場合、最初の動きで水平か垂直かを判定
+                            if isDraggingHorizontally == nil {
+                                if abs(xTrans) > abs(yTrans) + 3 {
+                                    isDraggingHorizontally = true
+                                } else if abs(yTrans) > abs(xTrans) + 3 {
+                                    isDraggingHorizontally = false
+                                }
+                                return
+                            }
+
+                            // 垂直スクロール中は処理しない
+                            guard isDraggingHorizontally == true else { return }
+
+                            // アニメーションなしで直接offset更新（毎フレームwithAnimationを呼ぶと重くなるため）
                             if xTrans < 0 {
-                                offset = isSwiped ? xTrans - 70 : xTrans
+                                offset = max(isSwiped ? xTrans - 70 : xTrans, -140)
                             } else if xTrans > 0 && isSwiped {
-                                offset = xTrans - 70
+                                offset = min(xTrans - 70, 0)
                             }
                         }
-                    }
-                    .onEnded { value in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                            if value.translation.width < -40 {
-                                offset = -70
-                                isSwiped = true
-                            } else {
-                                offset = 0
-                                isSwiped = false
+                        .onEnded { value in
+                            isDraggingHorizontally = nil
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                if value.translation.width < -40 {
+                                    offset = -70
+                                    isSwiped = true
+                                } else {
+                                    offset = 0
+                                    isSwiped = false
+                                }
                             }
                         }
-                    }
-            )
+                )
             
             // Background Delete Button
             if offset < 0 {
@@ -1235,10 +1246,10 @@ struct SwipeToDelete<Content: View>: View {
                         .cornerRadius(12)
                 }
                 .padding(.trailing, 2)
-                .transition(.opacity) // Smooth transition when showing up
+                .transition(.opacity)
             }
         }
-        .onChange(of: isAnimatingOut) { newValue in
+        .onChange(of: isAnimatingOut) { _, newValue in
             if newValue {
                 withAnimation(.easeOut(duration: 0.3)) {
                     offset = -1000
@@ -1255,4 +1266,3 @@ struct SwipeToDelete<Content: View>: View {
 #Preview {
     HomeView()
 }
-
