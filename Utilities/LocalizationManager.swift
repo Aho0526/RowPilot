@@ -82,8 +82,13 @@ class LocalizationManager: ObservableObject {
         "No response. Please check.": [.japanese: "SOS信号が発信されました。確認してください。", .english: "An SOS signal has been sent. Please check."],
         "SOS Warning": [.japanese: "緊急連絡先の未設定", .english: "SOS Not Configured"],
         "SOS Warning Message": [.japanese: "緊急連絡先または使用者氏名が設定されていません。\nこのまま開始しますか？", .english: "Emergency contact or user name is not set.\nDo you want to start anyway?"],
+        "SOS Button Warning Message": [.japanese: "緊急連絡先または使用者氏名が設定されていません。\nこのままSOSを発信しますか？", .english: "Emergency contact or user name is not set.\nDo you want to send SOS anyway?"],
         "Set Contact": [.japanese: "設定画面へ", .english: "Set Contact"],
         "Start Anyway": [.japanese: "無視して開始", .english: "Start Anyway"],
+        "Send Anyway": [.japanese: "このまま発信", .english: "Send Anyway"],
+        "Low Power Mode Warning": [.japanese: "省電力モードが有効なため、画面が暗くなることがあります。", .english: "Screen may dim due to Low Power Mode."],
+        "Prevent Screen Dimming": [.japanese: "RowMode中の画面の暗転を防止", .english: "Prevent Screen Dimming during RowMode"],
+        "Screen Dimming Warning Hint": [.japanese: "画面を常にONに保ちます。長時間の表示によって画面の焼き付きやバッテリー消耗の原因となる場合があります。", .english: "Keep the screen awake. Long-term usage may cause screen burn-in or battery drain."],
         "Map Type": [.japanese: "マップの種類", .english: "Map Type"],
         "Apple Maps": [.japanese: "Apple Maps", .english: "Apple Maps"],
         "Google Maps": [.japanese: "Google Maps", .english: "Google Maps"],
@@ -308,6 +313,8 @@ class LocalizationManager: ObservableObject {
         "Would you like to save this workout record?": [.japanese: "このワークアウト記録を保存しますか？", .english: "Would you like to save this workout record?"],
         "Would you like to save all connected erg records?": [.japanese: "接続中のすべてのエルゴ記録を保存しますか？", .english: "Would you like to save all connected erg records?"],
         "Change": [.japanese: "変更", .english: "Change"],
+        "Reset Lock": [.japanese: "リセットロック", .english: "Reset Lock"],
+        "Locked. Please press and hold the lock button for 1.5 seconds.": [.japanese: "ロックされています。鍵ボタンを1.5秒間押し続けてください。", .english: "Locked. Press and hold the lock button for 1.5 seconds."],
         
         // MARK: - Practice View
         "Connection Status": [.japanese: "接続ステータス", .english: "Connection Status"],

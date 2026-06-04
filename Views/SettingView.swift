@@ -164,6 +164,15 @@ struct SettingView: View {
                 
                 Divider().background(Theme.textSecondary.opacity(0.3))
                 
+                VStack(alignment: .leading, spacing: 6) {
+                    SettingsToggleRow(title: "Prevent Screen Dimming".localized, isOn: $settingsManager.settings.preventScreenDimming)
+                    Text("Screen Dimming Warning Hint".localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                }
+                
+                Divider().background(Theme.textSecondary.opacity(0.3))
+                
                 // 天気表示モード
                 HStack {
                     Label("Weather Display".localized, systemImage: "cloud.sun.fill")

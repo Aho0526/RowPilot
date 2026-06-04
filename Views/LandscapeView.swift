@@ -20,6 +20,7 @@ struct LandscapeView: View {
     @State private var showingSaveAlert = false
     @State private var showingHelp = false
     @State private var showingSOSWarningAlert = false
+    @State private var showingSOSButtonWarningAlert = false
     
     @State private var showSOSOverlay = false
     
@@ -104,7 +105,7 @@ struct LandscapeView: View {
                         HStack(spacing: 30) { 
                             // SOS Button
                             Button(action: {
-                                withAnimation { showSOSOverlay = true }
+                                checkSOSAndShowOverlay()
                             }) {
                                 Image(systemName: "sos")
                                     .font(.system(size: 20, weight: .bold))
@@ -212,6 +213,16 @@ struct LandscapeView: View {
         } message: {
             Text("SOS Warning Message".localized)
         }
+        .alert("SOS Warning".localized, isPresented: $showingSOSButtonWarningAlert) {
+            Button("Set Contact".localized, role: .cancel) {
+                app.navigateToSOSSettings()
+            }
+            Button("Send Anyway".localized, role: .destructive) {
+                withAnimation { showSOSOverlay = true }
+            }
+        } message: {
+            Text("SOS Button Warning Message".localized)
+        }
     }
 
     private func updateStatusInfo() {
@@ -245,6 +256,15 @@ struct LandscapeView: View {
     }
 
     // MARK: - Actions
+    
+    private func checkSOSAndShowOverlay() {
+        let settings = SettingsManager.shared.settings
+        if settings.sosContactPhone.isEmpty || settings.sosUserName.isEmpty {
+            showingSOSButtonWarningAlert = true
+        } else {
+            withAnimation { showSOSOverlay = true }
+        }
+    }
     
     private func checkSOSAndStart() {
         let settings = SettingsManager.shared.settings

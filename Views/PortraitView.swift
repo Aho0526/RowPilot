@@ -15,6 +15,7 @@ struct PortraitView: View {
     @State private var showingSaveAlert = false
     @State private var showingHelp = false
     @State private var showingSOSWarningAlert = false
+    @State private var showingSOSButtonWarningAlert = false
     
     @State private var showSOSOverlay = false
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
@@ -80,7 +81,7 @@ struct PortraitView: View {
                             
                             // SOS Entry Button
                             Button(action: {
-                                withAnimation { showSOSOverlay = true }
+                                checkSOSAndShowOverlay()
                             }) {
                                 Image(systemName: "sos")
                                     .font(.system(size: 14, weight: .bold))
@@ -205,6 +206,16 @@ struct PortraitView: View {
         } message: {
             Text("SOS Warning Message".localized)
         }
+        .alert("SOS Warning".localized, isPresented: $showingSOSButtonWarningAlert) {
+            Button("Set Contact".localized, role: .cancel) {
+                app.navigateToSOSSettings()
+            }
+            Button("Send Anyway".localized, role: .destructive) {
+                withAnimation { showSOSOverlay = true }
+            }
+        } message: {
+            Text("SOS Button Warning Message".localized)
+        }
         // Force redraw when theme changes
         .id(themeManager.currentPreset)
         .sheet(isPresented: $showingHelp) {
@@ -231,6 +242,15 @@ struct PortraitView: View {
         if accuracy <= 10 { return .green }
         if accuracy <= 20 { return .yellow }
         return .orange
+    }
+
+    private func checkSOSAndShowOverlay() {
+        let settings = SettingsManager.shared.settings
+        if settings.sosContactPhone.isEmpty || settings.sosUserName.isEmpty {
+            showingSOSButtonWarningAlert = true
+        } else {
+            withAnimation { showSOSOverlay = true }
+        }
     }
 
     private func checkSOSAndStart() {

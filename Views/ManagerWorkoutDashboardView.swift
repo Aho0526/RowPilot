@@ -24,6 +24,10 @@ struct ManagerWorkoutDashboardView: View {
     @State private var isLandscapeMode: Bool = false
     @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
     @State private var showingSubscription: Bool = false
+    @State private var isLocked = false
+    @State private var lockWarningMessage: String? = nil
+    @State private var showHelpSheet = false
+    @State private var vibrationTask: Task<Void, Never>? = nil
     
     var body: some View {
         GeometryReader { geo in
@@ -100,6 +104,8 @@ struct ManagerWorkoutDashboardView: View {
                         }
                     }
                 }
+                
+                lockWarningToast
             }
             .onAppear { isLandscapeMode = geo.size.width > geo.size.height }
             .onChange(of: geo.size) { _, newSize in isLandscapeMode = newSize.width > newSize.height }
@@ -115,8 +121,29 @@ struct ManagerWorkoutDashboardView: View {
                         Button(action: { showZoomSettings = true }) {
                             Label("レースズーム", systemImage: "ruler")
                         }
-                        Button(action: { showRepeatAlert = true }) {
-                            Label("もう一度", systemImage: "arrow.counterclockwise")
+                        Button(action: {
+                            if isLocked {
+                                showLockWarning()
+                            } else {
+                                showRepeatAlert = true
+                            }
+                        }) {
+                            if isLocked {
+                                Label("もう一度 (ロック中)", systemImage: "arrow.counterclockwise")
+                            } else {
+                                Label("もう一度", systemImage: "arrow.counterclockwise")
+                            }
+                        }
+                        Button(action: {
+                            if isLocked {
+                                showLockWarning()
+                            } else {
+                                withAnimation {
+                                    isLocked = true
+                                }
+                            }
+                        }) {
+                            Label("Reset Lock".localized, systemImage: isLocked ? "lock.fill" : "lock.open.fill")
                         }
                         Button(action: { showModeSettings = true }) {
                             Label("Settings".localized, systemImage: "gearshape.fill")
@@ -149,12 +176,12 @@ struct ManagerWorkoutDashboardView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
-                        showSaveAlert = true
+                        showHelpSheet = true
                     }) {
-                        Text("Save".localized)
-                            .fontWeight(.bold)
+                        Image(systemName: "questionmark.circle")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(Theme.accent)
                     }
-                    .disabled(viewModel.isSaved)
                 }
             }
         }
@@ -222,10 +249,13 @@ struct ManagerWorkoutDashboardView: View {
             Text("Are you sure you want to finish without saving?".localized)
         }
         .sheet(isPresented: $showModeSettings) {
-            ManagerModeSettingsView(viewModel: viewModel, showWorkoutSetup: $showWorkoutSetup, showModeSettings: $showModeSettings)
+            ManagerModeSettingsView(viewModel: viewModel, showWorkoutSetup: $showWorkoutSetup, showModeSettings: $showModeSettings, isLocked: isLocked)
         }
         .sheet(isPresented: $showEditSheet) {
             PM5EditView(viewModel: viewModel, isPresented: $showEditSheet)
+        }
+        .sheet(isPresented: $showHelpSheet) {
+            ManagerWorkoutHelpView()
         }
     }
     
@@ -288,17 +318,57 @@ struct ManagerWorkoutDashboardView: View {
                 
                 Spacer()
                 
+                // ロックボタン
+                VStack(spacing: 4) {
+                    Image(systemName: isLocked ? "lock.fill" : "lock.open.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(isLocked ? .red : .green)
+                    Text("Reset Lock".localized)
+                        .font(.system(size: 9))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .frame(width: 42)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if isLocked {
+                        showLockWarning()
+                    } else {
+                        withAnimation {
+                            isLocked = true
+                        }
+                    }
+                }
+                .onLongPressGesture(minimumDuration: 1.5, pressing: { isPressing in
+                    if isPressing && isLocked {
+                        startVibrationTimer()
+                    } else {
+                        stopVibrationTimer()
+                    }
+                }, perform: {
+                    if isLocked {
+                        withAnimation {
+                            isLocked = false
+                            let generator = UINotificationFeedbackGenerator()
+                            generator.notificationOccurred(.success)
+                        }
+                    }
+                })
+                
                 // もう一度ボタン
                 Button(action: {
-                    showRepeatAlert = true
+                    if isLocked {
+                        showLockWarning()
+                    } else {
+                        showRepeatAlert = true
+                    }
                 }) {
                     VStack(spacing: 4) {
                         Image(systemName: "arrow.counterclockwise.circle.fill")
                             .font(.system(size: 24))
-                            .foregroundColor(Theme.accent)
+                            .foregroundColor(isLocked ? Color.gray : Theme.accent)
                         Text("Repeat".localized)
                             .font(.system(size: 10))
-                            .foregroundColor(Theme.textSecondary)
+                            .foregroundColor(isLocked ? Color.gray : Theme.textSecondary)
                     }
                     .frame(width: 52)
                 }
@@ -349,6 +419,60 @@ struct ManagerWorkoutDashboardView: View {
                     .font(.system(size: 11))
                     .foregroundColor(Theme.textSecondary)
             }
+        }
+    }
+    
+    private func showLockWarning() {
+        withAnimation(.spring()) {
+            lockWarningMessage = "Locked. Please press and hold the lock button for 1.5 seconds.".localized
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            withAnimation(.easeOut) {
+                if lockWarningMessage == "Locked. Please press and hold the lock button for 1.5 seconds.".localized {
+                    lockWarningMessage = nil
+                }
+            }
+        }
+    }
+    
+    private func startVibrationTimer() {
+        vibrationTask?.cancel()
+        vibrationTask = Task {
+            let feedback = UIImpactFeedbackGenerator(style: .medium)
+            feedback.impactOccurred()
+            
+            for _ in 1...3 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if Task.isCancelled { break }
+                let feedback = UIImpactFeedbackGenerator(style: .medium)
+                feedback.impactOccurred()
+            }
+        }
+    }
+    
+    private func stopVibrationTimer() {
+        vibrationTask?.cancel()
+        vibrationTask = nil
+    }
+    
+    @ViewBuilder
+    private var lockWarningToast: some View {
+        if let message = lockWarningMessage {
+            VStack {
+                Text(message)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.red.opacity(0.9))
+                    .cornerRadius(20)
+                    .shadow(radius: 10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                Spacer()
+            }
+            .padding(.top, 20)
+            .zIndex(100)
         }
     }
     
@@ -719,29 +843,52 @@ struct ManagerModeSettingsView: View {
     @ObservedObject var viewModel: PM5ManagerViewModel
     @Binding var showWorkoutSetup: Bool
     @Binding var showModeSettings: Bool
+    let isLocked: Bool
+    
+    @State private var lockWarningMessage: String? = nil
     
     @AppStorage("pm5DisplayMode") private var pm5DisplayMode: Int = 1
     @AppStorage("pm5GridColumns") private var pm5GridColumns: Int = 2
     @AppStorage("pm5ShowPace") private var pm5ShowPace: Bool = true
     @AppStorage("pm5ShowWatts") private var pm5ShowWatts: Bool = true
     
+    private func showLockWarning() {
+        withAnimation(.spring()) {
+            lockWarningMessage = "Locked. Please press and hold the lock button for 1.5 seconds.".localized
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            withAnimation(.easeOut) {
+                if lockWarningMessage == "Locked. Please press and hold the lock button for 1.5 seconds.".localized {
+                    lockWarningMessage = nil
+                }
+            }
+        }
+    }
+    
     var body: some View {
         NavigationStack {
-            Form {
-                Section(header: Text("ワークアウト変更")) {
-                    Button(action: {
-                        showModeSettings = false
-                        viewModel.resetAllDevices() // ワークアウト変更前に全デバイスを強制終了
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            showWorkoutSetup = true
-                        }
-                    }) {
-                        HStack {
-                            Image(systemName: "slider.horizontal.3")
-                            Text("ワークアウトの内容を変更")
+            ZStack {
+                Form {
+                    Section(header: Text("ワークアウト変更")) {
+                        Button(action: {
+                            if isLocked {
+                                showLockWarning()
+                            } else {
+                                showModeSettings = false
+                                viewModel.resetAllDevices() // ワークアウト変更前に全デバイスを強制終了
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    showWorkoutSetup = true
+                                }
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: "slider.horizontal.3")
+                                Text("ワークアウトの内容を変更")
+                            }
+                            .foregroundColor(isLocked ? .gray : .accentColor)
                         }
                     }
-                }
                 
                 Section(header: Text("カードの表示サイズ")) {
                     Picker("サイズ", selection: $pm5DisplayMode) {
@@ -796,6 +943,24 @@ struct ManagerModeSettingsView: View {
                     }
                 }
             }
+                
+            if let message = lockWarningMessage {
+                    VStack {
+                        Text(message)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Color.red.opacity(0.9))
+                            .cornerRadius(20)
+                            .shadow(radius: 10)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        Spacer()
+                    }
+                    .padding(.top, 20)
+                    .zIndex(100)
+                }
+            }
             .navigationTitle("Settings".localized)
             .navigationBarItems(trailing: Button("完了") {
                 showModeSettings = false
@@ -803,4 +968,122 @@ struct ManagerModeSettingsView: View {
         }
     }
 
+}
+
+/// マネージャーモード：ダッシュボード機能ヘルプビュー
+struct ManagerWorkoutHelpView: View {
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        
+                        // ヘッダー情報
+                        VStack(spacing: 8) {
+                            Image(systemName: "questionmark.circle.fill")
+                                .font(.system(size: 56))
+                                .foregroundStyle(Theme.primaryGradient)
+                                .padding(.top, 20)
+                            
+                            Text("Manager Dashboard Help".localized)
+                                .font(.title3)
+                                .fontWeight(.black)
+                                .foregroundColor(.white)
+                            
+                            Text("Explanation of actions available on this screen.".localized)
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 8)
+                        
+                        // 各項目の説明
+                        VStack(spacing: 16) {
+                            HelpFeatureRow(
+                                title: "Reset Lock".localized,
+                                icon: "lock.fill",
+                                iconColor: .red,
+                                description: "誤操作によって測定中のPM5がリセットされるのを防ぐための機能です。ロックを有効にすると、「もう一度」ボタンや設定画面内の「ワークアウト内容を変更」ボタンが無効化されます。鍵ボタンを1.5秒間長押しすることで解除できます。解除中はデバイスが振動します。"
+                            )
+                            
+                            HelpFeatureRow(
+                                title: "Repeat".localized,
+                                icon: "arrow.counterclockwise.circle.fill",
+                                iconColor: Theme.accent,
+                                description: "現在のセッションの記録を保存または破棄したうえで、同じワークアウト設定を使って新しい測定を即座に開始します。"
+                            )
+                            
+                            HelpFeatureRow(
+                                title: "Settings".localized,
+                                icon: "gearshape.fill",
+                                iconColor: .orange,
+                                description: "ワークアウト設定の変更、カードの表示サイズ（小・中・大）、グリッドの列数（1列〜3列）、メトリクスの表示選択（ペースやワットなど）、およびデータ取得頻度（Hz）の調整が行えます。"
+                            )
+                            
+                            HelpFeatureRow(
+                                title: "Edit".localized,
+                                icon: "pencil.and.list.clipboard",
+                                iconColor: .cyan,
+                                description: "接続されている各PM5の表示名や表示番号、順序などのカスタマイズを行います。"
+                            )
+                        }
+                        
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 32)
+                }
+            }
+            .navigationTitle("Help".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Close".localized) {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// ヘルプアイテムの行表示用コンポーネント
+struct HelpFeatureRow: View {
+    let title: String
+    let icon: String
+    let iconColor: Color
+    let description: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(iconColor)
+                .frame(width: 32, height: 32)
+                .background(iconColor.opacity(0.12))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(iconColor.opacity(0.2), lineWidth: 1))
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+                    .lineSpacing(4)
+            }
+            Spacer()
+        }
+        .padding()
+        .background(Color.white.opacity(0.04))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.05), lineWidth: 1))
+    }
 }

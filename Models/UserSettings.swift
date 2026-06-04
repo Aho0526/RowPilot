@@ -38,6 +38,13 @@ struct UserSettings: Codable {
     var sosUserName: String
     var sosMapSelection: SOSMapSelection
     
+    // 画面暗転防止設定
+    private var _preventScreenDimming: Bool?
+    var preventScreenDimming: Bool {
+        get { _preventScreenDimming ?? true }
+        set { _preventScreenDimming = newValue }
+    }
+    
     // マネージャー設定
     var saveZeroRecordPM5s: Bool
     
@@ -71,6 +78,7 @@ struct UserSettings: Codable {
         sosContactPhone: String = "",
         sosUserName: String = "",
         sosMapSelection: SOSMapSelection = .both,
+        preventScreenDimming: Bool = true,
         saveZeroRecordPM5s: Bool = false,
         weatherDisplayMode: WeatherDisplayMode = .iconAndTemp,
         autoShareAfterManagerSave: Bool = false,
@@ -96,6 +104,7 @@ struct UserSettings: Codable {
         self.sosContactPhone = sosContactPhone
         self.sosUserName = sosUserName
         self.sosMapSelection = sosMapSelection
+        self._preventScreenDimming = preventScreenDimming
         self.saveZeroRecordPM5s = saveZeroRecordPM5s
         self.weatherDisplayMode = weatherDisplayMode
         self.autoShareAfterManagerSave = autoShareAfterManagerSave
@@ -173,25 +182,50 @@ enum SpeedUnit: String, Codable, CaseIterable {
 extension UserSettings {
     private static let userDefaultsKey = "RowPilotUserSettings"
     
-    /// UserDefaultsから設定を読み込む
-    static func load() -> UserSettings {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-              let settings = try? JSONDecoder().decode(UserSettings.self, from: data) else {
-            return UserSettings() // デフォルト設定を返す
-        }
-        return settings
+    private static var fileURL: URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("user_settings.json")
     }
     
-    /// UserDefaultsに設定を保存する
-    func save() {
-        if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: UserSettings.userDefaultsKey)
+    /// UserDefaultsおよびJSONファイルから設定を読み込む
+    static func load() -> UserSettings {
+        // 1. まずJSONファイルからの読み込みを試みる
+        if let fileURL = fileURL,
+           let data = try? Data(contentsOf: fileURL),
+           let settings = try? JSONDecoder().decode(UserSettings.self, from: data) {
+            return settings
         }
+        
+        // 2. なければUserDefaultsからの読み込みを試みる（後方互換性）
+        if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
+           let settings = try? JSONDecoder().decode(UserSettings.self, from: data) {
+            // 次回の高速アクセスのためにJSONファイルにも保存しておく
+            settings.save()
+            return settings
+        }
+        
+        return UserSettings() // デフォルト設定を返す
+    }
+    
+    /// UserDefaultsおよびJSONファイルに設定を保存する
+    func save() {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        
+        // 1. JSONファイルに保存する
+        if let fileURL = UserSettings.fileURL {
+            try? data.write(to: fileURL)
+        }
+        
+        // 2. バックアップとしてUserDefaultsにも保存する
+        UserDefaults.standard.set(data, forKey: UserSettings.userDefaultsKey)
     }
     
     /// 設定をリセット（デフォルトに戻す）
     static func reset() {
         UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+        if let fileURL = fileURL {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
     }
 }
 
