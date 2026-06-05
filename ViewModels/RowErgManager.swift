@@ -873,7 +873,17 @@ class RowErgManager: NSObject, ObservableObject {
             appendUInt32(UInt32(time * 100))
         }
         
-        // 3. CSAFE_PM_SET_RESTDURATION (0x04)
+        // 3. CSAFE_PM_SET_SPLITDURATION (0x05)
+        payload.append(contentsOf: [0x05, 0x05])
+        if let dist = distanceMeters {
+            payload.append(0x80)
+            appendUInt32(UInt32(dist))
+        } else if let time = timeSeconds {
+            payload.append(0x00)
+            appendUInt32(UInt32(time * 100))
+        }
+        
+        // 4. CSAFE_PM_SET_RESTDURATION (0x04)
         // [04, 02, B0, B1] (UInt16 seconds)
         payload.append(0x04)
         payload.append(0x02)

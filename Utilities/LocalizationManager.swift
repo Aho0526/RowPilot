@@ -412,6 +412,8 @@ class LocalizationManager: ObservableObject {
         "Share Confirmation": [.japanese: "共有の確認", .english: "Share Confirmation"],
         "Share to \"%@\"?": [.japanese: "\"%@\" に共有しますか？", .english: "Share to \"%@\"?"],
         "Sharing": [.japanese: "ワークアウト共有", .english: "Workout Sharing"],
+        "Sharing Name": [.japanese: "共有時の名前", .english: "Sharing Name"],
+        "Sharing Name Hint": [.japanese: "※ 強制ではありませんが、Team、MAXプランでチーム共有を受ける際に必要となります。", .english: "* Not required, but needed when receiving team sharing under Team/MAX plans."],
         "Share": [.japanese: "共有", .english: "Share"],
         "Share Workout": [.japanese: "ワークアウトを共有", .english: "Share Workout"],
         "Auto Share After Save": [.japanese: "保存後に共有を提案", .english: "Suggest Sharing After Save"],
@@ -422,6 +424,14 @@ class LocalizationManager: ObservableObject {
         "毎回確認": [.japanese: "毎回確認", .english: "Ask Each Time"],
         "受信しない": [.japanese: "受信しない", .english: "Reject"],
         "Skip": [.japanese: "スキップ", .english: "Skip"],
+        
+        // MARK: - Invite Code & Share Request
+        "Team & MAX Management": [.japanese: "Team & MAX 管理", .english: "Team & MAX Management"],
+        "Teammates can share RowPilot Manager features.": [.japanese: "チームメンバーにManagerプランを共有できます。", .english: "Teammates can share RowPilot Manager features."],
+        "SHARING SLOTS": [.japanese: "共有枠", .english: "SHARING SLOTS"],
+        "Shared Members": [.japanese: "共有中のメンバー", .english: "Shared Members"],
+        "Manager Sharing": [.japanese: "Manager Plan 共有管理", .english: "Manager Sharing"],
+        "Manager Plan Sharing Help": [.japanese: "共有についてのヘルプ", .english: "Manager Plan Sharing Help"],
         "Workout Imported": [.japanese: "ワークアウトをインポートしました", .english: "Workout Imported"],
         "Duplicate Record": [.japanese: "この記録は既にインポート済みです", .english: "This record has already been imported"],
         "Import Failed": [.japanese: "インポートに失敗しました", .english: "Import Failed"],

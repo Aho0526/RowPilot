@@ -67,6 +67,10 @@ class SubscriptionManager: ObservableObject {
     }
     
     @Published var sharedMembers: [String] = []
+    /// sharedMembersのID -> 表示名マッピング
+    @Published var sharedMemberNames: [String: String] = [:]
+    /// 承認待ちリクエスト（ShareRequestManagerと連携）
+    @Published var pendingRequests: [ShareRequest] = []
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
     
@@ -534,6 +538,7 @@ class SubscriptionManager: ObservableObject {
         let isAutoRenew: Bool
         let expirationDate: Date
         let sharedMembers: [String]
+        var sharedMemberNames: [String: String]
     }
     
     private func getMockDatabase() -> [String: MockShareRecord] {
@@ -557,7 +562,8 @@ class SubscriptionManager: ObservableObject {
             plan: plan,
             isAutoRenew: isAutoRenew,
             expirationDate: expirationDate,
-            sharedMembers: sharedMembers
+            sharedMembers: sharedMembers,
+            sharedMemberNames: self.sharedMemberNames
         )
         saveMockDatabase(db)
     }

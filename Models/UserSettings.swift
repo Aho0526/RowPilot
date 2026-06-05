@@ -55,6 +55,9 @@ struct UserSettings: Codable {
     var autoShareAfterManagerSave: Bool
     var importBehavior: ImportBehavior
     
+    // 共有時の名前設定
+    var sharingName: String
+    
     // 目標設定
     var monthlyTargetDistance: Double // メートル単位
     
@@ -83,7 +86,8 @@ struct UserSettings: Codable {
         weatherDisplayMode: WeatherDisplayMode = .iconAndTemp,
         autoShareAfterManagerSave: Bool = false,
         importBehavior: ImportBehavior = .askEachTime,
-        monthlyTargetDistance: Double = 50000.0
+        monthlyTargetDistance: Double = 50000.0,
+        sharingName: String = ""
     ) {
         self.soundEnabled = soundEnabled
         self.voiceFeedbackEnabled = voiceFeedbackEnabled
@@ -110,6 +114,7 @@ struct UserSettings: Codable {
         self.autoShareAfterManagerSave = autoShareAfterManagerSave
         self.importBehavior = importBehavior
         self.monthlyTargetDistance = monthlyTargetDistance
+        self.sharingName = sharingName
     }
 }
 

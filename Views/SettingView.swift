@@ -10,6 +10,7 @@ struct SettingView: View {
     @State private var showingDeleteAllAlert = false
     @State private var showingTargetEditAlert = false
     @State private var targetDistanceInput = ""
+    @State private var showingInviteCodeInput = false
     
     var body: some View {
         NavigationStack(path: $app.settingsNavigationPath) {
@@ -50,6 +51,9 @@ struct SettingView: View {
                 Button("Cancel".localized, role: .cancel) {}
             } message: {
                 Text("Delete All Alert Message".localized)
+            }
+            .sheet(isPresented: $showingInviteCodeInput) {
+                InviteCodeInputView()
             }
         }
     }
@@ -139,6 +143,24 @@ struct SettingView: View {
                 }
             }
             
+            // 共有時の名前
+            SettingsSection(title: "Sharing Name".localized, icon: "person.crop.circle.fill") {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField(localizationManager.language == .japanese ? "表示名を入力" : "Enter display name", text: $settingsManager.settings.sharingName)
+                        .textFieldStyle(.plain)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .foregroundColor(Theme.textMain)
+                    
+                    Divider()
+                        .background(Theme.textSecondary.opacity(0.3))
+                    
+                    Text("Sharing Name Hint".localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                }
+            }
+            
             // 音声設定
             SettingsSection(title: "Voice Feedback".localized, icon: "speaker.wave.3.fill") {
                 SettingsToggleRow(title: "Sound Effects".localized, isOn: $settingsManager.settings.soundEnabled)
@@ -223,6 +245,27 @@ struct SettingView: View {
                                     .font(.caption)
                                     .foregroundColor(Theme.textSecondary)
                             }
+                        }
+                    }
+                }
+            }
+            
+            // Manager Plan 共有申請（Team/MAX未加入ユーザー向け）
+            if !currentPlan.hasManagerMode || currentPlan == .manager {
+                SettingsSection(title: "Manager Plan共有", icon: "person.badge.key.fill") {
+                    Button(action: { showingInviteCodeInput = true }) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("招待コードで申請")
+                                    .foregroundColor(Theme.textMain)
+                                Text("Team/MAXユーザーのコードを入力してManagerプランを利用")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
                         }
                     }
                 }
@@ -350,7 +393,7 @@ struct SettingView: View {
                         .underline()
                 }
                 Text("version 1.0")
-                Text("Build from June 6")
+                Text("Build from June 7")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)
