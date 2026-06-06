@@ -11,6 +11,7 @@ struct SettingView: View {
     @State private var showingTargetEditAlert = false
     @State private var targetDistanceInput = ""
     @State private var showingInviteCodeInput = false
+    @State private var showingTeamCodeInput = false
     
     var body: some View {
         NavigationStack(path: $app.settingsNavigationPath) {
@@ -54,6 +55,9 @@ struct SettingView: View {
             }
             .sheet(isPresented: $showingInviteCodeInput) {
                 InviteCodeInputView()
+            }
+            .sheet(isPresented: $showingTeamCodeInput) {
+                TeamInviteCodeInputView()
             }
         }
     }
@@ -267,6 +271,25 @@ struct SettingView: View {
                                 .font(.caption)
                                 .foregroundColor(Theme.textSecondary)
                         }
+                    }
+                }
+            }
+            
+            // チーム参加申請（Team/MAX未加入ユーザー向け）
+            SettingsSection(title: "チーム参加", icon: "person.3.fill") {
+                Button(action: { showingTeamCodeInput = true }) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("チーム招待コードで参加")
+                                .foregroundColor(Theme.textMain)
+                            Text("顧問のチーム招待コードを入力して練習記録を共有")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
                     }
                 }
             }

@@ -83,4 +83,18 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
     var hasCSVExport: Bool {
         return self == .max
     }
+
+    /// チーム機能が利用可能か（Team/MAXのみ）
+    var hasTeamFeature: Bool {
+        return self == .team || self == .max
+    }
+
+    /// チームメンバーの上限数
+    var teamMemberLimit: Int {
+        switch self {
+        case .team: return 30
+        case .max: return 80
+        default: return 0
+        }
+    }
 }

@@ -201,6 +201,9 @@ class RecordManager: ObservableObject {
         mapModelToEntity(record, entity: entity)
         saveContext()
         fetchRecords()
+        
+        // チームに参加中の場合、サマリーをCloudにアップロード
+        TeamRecordUploader.shared.uploadRecordSummary(record)
     }
     
     func deleteAllRecords() {
