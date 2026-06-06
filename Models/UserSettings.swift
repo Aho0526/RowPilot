@@ -245,7 +245,12 @@ class SettingsManager: ObservableObject {
     }
     
     init() {
-        self.settings = UserSettings.load()
+        var loadedSettings = UserSettings.load()
+        if loadedSettings.accelerationThreshold > 0.5 {
+            loadedSettings.accelerationThreshold = 0.5
+            loadedSettings.save()
+        }
+        self.settings = loadedSettings
         // 起動時に保存された言語でLocalizationManagerを初期化
         LocalizationManager.shared.setLanguage(self.settings.language)
     }

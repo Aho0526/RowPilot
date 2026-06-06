@@ -7,6 +7,7 @@ class MotionManager: ObservableObject {
     private var strokeTimestamps: [Date] = []
 
     @Published var spm: Int = 0 // strokes per minute
+    @Published var strokeCount: Int = 0
 
     func startMonitoring() {
         guard motionManager.isAccelerometerAvailable else {
@@ -42,6 +43,7 @@ class MotionManager: ObservableObject {
         }
 
         strokeTimestamps.append(now)
+        strokeCount += 1
 
         // 直近2〜3ストロークの平均間隔からSPMを計算
         if strokeTimestamps.count >= 2 {
@@ -69,5 +71,6 @@ class MotionManager: ObservableObject {
     func reset() {
         strokeTimestamps.removeAll()
         spm = 0
+        strokeCount = 0
     }
 }

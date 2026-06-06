@@ -914,7 +914,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         stopDataRecordingTimer()
         DispatchQueue.main.async {
             self.dataRecordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-                self?.recordDataPoints()
+                Task { @MainActor in
+                    self?.recordDataPoints()
+                }
             }
         }
     }

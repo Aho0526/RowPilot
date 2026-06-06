@@ -31,11 +31,17 @@ struct PracticeView: View {
                             WorkoutLaunchGrid(ergManager: ergManager)
                         }
 
-                        // MARK: - Manager Mode Module
-                        ManagerModeModule(
-                            currentPlan: currentPlan,
-                            showingSubscription: $showingSubscription
-                        )
+                        // MARK: - Plan Features Module (Manager Mode & Team Management)
+                        if currentPlan.hasManagerMode {
+                            ManagerModeModule(
+                                currentPlan: currentPlan,
+                                showingSubscription: $showingSubscription
+                            )
+                            
+                            TeamManagementModule()
+                        } else {
+                            JoinTeamModule()
+                        }
 
                         // MARK: - Research Module
                         ResearchModule(ergManager: ergManager)
@@ -764,6 +770,155 @@ struct ThemeButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.8 : 1.0)
     }
 }
+
+// MARK: - Join Team Module (Free & Pro Users)
+struct JoinTeamModule: View {
+    @State private var showingTeamJoinInput = false
+
+    var body: some View {
+        RPModuleCard(
+            title: "Team Join".localized,
+            icon: "person.3.fill",
+            accentColor: .green
+        ) {
+            Button(action: { showingTeamJoinInput = true }) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [.green, .cyan],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "person.3.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("チームに参加する")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(Theme.textMain)
+                        Text("顧問から共有された招待コードを入力してチームに参加します。")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .padding(14)
+                .background(Color.green.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.green.opacity(0.25), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showingTeamJoinInput) {
+                TeamInviteCodeInputView()
+            }
+        }
+    }
+}
+
+// MARK: - Team Management Module (Team & MAX Users)
+struct TeamManagementModule: View {
+    var body: some View {
+        RPModuleCard(
+            title: "Team Management".localized,
+            icon: "person.3.sequence.fill",
+            accentColor: .blue
+        ) {
+            VStack(spacing: 12) {
+                // 共有メンバーを管理 (TeamMaxManagerView)
+                NavigationLink(destination: TeamMaxManagerView()) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.blue.opacity(0.15))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "person.3.sequence.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.blue)
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("共有メンバーを管理")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(Theme.textMain)
+                            Text("Managerプランをチームメンバーに共有します。")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .padding(14)
+                    .background(Color.blue.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.blue.opacity(0.25), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+
+                // メンバーを管理 (TeamDashboardView)
+                NavigationLink(destination: TeamDashboardView()) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.green.opacity(0.15))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "person.3.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.green)
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("メンバーを管理")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(Theme.textMain)
+                            Text("チームへの参加申請を管理し、練習記録を確認します。")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .padding(14)
+                    .background(Color.green.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.green.opacity(0.25), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
 
 #Preview {
     let app = AppViewModel()

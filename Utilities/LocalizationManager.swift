@@ -128,6 +128,12 @@ class LocalizationManager: ObservableObject {
         
         "Count": [.japanese: "回数", .english: "Count"],
         "Stop": [.japanese: "停止", .english: "Stop"],
+        "Stroke Count": [.japanese: "ストローク数", .english: "Strokes"],
+        "Dist/Stroke": [.japanese: "ストロークあたり距離", .english: "Dist/Stroke"],
+        "Display Settings": [.japanese: "表示設定", .english: "Display Settings"],
+        "Left Element": [.japanese: "左下の表示項目", .english: "Left Display Item"],
+        "Right Element": [.japanese: "右下の表示項目", .english: "Right Display Item"],
+        "Motion Sensitivity": [.japanese: "モーション感度 (G)", .english: "Motion Sensitivity (G)"],
         
         // MARK: - Portrait View
         "Rowing Mode": [.japanese: "乗艇モード", .english: "Rowing Mode"],

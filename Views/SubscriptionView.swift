@@ -219,6 +219,24 @@ struct SubscriptionView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
+
+                Divider().background(Color.white.opacity(0.1))
+                NavigationLink(destination: TeamDashboardView()) {
+                    HStack {
+                        Image(systemName: "person.3.fill")
+                            .foregroundColor(.green)
+                        Text("メンバーを管理".localized)
+                            .fontWeight(.bold)
+                            .foregroundColor(.green)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.3))
+                    }
+                    .font(.subheadline)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
             }
         }
         .background(.ultraThinMaterial)

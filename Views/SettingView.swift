@@ -256,13 +256,13 @@ struct SettingView: View {
             
             // Manager Plan 共有申請（Team/MAX未加入ユーザー向け）
             if !currentPlan.hasManagerMode {
-                SettingsSection(title: "Manager Plan共有", icon: "person.badge.key.fill") {
+                SettingsSection(title: "Manager Plan共有".localized, icon: "person.badge.key.fill") {
                     Button(action: { showingInviteCodeInput = true }) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("招待コードで申請")
+                                Text("招待コードで申請".localized)
                                     .foregroundColor(Theme.textMain)
-                                Text("Team/MAXユーザーのコードを入力してManagerプランを利用")
+                                Text("Team/MAXユーザーのコードを入力してManagerプランを利用".localized)
                                     .font(.caption)
                                     .foregroundColor(Theme.textSecondary)
                             }
@@ -275,24 +275,7 @@ struct SettingView: View {
                 }
             }
             
-            // チーム参加申請（Team/MAX未加入ユーザー向け）
-            SettingsSection(title: "チーム参加", icon: "person.3.fill") {
-                Button(action: { showingTeamCodeInput = true }) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("チーム招待コードで参加")
-                                .foregroundColor(Theme.textMain)
-                            Text("顧問のチーム招待コードを入力して練習記録を共有")
-                                .font(.caption)
-                                .foregroundColor(Theme.textSecondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(Theme.textSecondary)
-                    }
-                }
-            }
+            
             
             // 共有設定
             SettingsSection(title: "Sharing".localized, icon: "square.and.arrow.up") {

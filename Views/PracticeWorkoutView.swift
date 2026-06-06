@@ -721,12 +721,19 @@ struct PracticeWorkoutView: View {
     private func setOrientation(_ orientation: UIInterfaceOrientationMask) {
         AppDelegate.orientationLock = orientation
         #if os(iOS)
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { error in
-                print("Failed to change orientation: \(error)")
+        if #available(iOS 16.0, *) {
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { error in
+                    print("Failed to change orientation: \(error)")
+                }
+                for window in windowScene.windows {
+                    window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+                }
             }
+        } else {
+            UIDevice.current.setValue(orientation.rawValue, forKey: "orientation")
+            UIViewController.attemptRotationToDeviceOrientation()
         }
-        UIViewController.attemptRotationToDeviceOrientation()
         #endif
     }
 }

@@ -8,6 +8,9 @@ struct LandscapeView: View {
     // Observe Theme
     @ObservedObject var themeManager = ThemeManager.shared
     
+    // Observe Settings
+    @ObservedObject var settingsManager = SettingsManager.shared
+    
     // 共有ViewModelsを使用
     private var motionManager: MotionManager { app.motionManager }
     private var locationManager: LocationManager { app.locationManager }
@@ -23,25 +26,103 @@ struct LandscapeView: View {
     @State private var showingSOSButtonWarningAlert = false
     
     @State private var showSOSOverlay = false
+    @State private var showingRowModeSettings = false
+    
+    // UIスロット設定の保存 (UserDefaults / AppStorage)
+    @AppStorage("rowModeLeftMetric") private var leftMetricRaw: String = RowModeMetric.chrono.rawValue
+    @AppStorage("rowModeRightMetric") private var rightMetricRaw: String = RowModeMetric.distance.rawValue
+    
+    private var leftMetric: RowModeMetric {
+        RowModeMetric(rawValue: leftMetricRaw) ?? .chrono
+    }
+    
+    private var rightMetric: RowModeMetric {
+        RowModeMetric(rawValue: rightMetricRaw) ?? .distance
+    }
     
     // セッション状態はAppViewModelから取得
     private var isRunning: Bool { app.isRecording }
     private var elapsedTime: TimeInterval { app.elapsedTime }
     
     private var formattedTime: String {
-        let minutes = Int(elapsedTime) / 60
+        let hours = Int(elapsedTime) / 3600
+        let minutes = (Int(elapsedTime) % 3600) / 60
         let seconds = Int(elapsedTime) % 60
-        let hours = minutes / 60
-        return String(format: "%02d:%02d:%02d", hours, minutes % 60, seconds)
+        let tenths = Int((elapsedTime.truncatingRemainder(dividingBy: 1)) * 10)
+        
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d.%d", hours, minutes, seconds, tenths)
+        } else {
+            return String(format: "%02d:%02d.%d", minutes, seconds, tenths)
+        }
     }
 
     private var formattedPace: String {
-        guard locationManager.currentSpeed > 0 else { return "--:-- /500m" }
+        guard locationManager.currentSpeed > 0 else { return "--:--" }
         let speedMps = locationManager.currentSpeed / LocationConstants.metersPerSecondToKmPerHour
         let seconds = LocationConstants.paceReferenceDistance / speedMps
         let minutes = Int(seconds) / 60
         let remainingSeconds = Int(seconds) % 60
-        return String(format: "%d:%02d /500m", minutes, remainingSeconds)
+        return String(format: "%d:%02d", minutes, remainingSeconds)
+    }
+
+    private var formattedDistance: String {
+        return String(format: "%.1f m", app.isSessionActive ? locationManager.totalDistance : 0.0)
+    }
+
+    private var formattedAveragePace: String {
+        let dist = locationManager.totalDistance
+        guard dist > 0 else { return "--:--" }
+        let paceSeconds = (elapsedTime / dist) * 500
+        let minutes = Int(paceSeconds) / 60
+        let seconds = Int(paceSeconds) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private var formattedStrokeCount: String {
+        return "\(motionManager.strokeCount)"
+    }
+
+    private var formattedDistPerStroke: String {
+        let count = motionManager.strokeCount
+        guard count > 0 else { return "0.00 m" }
+        let val = locationManager.totalDistance / Double(count)
+        return String(format: "%.2f m", val)
+    }
+
+    private func metricLabel(for metric: RowModeMetric) -> String {
+        return metric.label
+    }
+
+    private func metricValue(for metric: RowModeMetric) -> String {
+        guard app.isSessionActive else {
+            switch metric {
+            case .chrono: return "00:00.0"
+            case .distance: return "0.0 m"
+            case .averagePace: return "--:--"
+            case .strokeCount: return "0"
+            case .distPerStroke: return "0.00 m"
+            }
+        }
+        
+        switch metric {
+        case .chrono: return formattedTime
+        case .distance: return formattedDistance
+        case .averagePace: return formattedAveragePace
+        case .strokeCount: return formattedStrokeCount
+        case .distPerStroke: return formattedDistPerStroke
+        }
+    }
+
+    private func metricColor(for metric: RowModeMetric) -> Color {
+        switch metric {
+        case .chrono, .distance, .distPerStroke:
+            return .white
+        case .averagePace:
+            return Theme.secondaryAccent
+        case .strokeCount:
+            return Theme.accent
+        }
     }
 
     var body: some View {
@@ -97,6 +178,18 @@ struct LandscapeView: View {
                                         showingHelp = true
                                     }
                                 }
+                                
+                                // Settings Gear Button
+                                Button(action: {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        showingRowModeSettings = true
+                                    }
+                                }) {
+                                    Image(systemName: "gearshape.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(Theme.textMain)
+                                        .frame(width: 44, height: 44)
+                                }
                             }
                             .padding(.trailing, 16)
                         }
@@ -143,16 +236,17 @@ struct LandscapeView: View {
                     .frame(maxWidth: .infinity)
  
                     // メイン表示エリア
-                    HStack(spacing: 1) {
-                        // Left Column
-                        VStack(spacing: 1) {
+                    VStack(spacing: 1) {
+                        // Top Row
+                        HStack(spacing: 1) {
                             metricBox(label: "SPM".localized, value: app.isSessionActive ? "\(motionManager.spm)" : "0", color: Theme.accent)
-                            metricBox(label: "Pace".localized, value: app.isSessionActive ? formattedPace : "--:--", color: Theme.secondaryAccent)
+                            metricBox(label: "Pace".localized, value: app.isSessionActive ? formattedPace : "--:--", color: Theme.secondaryAccent, isPace: true)
                         }
-                        // Right Column
-                        VStack(spacing: 1) {
-                            metricBox(label: "Distance_M".localized, value: String(format: "%.1f m", app.isSessionActive ? locationManager.totalDistance : 0.0), color: .white)
-                            metricBox(label: "Time".localized, value: formattedTime, color: .white)
+                        
+                        // Bottom Row
+                        HStack(spacing: 1) {
+                            metricBox(label: metricLabel(for: leftMetric), value: metricValue(for: leftMetric), color: metricColor(for: leftMetric), isPace: leftMetric == .averagePace)
+                            metricBox(label: metricLabel(for: rightMetric), value: metricValue(for: rightMetric), color: metricColor(for: rightMetric), isPace: rightMetric == .averagePace)
                         }
                     }
                     .padding(.top, 1)
@@ -165,6 +259,117 @@ struct LandscapeView: View {
                     }
                     .zIndex(100)
                 } // SOS Overlay end
+                
+                // RowMode Settings Modal
+                if showingRowModeSettings {
+                    ZStack {
+                        Color.black.opacity(0.6)
+                            .ignoresSafeArea()
+                            .onTapGesture {
+                                withAnimation { showingRowModeSettings = false }
+                            }
+                        
+                        VStack(spacing: 20) {
+                            Text("Display Settings".localized)
+                                .font(.title3)
+                                .bold()
+                                .foregroundColor(Theme.textMain)
+                            
+                            HStack(spacing: 30) {
+                                // Left Element
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Left Element".localized)
+                                        .font(.caption)
+                                        .foregroundColor(Theme.textSecondary)
+                                    
+                                    Picker("", selection: $leftMetricRaw) {
+                                        ForEach(RowModeMetric.allCases) { metric in
+                                            Text(metric.label).tag(metric.rawValue)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .tint(Theme.accent)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Theme.cardBackground)
+                                    .cornerRadius(8)
+                                }
+                                
+                                // Right Element
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Right Element".localized)
+                                        .font(.caption)
+                                        .foregroundColor(Theme.textSecondary)
+                                    
+                                    Picker("", selection: $rightMetricRaw) {
+                                        ForEach(RowModeMetric.allCases) { metric in
+                                            Text(metric.label).tag(metric.rawValue)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .tint(Theme.accent)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Theme.cardBackground)
+                                    .cornerRadius(8)
+                                }
+                            }
+                            .padding(.horizontal)
+                            
+                            Divider()
+                                .background(Color.white.opacity(0.2))
+                                .padding(.horizontal)
+                            
+                            // Motion Sensitivity Settings
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Motion Sensitivity".localized)
+                                        .font(.caption)
+                                        .foregroundColor(Theme.textSecondary)
+                                    Spacer()
+                                    Text(String(format: "%.2f G", settingsManager.settings.accelerationThreshold))
+                                        .font(.caption)
+                                        .bold()
+                                        .foregroundColor(Theme.accent)
+                                }
+                                
+                                Slider(value: Binding(
+                                    get: { min(settingsManager.settings.accelerationThreshold, 0.5) },
+                                    set: { newValue in
+                                        settingsManager.settings.accelerationThreshold = newValue
+                                    }
+                                ), in: 0.01...0.5, step: 0.01)
+                                .tint(Theme.accent)
+                            }
+                            .padding(.horizontal)
+                            
+                            Button(action: {
+                                withAnimation { showingRowModeSettings = false }
+                            }) {
+                                Text("Close".localized)
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .frame(width: 120, height: 40)
+                                    .background(Theme.accent)
+                                    .cornerRadius(20)
+                            }
+                            .padding(.top, 10)
+                        }
+                        .padding(24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Theme.cardBackground)
+                                .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        )
+                        .frame(width: 400)
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .zIndex(200)
+                }
             } // ZStack end
             // Removed local sheet as it's now in ContainerView
             .onAppear {
@@ -232,20 +437,36 @@ struct LandscapeView: View {
         batteryLevel = UIDevice.current.batteryLevel
     }
 
-    private func metricBox(label: String, value: String, color: Color) -> some View {
-        VStack(spacing: 4) {
-            Spacer()
-            Text(value)
-                .font(.system(size: 60, weight: .bold, design: .monospaced))
-                .foregroundColor(color)
-                .minimumScaleFactor(0.4)
-                .lineLimit(1)
+    private func metricBox(label: String, value: String, color: Color, isPace: Bool = false) -> some View {
+        ZStack {
+            VStack(spacing: 4) {
+                Spacer()
+                Text(value)
+                    .font(.system(size: 60, weight: .bold, design: .monospaced))
+                    .foregroundColor(color)
+                    .minimumScaleFactor(0.4)
+                    .lineLimit(1)
+                
+                Text(label)
+                    .font(.headline)
+                    .foregroundColor(Theme.textSecondary)
+                    .padding(.bottom, 8)
+                Spacer()
+            }
             
-            Text(label)
-                .font(.headline)
-                .foregroundColor(Theme.textSecondary)
-                .padding(.bottom, 8)
-            Spacer()
+            if isPace {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text("/500m")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Theme.textSecondary)
+                            .padding(.trailing, 12)
+                            .padding(.bottom, 12)
+                    }
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.cardBackground)

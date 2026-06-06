@@ -16,10 +16,22 @@ struct InviteCodeInputView: View {
     // フォーカスフィールド
     @FocusState private var focusedField: Int?
 
+    private let managerColor = Color(hex: "7B2FBE")
+    private let managerGradient = LinearGradient(colors: [Color(hex: "7B2FBE"), Color(hex: "C77DFF")], startPoint: .topLeading, endPoint: .bottomTrailing)
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.background.ignoresSafeArea()
+
+                // Manager Plan特有のパープルのグラデーション光
+                RadialGradient(
+                    colors: [managerColor.opacity(0.18), .clear],
+                    center: .top,
+                    startRadius: 0,
+                    endRadius: 400
+                )
+                .ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 32) {
@@ -27,21 +39,21 @@ struct InviteCodeInputView: View {
                         VStack(spacing: 12) {
                             ZStack {
                                 Circle()
-                                    .fill(Theme.primaryGradient)
+                                    .fill(managerGradient)
                                     .frame(width: 80, height: 80)
-                                    .shadow(color: Theme.accent.opacity(0.4), radius: 16)
-                                Image(systemName: "person.badge.key.fill")
-                                    .font(.system(size: 36))
-                                    .foregroundColor(.white)
+                                    .shadow(color: managerColor.opacity(0.5), radius: 16)
+                                Image(systemName: "crown.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(.yellow)
                             }
                             .padding(.top, 32)
 
-                            Text("招待コードを入力")
+                            Text("招待コードを入力".localized)
                                 .font(.title2)
                                 .fontWeight(.black)
                                 .foregroundColor(.white)
 
-                            Text("チームのTeam / MAXユーザーから発行された\n招待コードを入力してください")
+                            Text("チームのTeam / MAXユーザーから発行された\n招待コードを入力してください".localized)
                                 .font(.subheadline)
                                 .foregroundColor(.white.opacity(0.6))
                                 .multilineTextAlignment(.center)
@@ -49,46 +61,42 @@ struct InviteCodeInputView: View {
                         }
 
                         // 共有名の確認
-                        if settingsManager.settings.sharingName.isEmpty {
-                            VStack(spacing: 8) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.orange)
-                                    Text("共有時の名前が未設定です")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.orange)
-                                }
-                                Text("設定画面の「共有時の名前」を入力してから申請してください。\nこの名前がオーナーに表示されます。")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.6))
-                                    .multilineTextAlignment(.center)
-                            }
-                            .padding()
-                            .background(Color.orange.opacity(0.12))
-                            .cornerRadius(12)
-                            .padding(.horizontal)
-                        } else {
-                            // 登録名の確認表示
-                            HStack(spacing: 10) {
+                        // 共有名の入力・確認
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("申請時の表示名".localized)
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white.opacity(0.5))
+                            
+                            HStack(spacing: 12) {
                                 Image(systemName: "person.fill.checkmark")
-                                    .foregroundColor(Theme.accent)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("申請時の表示名")
-                                        .font(.caption2)
-                                        .foregroundColor(.white.opacity(0.5))
-                                    Text(settingsManager.settings.sharingName)
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.white)
-                                }
-                                Spacer()
+                                    .foregroundColor(managerColor)
+                                
+                                TextField("表示名を入力してください".localized, text: $settingsManager.settings.sharingName)
+                                    .textFieldStyle(.plain)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 12)
+                                    .background(Color.white.opacity(0.08))
+                                    .cornerRadius(8)
                             }
-                            .padding()
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(12)
-                            .padding(.horizontal)
+                            
+                            if settingsManager.settings.sharingName.isEmpty {
+                                Text("⚠️ 申請する前に、上のフィールドに表示名を入力してください。この名前がオーナーに表示されます。".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(.orange)
+                            } else {
+                                Text("この名前がオーナーに表示されます。".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
                         }
+                        .padding()
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(16)
+                        .padding(.horizontal)
 
                         // コード入力フィールド
                         VStack(spacing: 16) {
@@ -129,7 +137,7 @@ struct InviteCodeInputView: View {
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 } else {
                                     Image(systemName: "paperplane.fill")
-                                    Text("共有を申請する")
+                                    Text("共有を申請する".localized)
                                         .fontWeight(.bold)
                                 }
                             }
@@ -137,27 +145,27 @@ struct InviteCodeInputView: View {
                             .padding()
                             .background(
                                 isFormValid
-                                    ? Theme.primaryGradient
+                                    ? managerGradient
                                     : LinearGradient(colors: [Color.gray.opacity(0.3)], startPoint: .leading, endPoint: .trailing)
                             )
                             .foregroundColor(.white)
                             .cornerRadius(14)
-                            .shadow(color: isFormValid ? Theme.accent.opacity(0.3) : .clear, radius: 8)
+                            .shadow(color: isFormValid ? managerColor.opacity(0.4) : .clear, radius: 8)
                         }
                         .disabled(!isFormValid || requestManager.isLoading)
                         .padding(.horizontal)
 
                         // 説明カード
                         VStack(alignment: .leading, spacing: 12) {
-                            Label("申請の流れ", systemImage: "info.circle.fill")
+                            Label("申請の流れ".localized, systemImage: "info.circle.fill")
                                 .font(.subheadline)
                                 .fontWeight(.bold)
-                                .foregroundColor(Theme.accent)
+                                .foregroundColor(managerColor)
 
                             VStack(alignment: .leading, spacing: 8) {
-                                flowStep(num: "1", text: "Team/MAXユーザーから招待コードをもらう")
-                                flowStep(num: "2", text: "コードを入力して「共有を申請する」をタップ")
-                                flowStep(num: "3", text: "オーナーが承認すると自動でManagerプランが適用される")
+                                flowStep(num: "1", text: "Team/MAXユーザーから招待コードをもらう".localized)
+                                flowStep(num: "2", text: "コードを入力して「共有を申請する」をタップ".localized)
+                                flowStep(num: "3", text: "オーナーが承認すると自動でManagerプランが適用される".localized)
                             }
                         }
                         .padding()
@@ -168,16 +176,16 @@ struct InviteCodeInputView: View {
                     }
                 }
             }
-            .navigationTitle("Manager Plan 共有申請")
+            .navigationTitle("Manager Plan 共有申請".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("閉じる") { dismiss() }
-                        .foregroundColor(Theme.accent)
+                    Button("閉じる".localized) { dismiss() }
+                        .foregroundColor(managerColor)
                 }
             }
-            .alert(resultSuccess ? "申請完了" : "エラー", isPresented: $showingResult) {
-                Button("OK") {
+            .alert(resultSuccess ? "申請完了".localized : "エラー".localized, isPresented: $showingResult) {
+                Button("OK".localized) {
                     if resultSuccess { dismiss() }
                 }
             } message: {
@@ -204,7 +212,7 @@ struct InviteCodeInputView: View {
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(focusedField == index ? Theme.accent.opacity(0.6) : Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(focusedField == index ? managerColor.opacity(0.6) : Color.white.opacity(0.1), lineWidth: 1)
             )
             .focused($focusedField, equals: index)
             .onChange(of: codeParts[index]) { _, newValue in
@@ -224,12 +232,12 @@ struct InviteCodeInputView: View {
         HStack(alignment: .top, spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(Theme.accent.opacity(0.2))
+                    .fill(managerColor.opacity(0.2))
                     .frame(width: 24, height: 24)
                 Text(num)
                     .font(.caption)
                     .fontWeight(.bold)
-                    .foregroundColor(Theme.accent)
+                    .foregroundColor(managerColor)
             }
             Text(text)
                 .font(.subheadline)

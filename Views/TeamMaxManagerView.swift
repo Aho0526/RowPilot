@@ -26,7 +26,6 @@ struct TeamMaxManagerView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     headerSection
-                    teamDashboardLink
                     inviteCodeSection
                     pendingRequestsSection
                     sharedMembersSection
@@ -458,58 +457,7 @@ struct TeamMaxManagerView: View {
         .cornerRadius(16)
     }
 
-    // MARK: - Team Dashboard Link
-
-    private var teamDashboardLink: some View {
-        NavigationLink(destination: TeamDashboardView()) {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.green, .cyan],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 50, height: 50)
-                        .shadow(color: .green.opacity(0.3), radius: 8)
-                    Image(systemName: "person.3.fill")
-                        .font(.title3)
-                        .foregroundColor(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("チーム管理ダッシュボード")
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                    Text("メンバーの練習記録をリアルタイムで確認")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.4))
-            }
-            .padding()
-            .background(
-                LinearGradient(
-                    colors: [Color.green.opacity(0.15), Color.cyan.opacity(0.1)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .cornerRadius(16)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.green.opacity(0.3), lineWidth: 1)
-            )
-        }
-    }
+    
 
     // MARK: - Actions
 

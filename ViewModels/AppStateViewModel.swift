@@ -86,9 +86,9 @@ class AppViewModel: ObservableObject {
         motionManager.startMonitoring()
         locationManager.startTracking()
         
-        sessionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        sessionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.elapsedTime += 1
+                self?.elapsedTime += 0.1
             }
         }
     }
@@ -125,9 +125,9 @@ class AppViewModel: ObservableObject {
         motionManager.startMonitoring()
         locationManager.startTracking()
         
-        sessionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        sessionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.elapsedTime += 1
+                self?.elapsedTime += 0.1
             }
         }
     }
