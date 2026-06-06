@@ -144,6 +144,9 @@ class SubscriptionManager: ObservableObject {
         autoRenew   = effective == .free ? false : record.autoRenew
         expiresAt   = effective == .free ? nil   : record.expiresAt
 
+        // 全ビューの @AppStorage("userSubscriptionPlan") と互换性のあるキーにも同期書き込み
+        UserDefaults.standard.set(effective.rawValue, forKey: "userSubscriptionPlan")
+
         // 期限切れで降格した場合はレコードも更新
         if effective == .free && record.subscriptionTier != .free {
             var updated = record

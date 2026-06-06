@@ -5,6 +5,8 @@ struct RiggingManagerView: View {
     @State private var showingEditor = false
     @State private var showingSettings = false
     @State private var editorConfig: RiggingConfig? = nil
+    @State private var showingDeleteAlert = false
+    @State private var configToDelete: RiggingConfig? = nil
     
     var body: some View {
         ZStack {
@@ -64,8 +66,13 @@ struct RiggingManagerView: View {
                                         showingEditor = true
                                     },
                                     onDelete: {
-                                        withAnimation {
-                                            riggingManager.deleteConfig(id: config.id)
+                                        if config.isUnchangedFromDefault {
+                                            withAnimation {
+                                                riggingManager.deleteConfig(id: config.id)
+                                            }
+                                        } else {
+                                            configToDelete = config
+                                            showingDeleteAlert = true
                                         }
                                     }
                                 )
@@ -98,6 +105,30 @@ struct RiggingManagerView: View {
         }
         .sheet(isPresented: $showingSettings) {
             RiggingSettingsSheet()
+        }
+        .alert(
+            LocalizationManager.shared.language == .japanese ? "設定の削除" : "Delete Setup",
+            isPresented: $showingDeleteAlert,
+            presenting: configToDelete
+        ) { config in
+            Button(
+                LocalizationManager.shared.language == .japanese ? "削除" : "Delete",
+                role: .destructive
+            ) {
+                withAnimation {
+                    riggingManager.deleteConfig(id: config.id)
+                }
+            }
+            Button(
+                LocalizationManager.shared.language == .japanese ? "キャンセル" : "Cancel",
+                role: .cancel
+            ) {
+                configToDelete = nil
+            }
+        } message: { config in
+            Text(
+                LocalizationManager.shared.language == .japanese ? "この設定を削除しますか？" : "Are you sure you want to delete this setup?"
+            )
         }
     }
 }

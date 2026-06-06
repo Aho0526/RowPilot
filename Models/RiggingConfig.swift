@@ -121,4 +121,41 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
             boatLateralPitch = "4/4"
         }
     }
+    
+    var isUnchangedFromDefault: Bool {
+        let isScull = boatType.isScull
+        let defaultOarTotalLength = isScull ? 289.0 : 373.0
+        let defaultOarInboard = isScull ? 88.0 : 114.0
+        let defaultBoatSpan = isScull ? 160.0 : 84.0
+        
+        let hasMeasurementChanges = 
+            oarTotalLength != defaultOarTotalLength ||
+            oarInboard != defaultOarInboard ||
+            oarBladeType != "Smoothie2" ||
+            oarSleevePitch != 0.0 ||
+            oarGripDiameter != 34.0 ||
+            boatSpan != defaultBoatSpan ||
+            boatWorkHeight != 16.0 ||
+            boatPitch != 4.0 ||
+            boatLateralPitch != "4/4" ||
+            boatFootstretch != 8.0 ||
+            boatFootplateAngle != 42.0 ||
+            boatFootplateHeight != 15.0 ||
+            boatSeatPosition != 28.0
+            
+        if hasMeasurementChanges {
+            return false
+        }
+        
+        // Check if name matches any defaults
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let defaultName1 = "Single Scull Default".localized
+        let defaultName2 = "Single Scull Default"
+        let defaultName3 = "\(boatType.displayName) Setup"
+        
+        return trimmedName.isEmpty || 
+               trimmedName == defaultName1 || 
+               trimmedName == defaultName2 || 
+               trimmedName == defaultName3
+    }
 }

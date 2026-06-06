@@ -27,6 +27,9 @@ struct HomeView: View {
     @State private var showingTargetEditAlert = false
     @State private var targetDistanceInput = ""
     
+    // 検索管理
+    @State private var showSearchSheet = false
+    
     private var isJA: Bool {
         LocalizationManager.shared.language == .japanese
     }
@@ -271,7 +274,6 @@ struct HomeView: View {
                                     }
                                 }
                             }
-                            
                             let recentItems = Array(groupedRecords.prefix(20))
                             if recentItems.isEmpty {
                                 emptyHistoryView
@@ -311,12 +313,22 @@ struct HomeView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showCalendarSheet = true
-                    }) {
-                        Image(systemName: "calendar")
-                            .font(.title3)
-                            .foregroundColor(Theme.accent)
+                    HStack(spacing: 16) {
+                        Button(action: {
+                            showSearchSheet = true
+                        }) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.title3)
+                                .foregroundColor(Theme.accent)
+                        }
+                        
+                        Button(action: {
+                            showCalendarSheet = true
+                        }) {
+                            Image(systemName: "calendar")
+                                .font(.title3)
+                                .foregroundColor(Theme.accent)
+                        }
                     }
                 }
             }
@@ -378,6 +390,10 @@ struct HomeView: View {
                 }
                 .presentationDetents([.large])
                 .id(themeManager.currentPreset)
+            }
+            .sheet(isPresented: $showSearchSheet) {
+                SearchSheetView()
+                    .environmentObject(app)
             }
             .onAppear {
                  if let location = app.locationManager.previousLocation {
@@ -817,7 +833,6 @@ struct HomeView: View {
         
         return items.sorted { $0.date > $1.date }
     }
-    
     // MARK: - Deletion Helpers
     
     private func prepareDelete(_ item: RecordListItem) {

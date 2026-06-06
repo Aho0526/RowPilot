@@ -28,24 +28,30 @@ class RiggingManager: ObservableObject {
         loadConfigs()
         loadActiveId()
         
-        // If empty, seed a default config
-        if configs.isEmpty {
-            let defaultSingle = RiggingConfig(
-                name: "Single Scull Default".localized,
-                boatType: .singleSculls,
-                oarType: .scull,
-                oarTotalLength: 289.0,
-                oarInboard: 88.0,
-                oarBladeType: "Smoothie2",
-                boatSpan: 160.0,
-                boatWorkHeight: 16.0,
-                boatPitch: 4.0,
-                boatFootstretch: 8.0
-            )
-            configs.append(defaultSingle)
-            activeConfigId = defaultSingle.id
-            saveConfigs()
-            saveActiveId()
+        // Seed default config only on first launch, do not auto-add when it becomes empty later
+        let defaults = UserDefaults.standard
+        let hasSeeded = defaults.bool(forKey: "hasSeededRiggingConfigs")
+        
+        if !hasSeeded {
+            if configs.isEmpty {
+                let defaultSingle = RiggingConfig(
+                    name: "Single Scull Default".localized,
+                    boatType: .singleSculls,
+                    oarType: .scull,
+                    oarTotalLength: 289.0,
+                    oarInboard: 88.0,
+                    oarBladeType: "Smoothie2",
+                    boatSpan: 160.0,
+                    boatWorkHeight: 16.0,
+                    boatPitch: 4.0,
+                    boatFootstretch: 8.0
+                )
+                configs.append(defaultSingle)
+                activeConfigId = defaultSingle.id
+                saveConfigs()
+                saveActiveId()
+            }
+            defaults.set(true, forKey: "hasSeededRiggingConfigs")
         }
     }
     

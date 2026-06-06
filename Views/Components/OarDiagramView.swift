@@ -159,7 +159,7 @@ struct OarDiagramView: View {
                     path
                         .fill(
                             LinearGradient(
-                                colors: [Color.white, Color(hex: "E5E5E5")],
+                                colors: [Color.white, Color(hex: "EBF0F5")],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -169,6 +169,21 @@ struct OarDiagramView: View {
                                 .stroke(selectedField == .bladeType || selectedField == .outboard || selectedField == .totalLength ? Theme.accent : Color.gray, lineWidth: selectedField == .bladeType ? 2.5 : 1.5)
                         )
                         .shadow(color: selectedField == .bladeType ? Theme.accent.opacity(0.6) : Color.clear, radius: 4)
+                        
+                    // F. Blade Ridge (Spine) for realistic depth
+                    let ridge = bladeRidgePath(oarEnd: oarEnd, centerY: centerY, typeName: bladeType)
+                    
+                    ridge
+                        .stroke(
+                            Color.black.opacity(0.15),
+                            style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+                        )
+                    
+                    ridge
+                        .stroke(
+                            Color.white.opacity(0.7),
+                            style: StrokeStyle(lineWidth: 0.8, lineCap: .round)
+                        )
                 }
             }
             .frame(height: 140)
@@ -191,42 +206,170 @@ struct OarDiagramView: View {
     }
     
     // MARK: - Blade Path Helpers
-    
-    private func bladePath(oarEnd: CGFloat, centerY: CGFloat, typeName: String) -> Path {
+        private func bladePath(oarEnd: CGFloat, centerY: CGFloat, typeName: String) -> Path {
         var path = Path()
         let type = typeName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         
         if type.contains("macon") {
-            // Macon blade: symmetrical rounded tulip shape
-            let bladeLeft = oarEnd - 24
-            path.move(to: CGPoint(x: bladeLeft, y: centerY - 1))
-            path.addQuadCurve(to: CGPoint(x: oarEnd, y: centerY - 14), control: CGPoint(x: oarEnd - 16, y: centerY - 13))
-            path.addQuadCurve(to: CGPoint(x: oarEnd + 6, y: centerY), control: CGPoint(x: oarEnd + 4, y: centerY - 6))
-            path.addQuadCurve(to: CGPoint(x: oarEnd, y: centerY + 14), control: CGPoint(x: oarEnd + 4, y: centerY + 6))
-            path.addQuadCurve(to: CGPoint(x: bladeLeft, y: centerY + 1), control: CGPoint(x: oarEnd - 16, y: centerY + 13))
+            // Macon: symmetrical rounded tulip shape, but adapted slightly for stroke-side (slightly fuller bottom)
+            let bladeLeft = oarEnd - 26
+            path.move(to: CGPoint(x: bladeLeft, y: centerY - 0.5))
+            
+            // Upper curve (slightly narrower top edge for stroke-side look)
+            path.addCurve(
+                to: CGPoint(x: oarEnd + 4, y: centerY - 1.5),
+                control1: CGPoint(x: bladeLeft + 4, y: centerY - 10.0),
+                control2: CGPoint(x: oarEnd - 6, y: centerY - 10.0)
+            )
+            
+            // Tip rounding
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd + 4, y: centerY + 2.0),
+                control: CGPoint(x: oarEnd + 6.5, y: centerY + 0.5)
+            )
+            
+            // Lower curve (slightly fuller bottom edge)
+            path.addCurve(
+                to: CGPoint(x: bladeLeft, y: centerY + 0.5),
+                control1: CGPoint(x: oarEnd - 6, y: centerY + 14.0),
+                control2: CGPoint(x: bladeLeft + 4, y: centerY + 12.0)
+            )
             path.closeSubpath()
         } else if type.contains("comp") {
-            // C2 Comp blade: shorter and wider cleaver blade
-            let bladeLeft = oarEnd - 18
-            path.move(to: CGPoint(x: bladeLeft, y: centerY - 1))
-            path.addLine(to: CGPoint(x: oarEnd - 8, y: centerY - 1))
-            path.addLine(to: CGPoint(x: oarEnd - 8, y: centerY - 19)) // Top-left
-            path.addLine(to: CGPoint(x: oarEnd + 5, y: centerY - 19)) // Top-right
-            path.addLine(to: CGPoint(x: oarEnd + 5, y: centerY + 16)) // Bottom-right
-            path.addLine(to: CGPoint(x: oarEnd - 12, y: centerY + 13)) // Bottom-left
-            path.addLine(to: CGPoint(x: bladeLeft, y: centerY + 1))
+            // C2 Comp: short, extremely wide, asymmetrical curved square blade (stroke-side: narrow top, deep bottom)
+            let bladeLeft = oarEnd - 20
+            path.move(to: CGPoint(x: bladeLeft, y: centerY - 0.5))
+            
+            // Upper neck curve to shoulder (narrower top)
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd - 6, y: centerY - 9.0),
+                control: CGPoint(x: bladeLeft + 6, y: centerY - 5.0)
+            )
+            
+            // Top flat edge
+            path.addLine(to: CGPoint(x: oarEnd + 4, y: centerY - 9.0))
+            
+            // Curved tip profile (very wide overall, extending deep below shaft)
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd + 5, y: centerY + 19.0),
+                control: CGPoint(x: oarEnd + 6.0, y: centerY + 5.0)
+            )
+            
+            // Bottom edge corner
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd - 3, y: centerY + 21.0),
+                control: CGPoint(x: oarEnd + 2.0, y: centerY + 20.5)
+            )
+            
+            // Bottom neck curve (deep asymmetrical swoop to collar)
+            path.addCurve(
+                to: CGPoint(x: bladeLeft, y: centerY + 0.5),
+                control1: CGPoint(x: oarEnd - 10.0, y: centerY + 21.0),
+                control2: CGPoint(x: bladeLeft + 5.0, y: centerY + 8.0)
+            )
+            path.closeSubpath()
+        } else if type.contains("smoothie") {
+            // Smoothie2: clean, asymmetrical cleaver blade (stroke-side: narrow top, deep flowing bottom)
+            let bladeLeft = oarEnd - 28
+            path.move(to: CGPoint(x: bladeLeft, y: centerY - 0.5))
+            
+            // Upper neck curve to shoulder (narrow top edge)
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd - 8, y: centerY - 8.0),
+                control: CGPoint(x: bladeLeft + 10, y: centerY - 4.0)
+            )
+            
+            // Top flat edge
+            path.addLine(to: CGPoint(x: oarEnd + 6, y: centerY - 8.0))
+            
+            // Rounded tip
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd + 7, y: centerY + 16.0),
+                control: CGPoint(x: oarEnd + 8.0, y: centerY + 4.0)
+            )
+            
+            // Bottom edge corner (deep bottom curve)
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd - 2, y: centerY + 18.0),
+                control: CGPoint(x: oarEnd + 4.0, y: centerY + 17.5)
+            )
+            
+            // Bottom neck curve (flowing concave line back to collar)
+            path.addCurve(
+                to: CGPoint(x: bladeLeft, y: centerY + 0.5),
+                control1: CGPoint(x: oarEnd - 12.0, y: centerY + 18.0),
+                control2: CGPoint(x: bladeLeft + 8.0, y: centerY + 8.0)
+            )
             path.closeSubpath()
         } else {
-            // Smoothie2 / Cleaver (Default / Most popular): clean asymmetrical shape
-            let bladeLeft = oarEnd - 24
-            path.move(to: CGPoint(x: bladeLeft, y: centerY - 1))
-            path.addLine(to: CGPoint(x: oarEnd - 12, y: centerY - 1))
-            path.addLine(to: CGPoint(x: oarEnd - 4, y: centerY - 16)) // Top-left
-            path.addLine(to: CGPoint(x: oarEnd + 8, y: centerY - 16)) // Top-right
-            path.addLine(to: CGPoint(x: oarEnd + 8, y: centerY + 11)) // Bottom-right
-            path.addLine(to: CGPoint(x: oarEnd - 14, y: centerY + 9)) // Bottom-left
-            path.addLine(to: CGPoint(x: bladeLeft, y: centerY + 1))
+            // Other / Custom: beautiful generic hybrid aerodynamic blade (stroke-side orientation)
+            let bladeLeft = oarEnd - 26
+            path.move(to: CGPoint(x: bladeLeft, y: centerY - 0.5))
+            
+            // Upper neck curve to shoulder
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd - 8, y: centerY - 8.0),
+                control: CGPoint(x: bladeLeft + 8, y: centerY - 4.5)
+            )
+            
+            // Top edge
+            path.addLine(to: CGPoint(x: oarEnd + 5, y: centerY - 8.0))
+            
+            // Soft rounded tip
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd + 6, y: centerY + 14.0),
+                control: CGPoint(x: oarEnd + 7.0, y: centerY + 3.0)
+            )
+            
+            // Bottom edge corner
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd - 3, y: centerY + 16.0),
+                control: CGPoint(x: oarEnd + 2.0, y: centerY + 15.0)
+            )
+            
+            // Bottom neck curve
+            path.addCurve(
+                to: CGPoint(x: bladeLeft, y: centerY + 0.5),
+                control1: CGPoint(x: oarEnd - 11.0, y: centerY + 16.0),
+                control2: CGPoint(x: bladeLeft + 7.0, y: centerY + 7.0)
+            )
             path.closeSubpath()
+        }
+        return path
+    }
+    
+    private func bladeRidgePath(oarEnd: CGFloat, centerY: CGFloat, typeName: String) -> Path {
+        var path = Path()
+        let type = typeName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if type.contains("macon") {
+            let bladeLeft = oarEnd - 26
+            path.move(to: CGPoint(x: bladeLeft + 2.0, y: centerY + 0.5)) // Offset slightly down to match the fullness
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd + 2, y: centerY + 0.5),
+                control: CGPoint(x: bladeLeft + 12.0, y: centerY + 1.2)
+            )
+        } else if type.contains("comp") {
+            let bladeLeft = oarEnd - 20
+            path.move(to: CGPoint(x: bladeLeft + 1.5, y: centerY))
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd - 3, y: centerY + 2.0), // Oriented slightly downwards matching bottom-heavy shape
+                control: CGPoint(x: bladeLeft + 9.0, y: centerY + 0.8)
+            )
+        } else if type.contains("smoothie") {
+            let bladeLeft = oarEnd - 28
+            path.move(to: CGPoint(x: bladeLeft + 2.0, y: centerY))
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd - 1, y: centerY + 2.5), // Oriented downwards
+                control: CGPoint(x: bladeLeft + 12.0, y: centerY + 1.0)
+            )
+        } else {
+            let bladeLeft = oarEnd - 26
+            path.move(to: CGPoint(x: bladeLeft + 2.0, y: centerY))
+            path.addQuadCurve(
+                to: CGPoint(x: oarEnd - 2, y: centerY + 2.0),
+                control: CGPoint(x: bladeLeft + 10.0, y: centerY + 1.0)
+            )
         }
         return path
     }
