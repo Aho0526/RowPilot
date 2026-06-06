@@ -251,7 +251,7 @@ struct SettingView: View {
             }
             
             // Manager Plan 共有申請（Team/MAX未加入ユーザー向け）
-            if !currentPlan.hasManagerMode || currentPlan == .manager {
+            if !currentPlan.hasManagerMode {
                 SettingsSection(title: "Manager Plan共有", icon: "person.badge.key.fill") {
                     Button(action: { showingInviteCodeInput = true }) {
                         HStack {
