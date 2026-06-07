@@ -46,7 +46,7 @@ struct CreditsView: View {
                      CreditSection(title: "バージョン履歴") {
                         NavigationLink(destination: VersionHistoryView()) {
                             HStack {
-                                Text("アップデート情報")
+                                Text("アップデート情報".localized)
                                     .foregroundColor(Theme.textMain)
                                 Spacer()
                                 Image(systemName: "chevron.right")
@@ -138,89 +138,89 @@ struct VersionHistoryView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     CreditSection(title: "5/16") {
-                        Text("不変・可変インタビュー機能を追加")
-                        Text("Variable Interval Communication Architecture v1の作成")
+                        Text("不変・可変インタビュー機能を追加".localized)
+                        Text("Variable Interval Communication Architecture v1の作成".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "5/13") {
-                        Text("レースビューにおけるレーン固定やペースメーカーの追加")
-                        Text("Comminucation Architecture v4の適用")
+                        Text("レースビューにおけるレーン固定やペースメーカーの追加".localized)
+                        Text("Comminucation Architecture v4の適用".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "5/11") {
-                        Text("SOS機能の大幅追加")
-                        Text("SplitMeterの指定が可能に")
+                        Text("SOS機能の大幅追加".localized)
+                        Text("SplitMeterの指定が可能に".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "5/10") {
-                        Text("レースビューの変更")
-                        Text("Comminucation Architecture v3.1の適用")
+                        Text("レースビューの変更".localized)
+                        Text("Comminucation Architecture v3.1の適用".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "5/9") {
-                        Text("マネージャーモードにおける通信アーキテクチャを規定化し刷新")
-                        Text("Comminucation Architecture v2の適用")
+                        Text("マネージャーモードにおける通信アーキテクチャを規定化し刷新".localized)
+                        Text("Comminucation Architecture v2の適用".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "5/6") {
-                        Text("マネージャーモードにおける通信の不安定さを低減")
-                        Text("Comminucation Architecture v1の作成")
+                        Text("マネージャーモードにおける通信の不安定さを低減".localized)
+                        Text("Comminucation Architecture v1の作成".localized)
                     .foregroundColor(Theme.textMain)
                     }
 
                     CreditSection(title: "4/30") {
-                        Text("Pro,Manager,Team,MAXの課金プランを追加")
+                        Text("Pro,Manager,Team,MAXの課金プランを追加".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "4/29") {
-                        Text("レースビューの追加。")
-                        Text("PM5の名前/順番の変更が可能に。")
+                        Text("レースビューの追加。".localized)
+                        Text("PM5の名前/順番の変更が可能に。".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "4/26") {
-                        Text("潮汐データ取得地点を9地点から239地点へ。")
-                        Text("気象庁の提供する地点全てを取得可能に。")
+                        Text("潮汐データ取得地点を9地点から239地点へ。".localized)
+                        Text("気象庁の提供する地点全てを取得可能に。".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "4/25") {
-                        Text("バックアップから復元。")
-                        Text("ForceCurveの実装。")
+                        Text("バックアップから復元。".localized)
+                        Text("ForceCurveの実装。".localized)
                         .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "3/5") {
-                        Text("マネージャーモードのUI追加")
-                        Text("業界初('26/3/5時点)となるBLEで複数台のライブデータ取得に成功")
+                        Text("マネージャーモードのUI追加".localized)
+                        Text("業界初('26/3/5時点)となるBLEで複数台のライブデータ取得に成功".localized)
                     .foregroundColor(Theme.textMain)
                     }
                      CreditSection(title: "3/3") {
-                        Text("マネージャーモード(複数台通信機能)の追加")
-                        Text("複数台のPM5にデータの送信ができるように")
+                        Text("マネージャーモード(複数台通信機能)の追加".localized)
+                        Text("複数台のPM5にデータの送信ができるように".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "2/14") {
-                        Text("任意の距離・時間を指定して送信できるように")
-                        Text("データ送信中のUIを変更")
+                        Text("任意の距離・時間を指定して送信できるように".localized)
+                        Text("データ送信中のUIを変更".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "2/12") {
-                        Text("PM5にデータ送信成功")
+                        Text("PM5にデータ送信成功".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "2/9") {
-                        Text("RowModeの横向き制御機構を更新")
-                        Text("TideViewの横向き対応")
+                        Text("RowModeの横向き制御機構を更新".localized)
+                        Text("TideViewの横向き対応".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "2/8") {
-                        Text("RowPilot内の文字を英語に変更できるように")
-                        Text("SOS機能の追加・利用規約の作成")
+                        Text("RowPilot内の文字を英語に変更できるように".localized)
+                        Text("SOS機能の追加・利用規約の作成".localized)
                     .foregroundColor(Theme.textMain)
                     }
                 }
                 .padding()
             }
         }
-        .navigationTitle("バージョン履歴")
+        .navigationTitle("バージョン履歴".localized)
     }
 }
 
@@ -271,10 +271,10 @@ struct RowingTeamView: View {
                             Text("M.M.")
                         }
                         CreditSection(title: "Advisor".localized) {
-                            Text("S先生")
-                            Text("H先生")
-                            Text("O先生")
-                            Text("Iコーチ")
+                            Text("S先生".localized)
+                            Text("H先生".localized)
+                            Text("O先生".localized)
+                            Text("Iコーチ".localized)
                         }
                     }
                      .foregroundColor(Theme.textMain)
@@ -316,28 +316,28 @@ struct HelpQA: View {
             ScrollView {
                 VStack(spacing: 20) {
                     CreditSection(title: "PM5がリストに出てこない") {
-                        Text("PM5の設定->ファームウェアバージョンを確認してください。")
-                        Text("バージョン178以前では恐らく動作しません。")
-                        Text("動作確認環境:v178.037 / PM5のみ")
+                        Text("PM5の設定->ファームウェアバージョンを確認してください。".localized)
+                        Text("バージョン178以前では恐らく動作しません。".localized)
+                        Text("動作確認環境:v178.037 / PM5のみ".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "バージョン更新ができない") {
-                        Text("本アプリはConcept2公式のものではないので更新はできません。")
-                        Text("ErgDataからのアップデートか、USBケーブルを用いて更新してください。")
-                        Text("それでも解決しない場合はConcept2に連絡してください。")
+                        Text("本アプリはConcept2公式のものではないので更新はできません。".localized)
+                        Text("ErgDataからのアップデートか、USBケーブルを用いて更新してください。".localized)
+                        Text("それでも解決しない場合はConcept2に連絡してください。".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "マネージャーモードでPM5がリストに出てこない") {
-                        Text("1:1の接続が成立している場合リストに表示されません。")
-                        Text("一度接続を切って確認してください。")
+                        Text("1:1の接続が成立している場合リストに表示されません。".localized)
+                        Text("一度接続を切って確認してください。".localized)
                     .foregroundColor(Theme.textMain)
                     }
                     CreditSection(title: "iPhoneの動作が重たい") {
-                        Text("1:1接続では重くならないはずなのでマネージャーモードの事になると思います。")
-                        Text("接続しているPM5の数が多くなる/受信頻度を上げるほど動作に影響が出る可能性があります。")
-                        Text("最大同時接続数は10台までにしていますが、使用者の端末の性能に応じて接続台数を変更してください。")
-                        Text("以下の環境で8台同時のテストを行なっていますが動作にラグは生じていません。参考程度に。")
-                        Text("動作確認環境:iPhone12, iOS26.2 / iPhone17,iOS26.5 / iPad Pro M1,iPadOS26.5")
+                        Text("1:1接続では重くならないはずなのでマネージャーモードの事になると思います。".localized)
+                        Text("接続しているPM5の数が多くなる/受信頻度を上げるほど動作に影響が出る可能性があります。".localized)
+                        Text("最大同時接続数は10台までにしていますが、使用者の端末の性能に応じて接続台数を変更してください。".localized)
+                        Text("以下の環境で8台同時のテストを行なっていますが動作にラグは生じていません。参考程度に。".localized)
+                        Text("動作確認環境:iPhone12, iOS26.2 / iPhone17,iOS26.5 / iPad Pro M1,iPadOS26.5".localized)
                     .foregroundColor(Theme.textMain)
                     }
                 }

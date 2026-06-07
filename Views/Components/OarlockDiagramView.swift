@@ -291,7 +291,7 @@ struct OarlockDiagramView: View {
                 .position(x: oarlockCenterX, y: oarlockCenterY)
                 
                 // Tilt angle and bushing label text
-                Text(String(format: "Lateral Pitch".localized + ": \(lateralPitch) (%.1f°)", lateralPitchAngle))
+                Text(String(format: "Lateral Pitch" + ": \(lateralPitch) (%.1f°)", lateralPitchAngle))
                     .font(.system(size: 8.5, weight: .bold, design: .rounded))
                     .foregroundColor(isLateralPitchActive ? Theme.accent : Theme.textSecondary)
                     .padding(.horizontal, 4)

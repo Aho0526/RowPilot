@@ -34,15 +34,16 @@ struct HomeView: View {
         LocalizationManager.shared.language == .japanese
     }
     
-    private var welcomeMessage: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        if hour >= 5 && hour < 12 {
-            return "Good Morning".localized
-        } else if hour >= 12 && hour < 18 {
-            return "Good Afternoon".localized
+    private var dateDisplayString: String {
+        let formatter = DateFormatter()
+        if isJA {
+            formatter.dateFormat = "yyyy年M月d日(EEE)"
+            formatter.locale = Locale(identifier: "ja_JP")
         } else {
-            return "Good Evening".localized
+            formatter.dateFormat = "EEEE, MMMM d, yyyy"
+            formatter.locale = Locale(identifier: "en_US")
         }
+        return formatter.string(from: Date())
     }
     
     var body: some View {
@@ -452,7 +453,7 @@ struct HomeView: View {
             // Greeting & Weather
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(welcomeMessage)
+                    Text(dateDisplayString)
                         .font(Theme.headerFont())
                         .foregroundColor(.white)
                     
@@ -568,7 +569,7 @@ struct HomeView: View {
             
             // Cumulative Card
             VStack(alignment: .leading, spacing: 8) {
-                Text("累積のサマリー")
+                Text("累積のサマリー".localized)
                     .font(.caption)
                     .fontWeight(.bold)
                     .foregroundColor(Theme.textSecondary)
@@ -1136,7 +1137,7 @@ struct ManagerSessionRowCard: View {
                 
                 HStack(spacing: 8) {
                     Image(systemName: "person.3.fill")
-                    Text("\(records.count) Devices".localized)
+                    Text("\(records.count) Devices")
                 }
                 .font(.subheadline)
                 .foregroundColor(Theme.accent) // Visually distinct accent

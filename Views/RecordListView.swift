@@ -374,7 +374,7 @@ struct RecordDetailView: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                 MetricCard(icon: "clock.fill", label: "Duration".localized, value: record.formattedDuration)
                 MetricCard(icon: "ruler.fill", label: "Distance".localized, value: record.formattedDistance)
-                MetricCard(icon: "metronome.fill", label: "Avg SPM".localized, value: "\(record.averageSPM)")
+                MetricCard(icon: "metronome.fill", label: "Avg SPM", value: "\(record.averageSPM)")
                 if !(record.pm5SerialNumber != nil || record.isManagerMode || (record.tags?.contains("Indoor") == true)) {
                     MetricCard(icon: "speedometer", label: "Avg Speed".localized, value: String(format: "%.1f km/h", record.averageSpeed))
                 }
@@ -436,7 +436,7 @@ struct RecordDetailView: View {
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(Theme.textMain)
-                            Text("クルーメンバーを記録")
+                            Text("クルーメンバーを記録".localized)
                                 .font(.caption)
                                 .foregroundColor(Theme.textSecondary)
                         }

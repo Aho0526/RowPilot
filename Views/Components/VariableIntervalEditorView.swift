@@ -4,8 +4,9 @@ struct VariableIntervalEditorView: View {
     @Environment(\.dismiss) var dismiss
     
     let isEditing: Bool
-    @State var useDistance: Bool
+    @State var intervalType: Int // 0: Distance, 1: Time, 2: Calories
     @State var distanceStr: String
+    @State var caloriesStr: String
     @State var timeH: Int
     @State var timeM: Int
     @State var timeS: Int
@@ -23,8 +24,16 @@ struct VariableIntervalEditorView: View {
         
         let initialEntry = entry ?? VariableIntervalEntry.distanceEntry(meters: 500, rest: 60)
         
-        self._useDistance = State(initialValue: initialEntry.distanceMeters != nil)
+        if initialEntry.distanceMeters != nil {
+            self._intervalType = State(initialValue: 0)
+        } else if initialEntry.timeSeconds != nil {
+            self._intervalType = State(initialValue: 1)
+        } else {
+            self._intervalType = State(initialValue: 2)
+        }
+        
         self._distanceStr = State(initialValue: initialEntry.distanceMeters.map { "\($0)" } ?? "")
+        self._caloriesStr = State(initialValue: initialEntry.calories.map { "\($0)" } ?? "")
         
         let totalTime = initialEntry.timeSeconds ?? 0
         self._timeH = State(initialValue: totalTime / 3600)
@@ -53,15 +62,16 @@ struct VariableIntervalEditorView: View {
                 
                 ScrollView {
                     VStack(spacing: 24) {
-                        Picker("Interval Type", selection: $useDistance) {
-                            Text("Distance".localized).tag(true)
-                            Text("Time".localized).tag(false)
+                        Picker("Interval Type", selection: $intervalType) {
+                            Text("Distance".localized).tag(0)
+                            Text("Time".localized).tag(1)
+                            Text("Calories".localized).tag(2)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal)
                         
-                        // 距離 or 時間入力
-                        if useDistance {
+                        // 距離 or 時間 or カロリー入力
+                        if intervalType == 0 {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Interval Distance".localized + " (m)")
                                     .foregroundColor(Theme.textSecondary)
@@ -74,7 +84,7 @@ struct VariableIntervalEditorView: View {
                                     .foregroundColor(.white)
                                     .font(.title)
                             }
-                        } else {
+                        } else if intervalType == 1 {
                             VStack(spacing: 8) {
                                 Text("Interval Time".localized)
                                     .foregroundColor(Theme.textSecondary)
@@ -89,6 +99,19 @@ struct VariableIntervalEditorView: View {
                                 .padding()
                                 .background(Color.white.opacity(0.05))
                                 .cornerRadius(16)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Calories".localized + " (cal)")
+                                    .foregroundColor(Theme.textSecondary)
+                                TextField("5 - 65535", text: $caloriesStr)
+                                    .keyboardType(.numberPad)
+                                    .textFieldStyle(.plain)
+                                    .padding()
+                                    .background(Color.white.opacity(0.1))
+                                    .cornerRadius(12)
+                                    .foregroundColor(.white)
+                                    .font(.title)
                             }
                         }
                         
@@ -153,12 +176,15 @@ struct VariableIntervalEditorView: View {
     }
     
     private var isSaveDisabled: Bool {
-        if useDistance {
+        if intervalType == 0 {
             guard let dist = Int(distanceStr) else { return true }
             return dist < 100 || dist > 60000
-        } else {
+        } else if intervalType == 1 {
             let totalSecs = timeH * 3600 + timeM * 60 + timeS
             return totalSecs < 20 || totalSecs > 36000
+        } else {
+            guard let cals = Int(caloriesStr) else { return true }
+            return cals < 5 || cals > 65535
         }
     }
     
@@ -166,16 +192,22 @@ struct VariableIntervalEditorView: View {
         let restSecs = min(restM * 60 + restS, 595)
         let paceSecs = showPace ? (paceM * 60 + paceS) : nil
         
-        if useDistance {
+        if intervalType == 0 {
             if let dist = Int(distanceStr), dist >= 100 {
-                let entry = VariableIntervalEntry(distanceMeters: dist, timeSeconds: nil, restSeconds: restSecs, targetPace500mSeconds: paceSecs)
+                let entry = VariableIntervalEntry(distanceMeters: dist, timeSeconds: nil, calories: nil, restSeconds: restSecs, targetPace500mSeconds: paceSecs)
+                onSave(entry)
+                dismiss()
+            }
+        } else if intervalType == 1 {
+            let totalSecs = timeH * 3600 + timeM * 60 + timeS
+            if totalSecs >= 20 {
+                let entry = VariableIntervalEntry(distanceMeters: nil, timeSeconds: totalSecs, calories: nil, restSeconds: restSecs, targetPace500mSeconds: paceSecs)
                 onSave(entry)
                 dismiss()
             }
         } else {
-            let totalSecs = timeH * 3600 + timeM * 60 + timeS
-            if totalSecs >= 20 {
-                let entry = VariableIntervalEntry(distanceMeters: nil, timeSeconds: totalSecs, restSeconds: restSecs, targetPace500mSeconds: paceSecs)
+            if let cals = Int(caloriesStr), cals >= 5 {
+                let entry = VariableIntervalEntry(distanceMeters: nil, timeSeconds: nil, calories: cals, restSeconds: restSecs, targetPace500mSeconds: paceSecs)
                 onSave(entry)
                 dismiss()
             }

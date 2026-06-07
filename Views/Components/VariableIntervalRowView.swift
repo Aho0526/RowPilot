@@ -29,6 +29,11 @@ struct VariableIntervalRowView: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.white)
                     .frame(width: 80, alignment: .leading)
+            } else if let cals = entry.calories {
+                Text("\(cals) cal")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 80, alignment: .leading)
             }
             
             Spacer()

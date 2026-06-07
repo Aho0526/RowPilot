@@ -568,7 +568,7 @@ struct SearchManagerSessionRowCard: View {
                 
                 HStack(spacing: 8) {
                     Image(systemName: "person.3.fill")
-                    Text("\(records.count) Devices".localized)
+                    Text("\(records.count) Devices")
                 }
                 .font(.caption)
                 .foregroundColor(Theme.accent)

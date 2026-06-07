@@ -70,17 +70,17 @@ struct RowModeContainerView: View {
                             .foregroundColor(.white)
                         
                         VStack(spacing: 8) {
-                            Text("iPad版ではRowModeを使用できません")
+                            Text("iPad版ではRowModeを使用できません".localized)
                                 .font(.title3)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
                             
-                            Text("iPhoneを艇に装着して使用してください")
+                            Text("iPhoneを艇に装着して使用してください".localized)
                                 .font(.subheadline)
                                 .foregroundColor(.white.opacity(0.8))
                         }
                         
-                        Text("その他の機能（Practice, Tide等）は\niPadでもご利用いただけます")
+                        Text("その他の機能（Practice, Tide等）は\niPadでもご利用いただけます".localized)
                             .font(.caption)
                             .multilineTextAlignment(.center)
                             .foregroundColor(.white.opacity(0.6))

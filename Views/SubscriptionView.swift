@@ -25,28 +25,28 @@ private extension SubscriptionPlan {
 
     var tagline: String {
         switch self {
-        case .free: return "まずは基本機能から"
-        case .pro:  return "競技力向上をサポート"
-        case .team: return "チーム全員で使える"
-        case .max:  return "プロコーチのための最高峰"
+        case .free: return "まずは基本機能から".localized
+        case .pro:  return "競技力向上をサポート".localized
+        case .team: return "チーム全員で使える".localized
+        case .max:  return "プロコーチのための最高峰".localized
         }
     }
 
     var allFeatures: [(String, Bool)] {
         let all: [(String, [SubscriptionPlan])] = [
-            ("潮汐情報の確認",                 [.free, .pro, .team, .max]),
-            ("GPSレート計",                    [.free, .pro, .team, .max]),
-            ("PM5との1:1接続",                [.free, .pro, .team, .max]),
-            ("リギングの管理",                 [.free, .pro, .team, .max]),
-            ("Force Curve の表示",             [.pro, .team, .max]),
-            ("ゴーストレース機能",             [.pro, .team, .max]),
-            ("Strava同期 (準備中)",            [.pro, .team, .max]),
-            ("PM5 複数台同時接続",             [.team, .max]),
-            ("リアルタイム一斉トレーニング",    [.team, .max]),
-            ("プランの共有 (最大3名)",         [.team]),
-            ("プランの共有 (最大5名)",         [.max]),
-            ("CSV形式での記録出力",             [.max]),
-            ("レースビュー (高度な可視化)",     [.max]),
+            ("潮汐情報の確認".localized,                 [.free, .pro, .team, .max]),
+            ("GPSレート計".localized,                    [.free, .pro, .team, .max]),
+            ("PM5との1:1接続".localized,                [.free, .pro, .team, .max]),
+            ("リギングの管理".localized,                 [.free, .pro, .team, .max]),
+            ("Force Curve の表示".localized,             [.pro, .team, .max]),
+            ("ゴーストレース機能".localized,             [.pro, .team, .max]),
+            ("Strava同期 (準備中)".localized,            [.pro, .team, .max]),
+            ("PM5 複数台同時接続".localized,             [.team, .max]),
+            ("リアルタイム一斉トレーニング".localized,    [.team, .max]),
+            ("プランの共有 (最大3名)".localized,         [.team]),
+            ("プランの共有 (最大5名)".localized,         [.max]),
+            ("CSV形式での記録出力".localized,             [.max]),
+            ("レースビュー (高度な可視化)".localized,     [.max]),
         ]
         return all
             .filter { item in
@@ -100,28 +100,20 @@ struct SubscriptionView: View {
     // MARK: - Header
     private var headerSection: some View {
         VStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(colors: [Theme.accent.opacity(0.25), Theme.accent.opacity(0.05)],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing)
-                    )
-                    .frame(width: 72, height: 72)
-                Image(systemName: "star.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(
-                        LinearGradient(colors: [Theme.accent, Color(hex: "7ED4FF")],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing)
-                    )
-            }
-            .padding(.top, 20)
+            Image("SplashLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 160, height: 160)
+                .shadow(color: Theme.accent.opacity(0.3), radius: 10, x: 0, y: 5)
+                .padding(.bottom, -45)
+                .padding(.top, -40)
 
-            Text("RowPilot プランを選ぶ")
+            Text("RowPilot プランを選ぶ".localized)
                 .font(.system(size: 26, weight: .black, design: .rounded))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
 
-            Text("あなたのトレーニングを、次のステージへ。")
+            Text("あなたのトレーニングを、次のステージへ。".localized)
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.65))
                 .multilineTextAlignment(.center)
@@ -143,7 +135,7 @@ struct SubscriptionView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("現在のプラン")
+                    Text("現在のプラン".localized)
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundColor(.white.opacity(0.55))
@@ -156,7 +148,7 @@ struct SubscriptionView: View {
                 Spacer()
 
                 if subManager.isSharedManagerPlan {
-                    Label("共有プラン", systemImage: "person.2.fill")
+                    Label("共有プラン".localized, systemImage: "person.2.fill")
                         .font(.caption2)
                         .fontWeight(.bold)
                         .padding(.horizontal, 8)
@@ -173,7 +165,7 @@ struct SubscriptionView: View {
 
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("有効期限")
+                        Text("有効期限".localized)
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.5))
                         Text(expDate, style: .date)
@@ -183,7 +175,7 @@ struct SubscriptionView: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("自動更新")
+                        Text("自動更新".localized)
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.5))
                         HStack(spacing: 4) {
@@ -255,13 +247,16 @@ struct SubscriptionView: View {
     // MARK: - Plans Section
     private var plansSection: some View {
         VStack(spacing: 12) {
-            SectionLabel(text: "Individual")
+            SectionLabel(text: "individual")
             PlanCard(plan: .free, currentPlan: subManager.currentPlan)
             PlanCard(plan: .pro,  currentPlan: subManager.currentPlan)
 
             SectionLabel(text: "For Teams")
                 .padding(.top, 8)
             PlanCard(plan: .team, currentPlan: subManager.currentPlan)
+
+            SectionLabel(text: "For Group, Advanced team")
+                .padding(.top, 8)
             PlanCard(plan: .max,  currentPlan: subManager.currentPlan)
         }
     }
@@ -324,7 +319,7 @@ private struct PlanCard: View {
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(plan.accentColor)
                     if isSelected {
-                        Label("利用中", systemImage: "checkmark.seal.fill")
+                        Label("利用中".localized, systemImage: "checkmark.seal.fill")
                             .font(.caption2)
                             .fontWeight(.bold)
                             .foregroundColor(.green)
@@ -436,7 +431,7 @@ struct SubscriptionDetailView: View {
     // MARK: - Description
     private var descriptionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("プランについて")
+            Text("プランについて".localized)
                 .font(.caption)
                 .fontWeight(.bold)
                 .tracking(0.8)
@@ -457,20 +452,20 @@ struct SubscriptionDetailView: View {
     private var planDescriptionText: String {
         switch plan {
         case .free:
-            return "RowPilotの中核となる基本的な機能を使用できます。潮汐情報の確認やGPSレート計、PM5との1:1接続など、日常のトレーニングに必要な機能を揃えています。"
+            return "RowPilotの中核となる基本的な機能を使用できます。潮汐情報の確認やGPSレート計、PM5との1:1接続など、日常のトレーニングに必要な機能を揃えています。".localized
         case .pro:
-            return "ForceCurveの可視化やゴーストレース機能、Stravaとの連携（準備中）など、より深いパフォーマンス分析が可能になります。個人アスリートに最適なプランです。"
+            return "ForceCurveの可視化やゴーストレース機能、Stravaとの連携（準備中）など、より深いパフォーマンス分析が可能になります。個人アスリートに最適なプランです。".localized
         case .team:
-            return "PM5複数台同時接続機能に加え、最大3名のメンバーにプランを共有できます。チーム全員でデータを共有し、練習の効率化と記録管理を一元化できます。"
+            return "PM5複数台同時接続機能に加え、最大3名のメンバーにプランを共有できます。チーム全員でデータを共有し、練習の効率化と記録管理を一元化できます。".localized
         case .max:
-            return "最大5名のメンバーへのプラン共有に加え、CSV形式での記録出力や高度なレースビュー、グラフィカルなアナリティクスを開放します。プロコーチ・エリートチームのためのプランです。"
+            return "最大5名のメンバーへのプラン共有に加え、CSV形式での記録出力や高度なレースビュー、グラフィカルなアナリティクスを開放します。プロコーチ・エリートチームのためのプランです。".localized
         }
     }
 
     // MARK: - Features List
     private var featuresSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("含まれる機能")
+            Text("含まれる機能".localized)
                 .font(.caption)
                 .fontWeight(.bold)
                 .tracking(0.8)
@@ -532,7 +527,7 @@ struct SubscriptionDetailView: View {
                     Image(systemName: "checkmark.seal.fill")
                         .foregroundColor(.green)
                         .font(.title3)
-                    Text("現在ご利用中のプランです")
+                    Text("現在ご利用中のプランです".localized)
                         .fontWeight(.bold)
                         .foregroundColor(.green)
                 }
@@ -552,7 +547,7 @@ struct SubscriptionDetailView: View {
                                 subManager.cancelSubscription()
                             }
                         }) {
-                            Text("自動更新をキャンセル")
+                            Text("自動更新をキャンセル".localized)
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.red)
@@ -565,14 +560,14 @@ struct SubscriptionDetailView: View {
                                         .stroke(Color.red.opacity(0.25), lineWidth: 1)
                                 )
                         }
-                        Text("キャンセル後も有効期限まで利用できます。")
+                        Text("キャンセル後も有効期限まで利用できます。".localized)
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.4))
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                     } else {
                         VStack(spacing: 6) {
-                            Label("自動更新は停止されています", systemImage: "arrow.counterclockwise.circle")
+                            Label("自動更新は停止されています".localized, systemImage: "arrow.counterclockwise.circle")
                                 .font(.caption)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.orange)

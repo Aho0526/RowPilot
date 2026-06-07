@@ -29,12 +29,12 @@ struct PM5EditView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "list.number")
                                 .foregroundColor(Theme.accent)
-                            Text("PM5デバイス一覧")
+                            Text("PM5デバイス一覧".localized)
                                 .foregroundColor(Theme.textSecondary)
                         }
                         .textCase(nil)
                     } footer: {
-                        Text("ドラッグで並び替え、テキストをタップして名前を変更できます。名前を空にするとBLE名に戻ります。")
+                        Text("ドラッグで並び替え、テキストをタップして名前を変更できます。名前を空にするとBLE名に戻ります。".localized)
                             .foregroundColor(Theme.textSecondary)
                             .font(.caption)
                     }
@@ -43,11 +43,11 @@ struct PM5EditView: View {
                 .scrollContentBackground(.hidden)
                 .environment(\.editMode, .constant(.active))
             }
-            .navigationTitle("PM5 編集")
+            .navigationTitle("PM5 編集".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("完了") {
+                    Button("完了".localized) {
                         isPresented = false
                     }
                     .fontWeight(.bold)

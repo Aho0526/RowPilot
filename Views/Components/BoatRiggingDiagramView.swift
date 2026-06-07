@@ -1403,7 +1403,7 @@ struct BoatRiggingDiagramView: View {
                     
                     let bushingLabel = lateralPitch
                     
-                    Text("\("Lateral Pitch".localized): \(bushingLabel)")
+                    Text("\("Lateral Pitch"): \(bushingLabel)")
                         .font(.system(size: 8, weight: isLPActive ? .bold : .semibold, design: .rounded))
                         .foregroundColor(isLPActive ? Theme.accent : Theme.textSecondary)
                         .padding(.horizontal, 4)

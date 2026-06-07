@@ -98,7 +98,7 @@ struct TeamInviteCodeInputView: View {
 
                         // コード入力フィールド
                         VStack(spacing: 16) {
-                            Text("チーム招待コード")
+                            Text("チーム招待コード".localized)
                                 .font(.caption)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white.opacity(0.5))
@@ -115,7 +115,7 @@ struct TeamInviteCodeInputView: View {
                                 codeTextField(index: 1, placeholder: "XXXX")
                             }
 
-                            Text("顧問から共有された8文字のチーム招待コード")
+                            Text("顧問から共有された8文字のチーム招待コード".localized)
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.4))
                         }
@@ -171,11 +171,11 @@ struct TeamInviteCodeInputView: View {
 
                         // Manager Plan共有との違い
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("ℹ️ Manager Plan共有との違い")
+                            Text("ℹ️ Manager Plan共有との違い".localized)
                                 .font(.caption)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white.opacity(0.6))
-                            Text("チーム参加はManagerプランの共有とは異なります。チーム参加では、あなたの練習記録が顧問の端末に配信されます。Managerプランの機能が共有されるわけではありません。")
+                            Text("チーム参加はManagerプランの共有とは異なります。チーム参加では、あなたの練習記録が顧問の端末に配信されます。Managerプランの機能が共有されるわけではありません。".localized)
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.4))
                                 .lineSpacing(3)

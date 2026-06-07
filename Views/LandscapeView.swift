@@ -239,7 +239,7 @@ struct LandscapeView: View {
                     VStack(spacing: 1) {
                         // Top Row
                         HStack(spacing: 1) {
-                            metricBox(label: "SPM".localized, value: app.isSessionActive ? "\(motionManager.spm)" : "0", color: Theme.accent)
+                            metricBox(label: "SPM", value: app.isSessionActive ? "\(motionManager.spm)" : "0", color: Theme.accent)
                             metricBox(label: "Pace".localized, value: app.isSessionActive ? formattedPace : "--:--", color: Theme.secondaryAccent, isPace: true)
                         }
                         

@@ -32,7 +32,7 @@ struct TeamDashboardView: View {
                 .padding(.bottom, 40)
             }
         }
-        .navigationTitle("チーム管理")
+        .navigationTitle("チーム管理".localized)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             codeManager.ensureCodeExists()
@@ -47,7 +47,7 @@ struct TeamDashboardView: View {
         }
         // リセット確認
         .alert("チーム招待コードのリセット", isPresented: $showingResetConfirm) {
-            Button("リセット", role: .destructive) {
+            Button("リセット".localized, role: .destructive) {
                 codeManager.resetCode { success, error in
                     alertTitle = success ? "リセット完了" : "エラー"
                     alertMessage = success
@@ -56,16 +56,16 @@ struct TeamDashboardView: View {
                     showingAlert = true
                 }
             }
-            Button("キャンセル", role: .cancel) {}
+            Button("キャンセル".localized, role: .cancel) {}
         } message: {
-            Text("チーム招待コードをリセットすると、現在の全チームメンバーが削除されます。\nこの操作は取り消せません。\n\n※ リセットは1週間に1回のみ可能です。")
+            Text("チーム招待コードをリセットすると、現在の全チームメンバーが削除されます。\nこの操作は取り消せません。\n\n※ リセットは1週間に1回のみ可能です。".localized)
         }
         // 承認確認
         .alert("チーム参加の承認", isPresented: Binding(
             get: { showingApproveConfirm != nil },
             set: { if !$0 { showingApproveConfirm = nil } }
         )) {
-            Button("承認する") {
+            Button("承認する".localized) {
                 guard let req = showingApproveConfirm else { return }
                 teamManager.approveRequest(req) { success, error in
                     alertTitle = success ? "承認しました" : "エラー"
@@ -76,7 +76,7 @@ struct TeamDashboardView: View {
                 }
                 showingApproveConfirm = nil
             }
-            Button("キャンセル", role: .cancel) { showingApproveConfirm = nil }
+            Button("キャンセル".localized, role: .cancel) { showingApproveConfirm = nil }
         } message: {
             if let req = showingApproveConfirm {
                 Text("「\(req.requestorName)」のチーム参加を承認しますか？\n\n残り枠: \(teamManager.teamLimit - teamManager.teamMembers.count)名")
@@ -87,12 +87,12 @@ struct TeamDashboardView: View {
             get: { showingRejectConfirm != nil },
             set: { if !$0 { showingRejectConfirm = nil } }
         )) {
-            Button("拒否する", role: .destructive) {
+            Button("拒否する".localized, role: .destructive) {
                 guard let req = showingRejectConfirm else { return }
                 teamManager.rejectRequest(req) { _, _ in }
                 showingRejectConfirm = nil
             }
-            Button("キャンセル", role: .cancel) { showingRejectConfirm = nil }
+            Button("キャンセル".localized, role: .cancel) { showingRejectConfirm = nil }
         } message: {
             if let req = showingRejectConfirm {
                 Text("「\(req.requestorName)」からの参加申請を拒否しますか？")
@@ -103,7 +103,7 @@ struct TeamDashboardView: View {
             get: { showingRemoveMember != nil },
             set: { if !$0 { showingRemoveMember = nil } }
         )) {
-            Button("削除する", role: .destructive) {
+            Button("削除する".localized, role: .destructive) {
                 if let member = showingRemoveMember {
                     teamManager.removeMember(member.id)
                     alertTitle = "削除完了"
@@ -112,7 +112,7 @@ struct TeamDashboardView: View {
                 }
                 showingRemoveMember = nil
             }
-            Button("キャンセル", role: .cancel) { showingRemoveMember = nil }
+            Button("キャンセル".localized, role: .cancel) { showingRemoveMember = nil }
         } message: {
             if let member = showingRemoveMember {
                 Text("「\(member.name)」をチームから削除しますか？\nこのメンバーの記録はダッシュボードから表示されなくなります。")
@@ -135,12 +135,12 @@ struct TeamDashboardView: View {
                 .foregroundStyle(Theme.primaryGradient)
                 .padding(.top, 24)
 
-            Text("チーム管理")
+            Text("チーム管理".localized)
                 .font(.title2)
                 .fontWeight(.black)
                 .foregroundColor(.white)
 
-            Text("メンバーの練習記録をリアルタイムで管理")
+            Text("メンバーの練習記録をリアルタイムで管理".localized)
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
@@ -180,7 +180,7 @@ struct TeamDashboardView: View {
             HStack {
                 Image(systemName: "key.fill")
                     .foregroundColor(.green)
-                Text("チーム招待コード")
+                Text("チーム招待コード".localized)
                     .font(.headline)
                     .foregroundColor(.white)
             }
@@ -210,12 +210,12 @@ struct TeamDashboardView: View {
                 .background(Color.black.opacity(0.3))
                 .cornerRadius(12)
 
-                Text("このコードをチームメンバーに共有してください。\nメンバーが入力するとチーム参加申請が届きます。")
+                Text("このコードをチームメンバーに共有してください。\nメンバーが入力するとチーム参加申請が届きます。".localized)
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.5))
                     .multilineTextAlignment(.leading)
 
-                Text("※ Manager Plan共有コードとは別のコードです")
+                Text("※ Manager Plan共有コードとは別のコードです".localized)
                     .font(.caption2)
                     .fontWeight(.semibold)
                     .foregroundColor(.orange.opacity(0.8))
@@ -227,7 +227,7 @@ struct TeamDashboardView: View {
                     Text(codeManager.canReset ? "コードをリセット可能" : "リセットまであと\(codeManager.daysUntilReset)日")
                         .font(.caption)
                         .foregroundColor(codeManager.canReset ? .green : .white.opacity(0.4))
-                    Text("リセット時は全メンバーが削除されます • 1週間に1回のみ")
+                    Text("リセット時は全メンバーが削除されます • 1週間に1回のみ".localized)
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.35))
                 }
@@ -237,7 +237,7 @@ struct TeamDashboardView: View {
                 Button(action: { showingResetConfirm = true }) {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.clockwise")
-                        Text("リセット")
+                        Text("リセット".localized)
                     }
                     .font(.caption)
                     .fontWeight(.semibold)
@@ -266,7 +266,7 @@ struct TeamDashboardView: View {
                 HStack {
                     Image(systemName: "bell.badge.fill")
                         .foregroundColor(.orange)
-                    Text("承認待ちの申請")
+                    Text("承認待ちの申請".localized)
                         .font(.headline)
                         .foregroundColor(.white)
                     Spacer()
@@ -321,7 +321,7 @@ struct TeamDashboardView: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
-                    Text("チームへの参加を申請しています")
+                    Text("チームへの参加を申請しています".localized)
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.55))
                     Text(request.createdAt.formatted(date: .abbreviated, time: .shortened))
@@ -335,7 +335,7 @@ struct TeamDashboardView: View {
                 Button(action: { showingRejectConfirm = request }) {
                     HStack(spacing: 4) {
                         Image(systemName: "xmark")
-                        Text("拒否")
+                        Text("拒否".localized)
                     }
                     .font(.caption)
                     .fontWeight(.semibold)
@@ -349,7 +349,7 @@ struct TeamDashboardView: View {
                 Button(action: { showingApproveConfirm = request }) {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark")
-                        Text("承認する")
+                        Text("承認する".localized)
                     }
                     .font(.caption)
                     .fontWeight(.semibold)
@@ -372,7 +372,7 @@ struct TeamDashboardView: View {
             HStack {
                 Image(systemName: "person.2.fill")
                     .foregroundColor(Theme.accent)
-                Text("チームメンバー")
+                Text("チームメンバー".localized)
                     .font(.headline)
                     .foregroundColor(.white)
             }
@@ -382,10 +382,10 @@ struct TeamDashboardView: View {
                     Image(systemName: "person.badge.plus")
                         .font(.system(size: 32))
                         .foregroundColor(.white.opacity(0.2))
-                    Text("チームメンバーはまだいません")
+                    Text("チームメンバーはまだいません".localized)
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.5))
-                    Text("招待コードをメンバーに共有して\n申請を承認するとここに表示されます")
+                    Text("招待コードをメンバーに共有して\n申請を承認するとここに表示されます".localized)
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.35))
                         .multilineTextAlignment(.center)
@@ -448,7 +448,7 @@ struct TeamDashboardView: View {
             HStack {
                 Image(systemName: "chart.bar.doc.horizontal.fill")
                     .foregroundColor(Theme.secondaryAccent)
-                Text("メンバーの記録")
+                Text("メンバーの記録".localized)
                     .font(.headline)
                     .foregroundColor(.white)
                 Spacer()
@@ -457,7 +457,7 @@ struct TeamDashboardView: View {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 6, height: 6)
-                    Text("1分おきに更新")
+                    Text("1分おきに更新".localized)
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.4))
                 }
@@ -468,10 +468,10 @@ struct TeamDashboardView: View {
                     Image(systemName: "doc.text.magnifyingglass")
                         .font(.system(size: 32))
                         .foregroundColor(.white.opacity(0.2))
-                    Text("メンバーの記録はまだありません")
+                    Text("メンバーの記録はまだありません".localized)
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.5))
-                    Text("メンバーが練習を記録すると\n自動的にここに表示されます")
+                    Text("メンバーが練習を記録すると\n自動的にここに表示されます".localized)
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.35))
                         .multilineTextAlignment(.center)

@@ -799,10 +799,10 @@ struct JoinTeamModule: View {
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("チームに参加する")
+                        Text("チームに参加する".localized)
                             .font(.subheadline.weight(.semibold))
                             .foregroundColor(Theme.textMain)
-                        Text("顧問から共有された招待コードを入力してチームに参加します。")
+                        Text("顧問から共有された招待コードを入力してチームに参加します。".localized)
                             .font(.caption)
                             .foregroundColor(Theme.textSecondary)
                             .lineLimit(2)
@@ -852,10 +852,10 @@ struct TeamManagementModule: View {
                         }
 
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("共有メンバーを管理")
+                            Text("共有メンバーを管理".localized)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(Theme.textMain)
-                            Text("Managerプランをチームメンバーに共有します。")
+                            Text("Managerプランをチームメンバーに共有します。".localized)
                                 .font(.caption)
                                 .foregroundColor(Theme.textSecondary)
                                 .lineLimit(1)
@@ -890,10 +890,10 @@ struct TeamManagementModule: View {
                         }
 
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("メンバーを管理")
+                            Text("メンバーを管理".localized)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(Theme.textMain)
-                            Text("チームへの参加申請を管理し、練習記録を確認します。")
+                            Text("チームへの参加申請を管理し、練習記録を確認します。".localized)
                                 .font(.caption)
                                 .foregroundColor(Theme.textSecondary)
                                 .lineLimit(1)
@@ -1135,7 +1135,7 @@ struct PracticeHelpView: View {
                         CreditSection(title: "問題が解決しない場合") {
                             NavigationLink(destination: HelpQA()) {
                                 HStack {
-                                    Text("QAコーナーに移る")
+                                    Text("QAコーナーに移る".localized)
                                         .foregroundColor(Theme.textMain)
                                     Spacer()
                                     Image(systemName: "chevron.right")

@@ -17,6 +17,7 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
     @Published var workoutState: UInt8 = 0       // index 8 of 0x31
     @Published var heartRate: Int = 0             // BPM（心拍数）
     @Published var predictedFinishTime: Double = 0.0  // 秒（予測完了時間）
+    @Published var calories: Double = 0.0         // カロリー
     
     /// ワークアウト送信ステータス
     enum ConfigStatus: Equatable {
@@ -150,8 +151,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// ワークアウト設定値
     @Published var workoutDistance: Int? = nil  // メートル
     @Published var workoutTime: Int? = nil      // 秒
+    @Published var workoutCalories: Int? = nil  // カロリー
     @Published var workoutSplitDistance: Int? = nil // スプリット距離
     @Published var workoutSplitTime: Int? = nil     // スプリット時間
+    @Published var workoutSplitCalories: Int? = nil // スプリットカロリー
     @Published var workoutRestTime: Int? = nil      // 休憩時間（秒）
     
     /// ダッシュボード表示フラグ
@@ -370,6 +373,11 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         showDashboard = false
         workoutDistance = nil
         workoutTime = nil
+        workoutCalories = nil
+        workoutSplitDistance = nil
+        workoutSplitTime = nil
+        workoutSplitCalories = nil
+        workoutRestTime = nil
         workoutStartTime = nil
         stopScanning()
         print("PM5ManagerVM: 全PM5切断・リストクリア")
@@ -527,7 +535,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     }
     
     /// ワークアウトコマンドを生成
-    private func generateWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, splitMeters: Int? = nil, splitSeconds: Int? = nil) -> Data {
+    private func generateWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, calories: Int? = nil, splitMeters: Int? = nil, splitSeconds: Int? = nil, splitCalories: Int? = nil) -> Data {
         var payload = Data()
         
         func appendUInt32(_ value: UInt32) {
@@ -537,7 +545,13 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         
         // 1. CSAFE_PM_SET_WORKOUTTYPE
         payload.append(contentsOf: [0x01, 0x01])
-        payload.append(distanceMeters != nil ? 0x03 : 0x05)
+        if distanceMeters != nil {
+            payload.append(0x03) // FIXEDDIST_SPLITS
+        } else if timeSeconds != nil {
+            payload.append(0x05) // FIXEDTIME_SPLITS
+        } else {
+            payload.append(0x0A) // FIXEDCALORIE_SPLITS
+        }
         
         // 2. CSAFE_PM_SET_WORKOUTDURATION
         payload.append(contentsOf: [0x03, 0x05])
@@ -547,6 +561,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         } else if let time = timeSeconds {
             payload.append(0x00)
             appendUInt32(UInt32(time * 100))
+        } else if let cals = calories {
+            payload.append(0x40)
+            appendUInt32(UInt32(cals))
         }
         
         // 3. CSAFE_PM_SET_SPLITDURATION
@@ -561,6 +578,11 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             let minSplit = max(20, Int(ceil(Double(tm) / 50.0)))
             let splitValue = splitSeconds.map { min(max($0, minSplit), tm) } ?? tm
             appendUInt32(UInt32(splitValue * 100))
+        } else if let cals = calories {
+            payload.append(0x40)
+            let minSplit = max(5, Int(ceil(Double(cals) / 50.0)))
+            let splitValue = splitCalories.map { min(max($0, minSplit), cals) } ?? cals
+            appendUInt32(UInt32(splitValue))
         }
         
         // 4. CSAFE_PM_CONFIGURE_WORKOUT
@@ -578,9 +600,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         return fullCommand
     }
     
-    /// 不変インターバル（固定距離/時間）ワークアウトコマンドを生成
+    /// 不変インターバル（固定距離/時間/カロリー）ワークアウトコマンドを生成
     /// 公式ドキュメント (P91/92) に準拠したバイナリレベル・シリアライズ実装
-    private func generateIntervalWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, restSeconds: Int) -> Data {
+    private func generateIntervalWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, calories: Int? = nil, restSeconds: Int) -> Data {
         var payload = Data()
         
         func appendUInt32(_ value: UInt32) {
@@ -589,9 +611,15 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         }
         
         // 1. CSAFE_PM_SET_WORKOUTTYPE
-        // 公式仕様: 0x06 = Fixed Time Interval, 0x07 = Fixed Distance Interval
+        // 公式仕様: 0x06 = Fixed Time Interval, 0x07 = Fixed Distance Interval, 0x0C = Fixed Calorie Interval
         payload.append(contentsOf: [0x01, 0x01])
-        payload.append(distanceMeters != nil ? 0x07 : 0x06)
+        if distanceMeters != nil {
+            payload.append(0x07)
+        } else if timeSeconds != nil {
+            payload.append(0x06)
+        } else {
+            payload.append(0x0C)
+        }
         
         // 2. CSAFE_PM_SET_WORKOUTDURATION
         // Byte 0x03, length=0x05: [Type(1)] + [Value(4, Big Endian)]
@@ -602,11 +630,15 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         } else if let time = timeSeconds {
             payload.append(0x00) // Time (0.01s units)
             appendUInt32(UInt32(time * 100))
+        } else if let cals = calories {
+            payload.append(0x40) // Calories
+            appendUInt32(UInt32(cals))
         }
+        
+        // 3. CSAFE_PM_SET_SPLITDURATION (Calorie Interval does not use Split Duration)
         
         // 3. CSAFE_PM_SET_RESTDURATION
         // 公式仕様: 0x04, length=0x02, [RestHigh][RestLow] (UInt16, Big Endian, 単位:秒)
-        // 誤: 0x04 0x03 0x00 XX XX (長づ3バイト)は不正。正しくは length=2
         payload.append(0x04)
         payload.append(0x02)
         let rSec = UInt16(min(restSeconds, 595)) // Max 9:55
@@ -620,7 +652,6 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         payload.append(contentsOf: [0x13, 0x02, 0x01, 0x01])
         
         // Wrap in CSAFE_SETPMCFG_CMD (0x76): 0x76 [len] [payload]
-        // len = payload実サイズ（可変）→ 固定値不使用、必ず自動計算
         var fullCommand = Data()
         fullCommand.append(0x76)
         fullCommand.append(UInt8(payload.count))
@@ -647,11 +678,19 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         block.append(contentsOf: [0x18, 0x01, UInt8(index)])
         
         // CSAFE_PM_SET_INTERVALTYPE (0x17)
-        // 仕様書P94: INTERVALTYPE_DIST = 0x01, INTERVALTYPE_TIME = 0x00
+        // 仕様書P94: DIST = 0x01, TIME = 0x00, CALORIE = 0x06
         block.append(contentsOf: [0x17, 0x01])
-        block.append(entry.distanceMeters != nil ? 0x01 : 0x00) // 0x01=DIST, 0x00=TIME
+        if entry.distanceMeters != nil {
+            block.append(0x01)
+        } else if entry.timeSeconds != nil {
+            block.append(0x00)
+        } else if entry.calories != nil {
+            block.append(0x06)
+        } else {
+            block.append(0x00)
+        }
         
-        // CSAFE_PM_SET_WORKOUTDURATION (0x03): 距離 or 時間
+        // CSAFE_PM_SET_WORKOUTDURATION (0x03): 距離 or 時間 or カロリー
         block.append(contentsOf: [0x03, 0x05])
         if let dist = entry.distanceMeters {
             block.append(0x80) // 距離識別子
@@ -659,6 +698,12 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         } else if let time = entry.timeSeconds {
             block.append(0x00) // 時間識別子
             appendUInt32(UInt32(time * 100), to: &block) // 0.01s単位
+        } else if let cals = entry.calories {
+            block.append(0x40) // カロリー識別子
+            appendUInt32(UInt32(cals), to: &block)
+        } else {
+            block.append(0x00)
+            appendUInt32(0, to: &block)
         }
         
         // CSAFE_PM_SET_RESTDURATION (0x04): 休憩時間 (UInt16, 秒)
@@ -797,12 +842,12 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         }
         if !isReady { handleV4Failure(deviceID: deviceID, phase: "POLLING"); return }
         
-        // PHASE 3: CONFIG (F1 frames)
+        // PHASE 3: CONFIG (F0/Extended frames)
         updatePerDeviceStatus(deviceID, to: .configuring)
         let configPayloads = generateVariableIntervalPayloads(intervals: intervals)
         
         for (index, payload) in configPayloads.enumerated() {
-            guard let configFrame = buildCSAFEFrame(payload: payload, startFlag: 0xF1) else {
+            guard let configFrame = buildCSAFEFrame(payload: payload, startFlag: 0xF0) else {
                 handleV4Failure(deviceID: deviceID, phase: "CONFIG_GEN_\(index)"); return
             }
             let configCmd = CSAFECommandQueue.Command(peripheral: peripheral, characteristic: char, frame: configFrame, label: "CONFIG_VAR_\(index)")
@@ -892,6 +937,42 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 self.isSending = false
                 self.isSaved = false
                 print("PM5ManagerVM: ✅ 時間ワークアウト \(limitedSeconds)s (Split: \(limitedSplit)s) を全PM5に送信完了")
+            }
+        }
+    }
+    
+    /// カロリーワークアウトを全PM5に送信（Phase 2: CONFIG）
+    private func setWorkoutCalories(calories: Int, split: Int? = nil) {
+        let limitedCalories = min(max(calories, 5), 65535)
+        let minSplit = max(5, Int(ceil(Double(limitedCalories) / 50.0)))
+        let limitedSplit = split != nil ? min(max(split!, minSplit), limitedCalories) : min(max(limitedCalories / 5, minSplit), limitedCalories)
+        
+        isSending = true
+        workoutCalories = limitedCalories
+        workoutSplitCalories = limitedSplit
+        workoutDistance = nil
+        workoutSplitDistance = nil
+        workoutTime = nil
+        workoutSplitTime = nil
+        workoutStartTime = Date()
+        initializeAllMetrics()
+        
+        guard let workoutFrame = buildCSAFEFrame(payload: generateWorkoutCommand(calories: limitedCalories, splitCalories: limitedSplit)) else {
+            print("PM5ManagerVM: ⛔ Workout frame construction failed")
+            isSending = false
+            return
+        }
+        
+        enqueueToAllDevices(
+            frame: workoutFrame,
+            label: "WORKOUT_CALS_\(limitedCalories)cal",
+            perDeviceStatus: .configuring
+        ) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.isSending = false
+                self.isSaved = false
+                print("PM5ManagerVM: ✅ カロリーワークアウト \(limitedCalories)cal (Split: \(limitedSplit)cal) を全PM5に送信完了")
             }
         }
     }
@@ -1013,7 +1094,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     }
     
     /// v4 ワークフローを使用してワークアウトを開始
-    func resetAndStartWorkout(distance: Int? = nil, time: Int? = nil, split: Int? = nil) {
+    func resetAndStartWorkout(distance: Int? = nil, time: Int? = nil, calories: Int? = nil, split: Int? = nil) {
         print("PM5ManagerVM: Resetting and starting v4 workflow (Immediate transition to dashboard)")
         
         // 1. 即座にダッシュボードへ遷移 (Optimistic UI)
@@ -1023,6 +1104,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         workoutSplitDistance = distance != nil ? split : nil
         workoutTime = time
         workoutSplitTime = time != nil ? split : nil
+        workoutCalories = calories
+        workoutSplitCalories = calories != nil ? split : nil
         workoutRestTime = nil
         workoutStartTime = Date()
         initializeAllMetrics()
@@ -1032,7 +1115,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             await withTaskGroup(of: Void.self) { group in
                 for device in connectedDevices {
                     group.addTask {
-                        await self.runV4Workflow(for: device, workout: (distance: distance, time: time, split: split, rest: nil))
+                        await self.runV4Workflow(for: device, workout: (distance: distance, time: time, calories: calories, split: split, rest: nil))
                     }
                 }
             }
@@ -1047,16 +1130,18 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     }
     
     /// 不変インターバルワークアウトを開始
-    func resetAndStartIntervalWorkout(distance: Int? = nil, time: Int? = nil, rest: Int) {
+    func resetAndStartIntervalWorkout(distance: Int? = nil, time: Int? = nil, calories: Int? = nil, rest: Int) {
         print("PM5ManagerVM: Resetting and starting Interval workflow")
         
         isSending = true
         showDashboard = true
         workoutDistance = distance
         workoutTime = time
+        workoutCalories = calories
         workoutRestTime = rest
         workoutSplitDistance = nil
         workoutSplitTime = nil
+        workoutSplitCalories = nil
         workoutStartTime = Date()
         initializeAllMetrics()
         
@@ -1064,7 +1149,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             await withTaskGroup(of: Void.self) { group in
                 for device in connectedDevices {
                     group.addTask {
-                        await self.runV4Workflow(for: device, workout: (distance: distance, time: time, split: nil, rest: rest))
+                        await self.runV4Workflow(for: device, workout: (distance: distance, time: time, calories: calories, split: nil, rest: rest))
                     }
                 }
             }
@@ -1084,7 +1169,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     }
     
     /// 特定のデバイスに対して v4 ワークフロー (TERMINATE -> POLL -> CONFIG) を実行
-    private func runV4Workflow(for peripheral: CBPeripheral, workout: (distance: Int?, time: Int?, split: Int?, rest: Int?)) async {
+    private func runV4Workflow(for peripheral: CBPeripheral, workout: (distance: Int?, time: Int?, calories: Int?, split: Int?, rest: Int?)) async {
         let deviceID = peripheral.identifier
         guard let char = controlCharacteristics[deviceID],
               let metrics = deviceMetrics[deviceID] else { return }
@@ -1176,18 +1261,18 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         
         if let rest = workout.rest {
             // Interval Workout
-            configPayload = generateIntervalWorkoutCommand(distanceMeters: workout.distance, timeSeconds: workout.time, restSeconds: rest)
+            configPayload = generateIntervalWorkoutCommand(distanceMeters: workout.distance, timeSeconds: workout.time, calories: workout.calories, restSeconds: rest)
         } else if let dist = workout.distance {
             configPayload = generateWorkoutCommand(distanceMeters: dist, splitMeters: workout.split)
         } else if let time = workout.time {
             configPayload = generateWorkoutCommand(timeSeconds: time, splitSeconds: workout.split)
+        } else if let cals = workout.calories {
+            configPayload = generateWorkoutCommand(calories: cals, splitCalories: workout.split)
         } else {
             return
         }
         
-        
-        let startFlag: UInt8 = workout.rest != nil ? 0xF1 : 0xF0
-        guard let configFrame = buildCSAFEFrame(payload: configPayload, startFlag: startFlag) else {
+        guard let configFrame = buildCSAFEFrame(payload: configPayload, startFlag: 0xF0) else {
             handleV4Failure(deviceID: deviceID, phase: "CONFIG_GEN")
             return
         }
@@ -1256,7 +1341,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 let recordSpeed: Double = (metrics.distance / max(metrics.elapsedTime, 1)) * 3.6
                 let recordPace: TimeInterval = metrics.pace500m
                 let recordPower: Int? = metrics.power > 0 ? metrics.power : nil
-                let recordType: String = workoutDistance != nil ? "distance" : (workoutTime != nil ? "time" : "justRow")
+                let recordType: String = workoutDistance != nil ? "distance" : (workoutTime != nil ? "time" : (workoutCalories != nil ? "calories" : "justRow"))
                 let recordNotes: String = "Indoor Workout (Manager Mode) - \(metrics.name)"
                 let recordTags: [String] = ["ManagerMode", "Indoor"]
                 
@@ -1382,7 +1467,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             }
             if service.uuid == C2_SERVICE_UUID {
                 peripheral.discoverCharacteristics(
-                    [C2_CHAR_GENERAL_STATUS, C2_CHAR_ROWING_STATUS_0x32, C2_CHAR_STROKE_DATA, C2_CHAR_ADDITIONAL_STROKE_DATA_0x36, C2_CHAR_END_OF_WORKOUT, C2_CHAR_ROWING_STATUS_SAMPLE_RATE],
+                    [C2_CHAR_GENERAL_STATUS, C2_CHAR_ROWING_STATUS_0x32, C2_CHAR_STROKE_DATA, C2_CHAR_POWER_DATA, C2_CHAR_ADDITIONAL_STROKE_DATA_0x36, C2_CHAR_END_OF_WORKOUT, C2_CHAR_ROWING_STATUS_SAMPLE_RATE],
                     for: service
                 )
             }
@@ -1405,7 +1490,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 print("PM5ManagerVM: Data Point発見 & Notify購読開始 → \(peripheral.name ?? "Unknown")")
             }
             // データ監視用: Notify購読
-            if [C2_CHAR_GENERAL_STATUS, C2_CHAR_ROWING_STATUS_0x32, C2_CHAR_STROKE_DATA, C2_CHAR_ADDITIONAL_STROKE_DATA_0x36].contains(characteristic.uuid) {
+            if [C2_CHAR_GENERAL_STATUS, C2_CHAR_ROWING_STATUS_0x32, C2_CHAR_STROKE_DATA, C2_CHAR_POWER_DATA, C2_CHAR_ADDITIONAL_STROKE_DATA_0x36].contains(characteristic.uuid) {
                 peripheral.setNotifyValue(true, for: characteristic)
                 print("PM5ManagerVM: Notify購読開始 → \(characteristic.uuid.uuidString.prefix(8)) on \(peripheral.name ?? "Unknown")")
             }
@@ -1441,6 +1526,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             parseManagerRowingStatus0x32(data, for: deviceID)
         } else if characteristic.uuid == C2_CHAR_STROKE_DATA {
             parseManagerStrokeData(data, for: deviceID)
+        } else if characteristic.uuid == C2_CHAR_POWER_DATA {
+            parseManagerPowerData(data, for: deviceID)
         } else if characteristic.uuid == C2_CHAR_DATA_POINT {
             parseManagerDataPoint(data, for: deviceID)
         } else if characteristic.uuid == C2_CHAR_ADDITIONAL_STROKE_DATA_0x36 {
@@ -1548,6 +1635,21 @@ extension PM5ManagerViewModel {
             guard let metrics = self?.deviceMetrics[deviceID] else { return }
             metrics.power = watts
             self?.objectWillChange.send()
+        }
+    }
+    
+    /// Power Data (0x33): カロリーなどをパース
+    private func parseManagerPowerData(_ data: Data, for deviceID: UUID) {
+        // Extra Status 2: avgPower is byte 4-5, totalCalories is byte 6-7
+        guard data.count >= 8 else { return }
+        
+        let avgPowerRaw = UInt16(data[4]) | (UInt16(data[5]) << 8)
+        let totalCalRaw = UInt16(data[6]) | (UInt16(data[7]) << 8)
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let metrics = self.deviceMetrics[deviceID] else { return }
+            metrics.calories = Double(totalCalRaw)
+            self.objectWillChange.send()
         }
     }
     

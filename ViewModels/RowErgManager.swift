@@ -60,8 +60,10 @@ class RowErgManager: NSObject, ObservableObject {
     // Target Values (Workout Setup)
     @Published var targetDistance: Double? = nil
     @Published var targetTime: Double? = nil
+    @Published var targetCalories: Double? = nil
     @Published var targetSplitDistance: Int? = nil
     @Published var targetSplitTime: Int? = nil
+    @Published var targetSplitCalories: Int? = nil
     @Published var showingWorkoutExecution: Bool = false
     
     // High-frequency workout data logging
@@ -74,6 +76,8 @@ class RowErgManager: NSObject, ObservableObject {
             return distance >= targetDist
         } else if let targetT = targetTime {
             return elapsedTime >= targetT
+        } else if let targetC = targetCalories {
+            return totalCalories >= targetC
         }
         return false
     }
@@ -721,8 +725,8 @@ class RowErgManager: NSObject, ObservableObject {
     
     // MARK: - CSAFE Workout Commands
     
-    /// 距離（m）または時間（秒）を指定してワークアウトコマンドを生成する
-    private func generateWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, splitMeters: Int? = nil, splitSeconds: Int? = nil) -> Data {
+    /// 距離（m）、時間（秒）、またはカロリー（cal）を指定してワークアウトコマンドを生成する
+    private func generateWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, calories: Int? = nil, splitMeters: Int? = nil, splitSeconds: Int? = nil, splitCalories: Int? = nil) -> Data {
         var payload = Data()
         
         // Helper: Append a 32-bit Big-Endian value
@@ -732,9 +736,15 @@ class RowErgManager: NSObject, ObservableObject {
         }
 
         // 1. CSAFE_PM_SET_WORKOUTTYPE (0x01)
-        // User requested: Distance -> 0x03 (FIXEDDIST_SPLITS), Time -> 0x05 (FIXEDTIME_SPLITS)
+        // User requested: Distance -> 0x03 (FIXEDDIST_SPLITS), Time -> 0x05 (FIXEDTIME_SPLITS), Calories -> 0x0A (FIXEDCALORIE_SPLITS)
         payload.append(contentsOf: [0x01, 0x01])
-        payload.append(distanceMeters != nil ? 0x03 : 0x05)
+        if distanceMeters != nil {
+            payload.append(0x03)
+        } else if timeSeconds != nil {
+            payload.append(0x05)
+        } else {
+            payload.append(0x0A)
+        }
         
         // 2. CSAFE_PM_SET_WORKOUTDURATION (0x03)
         // [Cmd, Len(5), Type, B0, B1, B2, B3]
@@ -745,11 +755,13 @@ class RowErgManager: NSObject, ObservableObject {
         } else if let time = timeSeconds {
             payload.append(0x00) // Duration Type: Time (Strict PM5 Positive Example)
             appendUInt32(UInt32(time * 100)) // centi-seconds
+        } else if let cals = calories {
+            payload.append(0x40) // Duration Type: Calories
+            appendUInt32(UInt32(cals))
         }
         
         // 3. CSAFE_PM_SET_SPLITDURATION (0x05)
         // [Cmd, Len(5), Type, B0, B1, B2, B3]
-        // PM5 ではスプリット設定が必須（または明示的な設定が必要）。
         payload.append(contentsOf: [0x05, 0x05])
         if let dm = distanceMeters {
             payload.append(0x80) // Distance Split Type
@@ -763,6 +775,11 @@ class RowErgManager: NSObject, ObservableObject {
             let minSplit = max(20, Int(ceil(Double(tm) / 50.0)))
             let sVal = splitSeconds.map { min(max($0, minSplit), tm) } ?? tm
             appendUInt32(UInt32(sVal * 100)) // centi-seconds
+        } else if let cals = calories {
+            payload.append(0x40) // Calories Split Type
+            let minSplit = max(5, Int(ceil(Double(cals) / 50.0)))
+            let sVal = splitCalories.map { min(max($0, minSplit), cals) } ?? cals
+            appendUInt32(UInt32(sVal))
         }
         
         // 4. CSAFE_PM_CONFIGURE_WORKOUT (0x14)
@@ -796,6 +813,8 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetSplitDistance = limitedSplit
             self.targetTime = nil
             self.targetSplitTime = nil
+            self.targetCalories = nil
+            self.targetSplitCalories = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = [] // 新しいワークアウト開始時に前回のデータを消去
             self.workoutDataPoints = []
@@ -826,6 +845,8 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetSplitTime = limitedSplit
             self.targetDistance = nil
             self.targetSplitDistance = nil
+            self.targetCalories = nil
+            self.targetSplitCalories = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = [] // 新しいワークアウト開始時に前回のデータを消去
             self.workoutDataPoints = []
@@ -848,10 +869,39 @@ class RowErgManager: NSObject, ObservableObject {
     func setWorkoutTime(minutes: Int, splitMinutes: Int? = nil) {
         setWorkoutTime(seconds: minutes * 60, split: splitMinutes.map { $0 * 60 })
     }
+
+    func setWorkoutCalories(calories: Int, split: Int? = nil) {
+        let limitedCalories = min(max(calories, 5), 65535)
+        let minSplit = max(5, Int(ceil(Double(limitedCalories) / 50.0)))
+        let limitedSplit = split != nil ? min(max(split!, minSplit), limitedCalories) : min(max(limitedCalories / 5, minSplit), limitedCalories)
+        print("RowErgManager: Setting workout calories to \(limitedCalories)cal (Split: \(limitedSplit)cal)")
+        
+        DispatchQueue.main.async {
+            self.targetCalories = Double(limitedCalories)
+            self.targetSplitCalories = limitedSplit
+            self.targetDistance = nil
+            self.targetSplitDistance = nil
+            self.targetTime = nil
+            self.targetSplitTime = nil
+            self.showingWorkoutExecution = true
+            self.completedForceCurve = []
+            self.workoutDataPoints = []
+        }
+        
+        startDataRecordingTimer()
+        sendTerminateWorkout()
+        
+        let cmd = generateWorkoutCommand(calories: limitedCalories, splitCalories: limitedSplit)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.sendCSAFESingle(payload: cmd) {
+                print("RowErgManager: Workout calories command sent.")
+            }
+        }
+    }
     
     // MARK: - Interval Methods
 
-    private func generateIntervalWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, restSeconds: Int) -> Data {
+    private func generateIntervalWorkoutCommand(distanceMeters: Int? = nil, timeSeconds: Int? = nil, calories: Int? = nil, restSeconds: Int) -> Data {
         var payload = Data()
         func appendUInt32(_ value: UInt32) {
             let val = value.bigEndian
@@ -859,9 +909,15 @@ class RowErgManager: NSObject, ObservableObject {
         }
 
         // 1. CSAFE_PM_SET_WORKOUTTYPE (0x01)
-        // Distance Interval -> 0x07, Time Interval -> 0x06
+        // Distance Interval -> 0x07, Time Interval -> 0x06, Calories Interval -> 0x0C
         payload.append(contentsOf: [0x01, 0x01])
-        payload.append(distanceMeters != nil ? 0x07 : 0x06)
+        if distanceMeters != nil {
+            payload.append(0x07)
+        } else if timeSeconds != nil {
+            payload.append(0x06)
+        } else {
+            payload.append(0x0C)
+        }
         
         // 2. CSAFE_PM_SET_WORKOUTDURATION (0x03)
         payload.append(contentsOf: [0x03, 0x05])
@@ -871,15 +927,18 @@ class RowErgManager: NSObject, ObservableObject {
         } else if let time = timeSeconds {
             payload.append(0x00)
             appendUInt32(UInt32(time * 100))
+        } else if let cals = calories {
+            payload.append(0x40)
+            appendUInt32(UInt32(cals))
         }
         
         // 3. CSAFE_PM_SET_SPLITDURATION (0x05)
-        payload.append(contentsOf: [0x05, 0x05])
+        // Calories Interval does not use Split Duration per spec
         if let dist = distanceMeters {
-            payload.append(0x80)
+            payload.append(contentsOf: [0x05, 0x05, 0x80])
             appendUInt32(UInt32(dist))
         } else if let time = timeSeconds {
-            payload.append(0x00)
+            payload.append(contentsOf: [0x05, 0x05, 0x00])
             appendUInt32(UInt32(time * 100))
         }
         
@@ -911,6 +970,7 @@ class RowErgManager: NSObject, ObservableObject {
         DispatchQueue.main.async {
             self.targetDistance = Double(limitedMeters)
             self.targetTime = nil
+            self.targetCalories = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = []
             self.workoutDataPoints = []
@@ -932,6 +992,7 @@ class RowErgManager: NSObject, ObservableObject {
         DispatchQueue.main.async {
             self.targetTime = Double(limitedSeconds)
             self.targetDistance = nil
+            self.targetCalories = nil
             self.showingWorkoutExecution = true
             self.completedForceCurve = []
             self.workoutDataPoints = []
@@ -941,6 +1002,28 @@ class RowErgManager: NSObject, ObservableObject {
         sendTerminateWorkout()
         
         let cmd = generateIntervalWorkoutCommand(timeSeconds: limitedSeconds, restSeconds: limitedRest)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.sendCSAFESingle(payload: cmd)
+        }
+    }
+
+    func setFixedIntervalCalories(calories: Int, rest: Int) {
+        let limitedCalories = min(max(calories, 5), 65535)
+        let limitedRest = min(max(rest, 0), 595)
+        
+        DispatchQueue.main.async {
+            self.targetCalories = Double(limitedCalories)
+            self.targetDistance = nil
+            self.targetTime = nil
+            self.showingWorkoutExecution = true
+            self.completedForceCurve = []
+            self.workoutDataPoints = []
+        }
+        
+        startDataRecordingTimer()
+        sendTerminateWorkout()
+        
+        let cmd = generateIntervalWorkoutCommand(calories: limitedCalories, restSeconds: limitedRest)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.sendCSAFESingle(payload: cmd)
         }
@@ -956,7 +1039,15 @@ class RowErgManager: NSObject, ObservableObject {
         
         block.append(contentsOf: [0x18, 0x01, UInt8(index)])
         block.append(contentsOf: [0x17, 0x01])
-        block.append(entry.distanceMeters != nil ? 0x01 : 0x00)
+        if entry.distanceMeters != nil {
+            block.append(0x01) // Distance
+        } else if entry.timeSeconds != nil {
+            block.append(0x00) // Time
+        } else if entry.calories != nil {
+            block.append(0x06) // Calorie
+        } else {
+            block.append(0x00)
+        }
         
         block.append(contentsOf: [0x03, 0x05])
         if let dist = entry.distanceMeters {
@@ -965,6 +1056,9 @@ class RowErgManager: NSObject, ObservableObject {
         } else if let time = entry.timeSeconds {
             block.append(0x00)
             appendUInt32(UInt32(time * 100))
+        } else if let cals = entry.calories {
+            block.append(0x40)
+            appendUInt32(UInt32(cals))
         }
         
         block.append(0x04)
@@ -1033,10 +1127,10 @@ class RowErgManager: NSObject, ObservableObject {
     }
 
     /// ワークアウトを保存/破棄後に同じ設定で再開する
-    func resetAndStartWorkout(distance: Double?, time: Double?, split: Int? = nil) {
+    func resetAndStartWorkout(distance: Double?, time: Double?, calories: Double?, split: Int? = nil) {
         print("RowErgManager: Resetting and queuing new workout with 1s delay")
         
-        // リセット送信し、数値をゼロに戻す (targetDistance/Timeは一旦nilになる)
+        // リセット送信し、数値をゼロに戻す (targetDistance/Time/Caloriesは一旦nilになる)
         resetWorkout()
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
@@ -1045,6 +1139,8 @@ class RowErgManager: NSObject, ObservableObject {
                 self.setWorkoutDistance(meters: Int(dist), split: split)
             } else if let t = time {
                 self.setWorkoutTime(seconds: Int(t), split: split)
+            } else if let c = calories {
+                self.setWorkoutCalories(calories: Int(c), split: split)
             }
         }
     }
@@ -1057,6 +1153,8 @@ class RowErgManager: NSObject, ObservableObject {
         DispatchQueue.main.async {
             self.targetDistance = nil
             self.targetTime = nil
+            self.targetCalories = nil
+            self.targetSplitCalories = nil
             self.distance = 0
             self.elapsedTime = 0
             self.strokeRate = 0

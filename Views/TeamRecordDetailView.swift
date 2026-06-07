@@ -39,7 +39,7 @@ struct TeamRecordDetailView: View {
                 .progressViewStyle(CircularProgressViewStyle(tint: Theme.accent))
                 .scaleEffect(1.5)
 
-            Text("記録を取得中..")
+            Text("記録を取得中..".localized)
                 .font(.headline)
                 .foregroundColor(.white)
 
@@ -83,11 +83,11 @@ struct TeamRecordDetailView: View {
                 .font(.system(size: 40))
                 .foregroundColor(.orange)
 
-            Text("記録の取得に失敗しました")
+            Text("記録の取得に失敗しました".localized)
                 .font(.headline)
                 .foregroundColor(.white)
 
-            Text("ネットワーク接続を確認して\nもう一度お試しください")
+            Text("ネットワーク接続を確認して\nもう一度お試しください".localized)
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
@@ -95,7 +95,7 @@ struct TeamRecordDetailView: View {
             Button(action: { loadFullRecord() }) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.clockwise")
-                    Text("再試行")
+                    Text("再試行".localized)
                 }
                 .font(.subheadline)
                 .fontWeight(.semibold)
@@ -108,7 +108,7 @@ struct TeamRecordDetailView: View {
 
             // フォールバック：サマリーデータだけ表示
             VStack(alignment: .leading, spacing: 12) {
-                Text("サマリー情報")
+                Text("サマリー情報".localized)
                     .font(.caption)
                     .fontWeight(.bold)
                     .foregroundColor(.white.opacity(0.5))
@@ -140,7 +140,7 @@ struct TeamRecordDetailView: View {
                     } label: {
                         HStack {
                             Image(systemName: "chart.xyaxis.line")
-                            Text("ワークアウト詳細グラフ")
+                            Text("ワークアウト詳細グラフ".localized)
                             Spacer()
                             Image(systemName: "chevron.right")
                         }
@@ -201,7 +201,7 @@ struct TeamRecordDetailView: View {
 
     private func metricsSection(_ record: RowingRecord) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("パフォーマンス", systemImage: "figure.outdoor.rowing")
+            Label("パフォーマンス".localized, systemImage: "figure.outdoor.rowing")
                 .font(Theme.subHeaderFont())
                 .foregroundColor(Theme.textMain)
 
@@ -223,7 +223,7 @@ struct TeamRecordDetailView: View {
 
     private func tagsSection(_ tags: [String]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("タグ", systemImage: "tag.fill")
+            Label("タグ".localized, systemImage: "tag.fill")
                 .font(Theme.subHeaderFont())
                 .foregroundColor(Theme.textMain)
 
@@ -247,7 +247,7 @@ struct TeamRecordDetailView: View {
 
     private func notesSection(_ notes: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("メモ", systemImage: "note.text")
+            Label("メモ".localized, systemImage: "note.text")
                 .font(Theme.subHeaderFont())
                 .foregroundColor(Theme.textMain)
 
@@ -265,14 +265,14 @@ struct TeamRecordDetailView: View {
     private var summaryFallback: some View {
         VStack(spacing: 8) {
             HStack {
-                Text("距離:")
+                Text("距離:".localized)
                     .foregroundColor(.white.opacity(0.5))
                 Spacer()
                 Text(summary.formattedDistance)
                     .foregroundColor(.white)
             }
             HStack {
-                Text("時間:")
+                Text("時間:".localized)
                     .foregroundColor(.white.opacity(0.5))
                 Spacer()
                 Text(summary.formattedDuration)
@@ -286,7 +286,7 @@ struct TeamRecordDetailView: View {
                     .foregroundColor(.white)
             }
             HStack {
-                Text("ペース:")
+                Text("ペース:".localized)
                     .foregroundColor(.white.opacity(0.5))
                 Spacer()
                 Text(summary.formattedPace)

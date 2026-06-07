@@ -71,13 +71,13 @@ struct RowPilotApp: App {
                 handleIncomingFile(url: url)
             }
             .alert("ワークアウトのインポート", isPresented: $showImportConfirmation) {
-                Button("インポート") {
+                Button("インポート".localized) {
                     if let data = pendingImportData {
                         performImport(data)
                     }
                     pendingImportData = nil
                 }
-                Button("キャンセル", role: .cancel) {
+                Button("キャンセル".localized, role: .cancel) {
                     pendingImportData = nil
                 }
             } message: {
@@ -86,7 +86,7 @@ struct RowPilotApp: App {
                     let distStr = data.record.formattedDistance
                     Text("受信したワークアウトデータをインポートしますか？\n日付: \(dateStr)\n距離: \(distStr)")
                 } else {
-                    Text("受信したワークアウトデータをインポートしますか？")
+                    Text("受信したワークアウトデータをインポートしますか？".localized)
                 }
             }
         }

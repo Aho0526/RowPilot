@@ -232,11 +232,11 @@ class AppViewModel: ObservableObject {
         
         let message = """
         RowPilot SOS
-        \("User Name".localized): \(userName)
-        \("Location Info".localized): \(locationStr)
-        \("Time".localized): \(timeStr)
-        \("Battery".localized): \(batteryStr)
-        \("No response. Please check.".localized)
+        \("User Name"): \(userName)
+        \("Location Info"): \(locationStr)
+        \("Time"): \(timeStr)
+        \("Battery"): \(batteryStr)
+        \("No response. Please check.")
         """
         
         if !settings.sosContactPhone.isEmpty {

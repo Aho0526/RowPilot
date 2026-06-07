@@ -588,7 +588,7 @@ struct ZoomSettingsView: View {
             HStack {
                 Image(systemName: "ruler")
                     .foregroundColor(Color(hex: "4FC3F7"))
-                Text("レースズーム設定")
+                Text("レースズーム設定".localized)
                     .font(.system(size: 16, weight: .bold))
                 Spacer()
             }
@@ -598,7 +598,7 @@ struct ZoomSettingsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: laneLockEnabled ? "lock.fill" : "lock.open.fill")
                         .foregroundColor(laneLockEnabled ? Color(hex: "4FC3F7") : .secondary)
-                    Text("レーン固定")
+                    Text("レーン固定".localized)
                         .font(.system(size: 14, weight: .medium))
                 }
             }
@@ -623,7 +623,7 @@ struct ZoomSettingsView: View {
                 // 後方距離
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("表示範囲（先頭からの距離）")
+                        Text("表示範囲（先頭からの距離）".localized)
                             .font(.system(size: 13, weight: .medium))
                         Spacer()
                         Text("\(Int(zoomDistanceBehind))m")
@@ -646,7 +646,7 @@ struct ZoomSettingsView: View {
                 // 最大表示人数
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("最大表示人数")
+                        Text("最大表示人数".localized)
                             .font(.system(size: 13, weight: .medium))
                         Spacer()
                         Text("\(zoomMaxBoats)艇")
@@ -659,11 +659,11 @@ struct ZoomSettingsView: View {
                     ), in: 2...10, step: 1)
                         .tint(Color(hex: "4FC3F7"))
                     HStack {
-                        Text("2艇")
+                        Text("2艇".localized)
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("10艇")
+                        Text("10艇".localized)
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                     }
@@ -686,7 +686,7 @@ struct PacemakerSettingsView: View {
             HStack {
                 Image(systemName: "timer")
                     .foregroundColor(Color(hex: "4FC3F7"))
-                Text("ペースメーカー設定")
+                Text("ペースメーカー設定".localized)
                     .font(.system(size: 16, weight: .bold))
                 Spacer()
             }
@@ -705,7 +705,7 @@ struct PacemakerSettingsView: View {
                 Divider()
                 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("ペース入力")
+                    Text("ペース入力".localized)
                         .font(.system(size: 13, weight: .medium))
                     
                     HStack {

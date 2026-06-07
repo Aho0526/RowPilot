@@ -43,7 +43,7 @@ struct TeamMaxManagerView: View {
         }
         // リセット確認
         .alert("招待コードのリセット", isPresented: $showingResetConfirm) {
-            Button("リセット", role: .destructive) {
+            Button("リセット".localized, role: .destructive) {
                 codeManager.resetCode { success, error in
                     alertTitle = success ? "リセット完了" : "エラー"
                     alertMessage = success
@@ -52,16 +52,16 @@ struct TeamMaxManagerView: View {
                     showingAlert = true
                 }
             }
-            Button("キャンセル", role: .cancel) {}
+            Button("キャンセル".localized, role: .cancel) {}
         } message: {
-            Text("招待コードをリセットすると、現在共有中の全メンバーが削除され、共有が停止されます。\nこの操作は取り消せません。\n\n※ リセットは1週間に1回のみ可能です。")
+            Text("招待コードをリセットすると、現在共有中の全メンバーが削除され、共有が停止されます。\nこの操作は取り消せません。\n\n※ リセットは1週間に1回のみ可能です。".localized)
         }
         // 承認確認
         .alert("共有申請の承認", isPresented: Binding(
             get: { showingApproveConfirm != nil },
             set: { if !$0 { showingApproveConfirm = nil } }
         )) {
-            Button("承認する") {
+            Button("承認する".localized) {
                 guard let req = showingApproveConfirm else { return }
                 requestManager.approveRequest(req) { success, error in
                     alertTitle = success ? "承認しました" : "エラー"
@@ -72,7 +72,7 @@ struct TeamMaxManagerView: View {
                 }
                 showingApproveConfirm = nil
             }
-            Button("キャンセル", role: .cancel) { showingApproveConfirm = nil }
+            Button("キャンセル".localized, role: .cancel) { showingApproveConfirm = nil }
         } message: {
             if let req = showingApproveConfirm {
                 Text("「\(req.requestorName)」のManagerプラン共有を承認しますか？\n\n残り共有枠: \(subManager.shareLimit - subManager.sharedMembers.count)名")
@@ -83,12 +83,12 @@ struct TeamMaxManagerView: View {
             get: { showingRejectConfirm != nil },
             set: { if !$0 { showingRejectConfirm = nil } }
         )) {
-            Button("拒否する", role: .destructive) {
+            Button("拒否する".localized, role: .destructive) {
                 guard let req = showingRejectConfirm else { return }
                 requestManager.rejectRequest(req) { _, _ in }
                 showingRejectConfirm = nil
             }
-            Button("キャンセル", role: .cancel) { showingRejectConfirm = nil }
+            Button("キャンセル".localized, role: .cancel) { showingRejectConfirm = nil }
         } message: {
             if let req = showingRejectConfirm {
                 Text("「\(req.requestorName)」からの申請を拒否しますか？")
@@ -157,7 +157,7 @@ struct TeamMaxManagerView: View {
             HStack {
                 Image(systemName: "key.fill")
                     .foregroundColor(Theme.accent)
-                Text("招待コード")
+                Text("招待コード".localized)
                     .font(.headline)
                     .foregroundColor(.white)
             }
@@ -188,7 +188,7 @@ struct TeamMaxManagerView: View {
                 .background(Color.black.opacity(0.3))
                 .cornerRadius(12)
 
-                Text("このコードをチームメンバーに共有してください。\nメンバーが入力すると共有申請が届きます。")
+                Text("このコードをチームメンバーに共有してください。\nメンバーが入力すると共有申請が届きます。".localized)
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.5))
                     .multilineTextAlignment(.leading)
@@ -200,7 +200,7 @@ struct TeamMaxManagerView: View {
                     Text(codeManager.canReset ? "コードをリセット可能" : "リセットまであと\(codeManager.daysUntilReset)日")
                         .font(.caption)
                         .foregroundColor(codeManager.canReset ? Theme.accent : .white.opacity(0.4))
-                    Text("リセット時は全メンバーが削除されます • 1週間に1回のみ")
+                    Text("リセット時は全メンバーが削除されます • 1週間に1回のみ".localized)
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.35))
                 }
@@ -210,7 +210,7 @@ struct TeamMaxManagerView: View {
                 Button(action: { showingResetConfirm = true }) {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.clockwise")
-                        Text("リセット")
+                        Text("リセット".localized)
                     }
                     .font(.caption)
                     .fontWeight(.semibold)
@@ -239,7 +239,7 @@ struct TeamMaxManagerView: View {
                 HStack {
                     Image(systemName: "bell.badge.fill")
                         .foregroundColor(.orange)
-                    Text("承認待ちの申請")
+                    Text("承認待ちの申請".localized)
                         .font(.headline)
                         .foregroundColor(.white)
                     Spacer()
@@ -295,7 +295,7 @@ struct TeamMaxManagerView: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
-                    Text("Managerプランの共有を要求しています")
+                    Text("Managerプランの共有を要求しています".localized)
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.55))
                     Text(request.createdAt.formatted(date: .abbreviated, time: .shortened))
@@ -310,7 +310,7 @@ struct TeamMaxManagerView: View {
                 Button(action: { showingRejectConfirm = request }) {
                     HStack(spacing: 4) {
                         Image(systemName: "xmark")
-                        Text("拒否")
+                        Text("拒否".localized)
                     }
                     .font(.caption)
                     .fontWeight(.semibold)
@@ -324,7 +324,7 @@ struct TeamMaxManagerView: View {
                 Button(action: { showingApproveConfirm = request }) {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark")
-                        Text("はい、許可する")
+                        Text("はい、許可する".localized)
                     }
                     .font(.caption)
                     .fontWeight(.semibold)
@@ -357,10 +357,10 @@ struct TeamMaxManagerView: View {
                     Image(systemName: "person.badge.plus")
                         .font(.system(size: 32))
                         .foregroundColor(.white.opacity(0.2))
-                    Text("共有中のメンバーはいません")
+                    Text("共有中のメンバーはいません".localized)
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.5))
-                    Text("招待コードをメンバーに共有して\n申請を承認するとここに表示されます")
+                    Text("招待コードをメンバーに共有して\n申請を承認するとここに表示されます".localized)
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.35))
                         .multilineTextAlignment(.center)

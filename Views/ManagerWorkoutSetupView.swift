@@ -16,7 +16,7 @@ struct ManagerWorkoutSetupView: View {
                         .font(Theme.headerFont())
                         .foregroundColor(Theme.textMain)
                     
-                    Text("\(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
+                    Text("\(viewModel.connectedDevices.count)\("Bulk Send Message")")
                         .font(.subheadline)
                         .foregroundColor(Theme.textSecondary)
                 }
@@ -35,6 +35,13 @@ struct ManagerWorkoutSetupView: View {
                 } label: {
                     ManagerWorkoutButton(title: "Single Time".localized, icon: "clock.fill",
                                          subtitle: "Min duration is 20s".localized)
+                }
+
+                NavigationLink {
+                    ManagerCaloriesSetupView(viewModel: viewModel)
+                } label: {
+                    ManagerWorkoutButton(title: "Single Calories".localized, icon: "flame.fill",
+                                         subtitle: "5cal 〜 65,535cal")
                 }
                 
                 NavigationLink {
@@ -200,7 +207,7 @@ struct ManagerDistanceSetupView: View {
                     .font(.subheadline)
                     .foregroundColor(Theme.textSecondary)
                 
-                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
+                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message")")
                     .font(.subheadline)
                     .foregroundColor(Theme.accent)
                 
@@ -324,7 +331,7 @@ struct ManagerTimeSetupView: View {
                     .opacity(isAutoSplit ? 0.6 : 1.0)
                 }
                 
-                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
+                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message")")
                     .font(.subheadline)
                     .foregroundColor(Theme.accent)
                 
@@ -369,10 +376,13 @@ struct ManagerTimeSetupView: View {
 // MARK: - Interval Setup
 struct ManagerIntervalSetupView: View {
     @ObservedObject var viewModel: PM5ManagerViewModel
-    @State private var intervalType: Int = 0 // 0: Distance, 1: Time
+    @State private var intervalType: Int = 0 // 0: Distance, 1: Time, 2: Calories
     
     // Distance Interval
     @State private var distance: String = ""
+    
+    // Calories Interval
+    @State private var calories: String = ""
     
     // Time Interval
     @State private var hours: Int = 0
@@ -405,6 +415,7 @@ struct ManagerIntervalSetupView: View {
                     Picker("Interval Type", selection: $intervalType) {
                         Text("Distance".localized).tag(0)
                         Text("Time".localized).tag(1)
+                        Text("Calories".localized).tag(2)
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal)
@@ -423,7 +434,7 @@ struct ManagerIntervalSetupView: View {
                                 .foregroundColor(.white)
                                 .font(.title)
                         }
-                    } else {
+                    } else if intervalType == 1 {
                         // Time Setup
                         VStack(spacing: 8) {
                             Text("Interval Time".localized)
@@ -440,6 +451,20 @@ struct ManagerIntervalSetupView: View {
                             .padding()
                             .background(Color.white.opacity(0.05))
                             .cornerRadius(16)
+                        }
+                    } else {
+                        // Calories Setup
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Interval Calories".localized + " (cal)")
+                                .foregroundColor(Theme.textSecondary)
+                            TextField("5 - 65535", text: $calories)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.plain)
+                                .padding()
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(12)
+                                .foregroundColor(.white)
+                                .font(.title)
                         }
                     }
                     
@@ -460,7 +485,7 @@ struct ManagerIntervalSetupView: View {
                         .cornerRadius(16)
                     }
                     
-                    Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
+                    Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message")")
                         .font(.subheadline)
                         .foregroundColor(Theme.accent)
                     
@@ -469,9 +494,13 @@ struct ManagerIntervalSetupView: View {
                             if let d = Int(distance) {
                                 viewModel.resetAndStartIntervalWorkout(distance: d, rest: totalRestSeconds)
                             }
-                        } else {
+                        } else if intervalType == 1 {
                             if totalSeconds >= 20 {
                                 viewModel.resetAndStartIntervalWorkout(time: totalSeconds, rest: totalRestSeconds)
+                            }
+                        } else {
+                            if let c = Int(calories) {
+                                viewModel.resetAndStartIntervalWorkout(calories: c, rest: totalRestSeconds)
                             }
                         }
                     }) {
@@ -483,7 +512,7 @@ struct ManagerIntervalSetupView: View {
                             .background(Theme.primaryGradient)
                             .cornerRadius(12)
                     }
-                    .disabled(intervalType == 0 ? (Int(distance) == nil) : (totalSeconds < 20))
+                    .disabled(intervalType == 0 ? (Int(distance) == nil) : (intervalType == 1 ? (totalSeconds < 20) : (Int(calories) == nil || Int(calories)! < 5)))
                     
                     Spacer()
                 }
@@ -559,7 +588,7 @@ struct ManagerVariableIntervalSetupView: View {
                 
                 // 送信ボタン
                 VStack(spacing: 8) {
-                    Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
+                    Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message")")
                         .font(.caption)
                         .foregroundColor(Theme.accent)
                     
@@ -618,5 +647,107 @@ struct ManagerVariableIntervalSetupView: View {
     
     private func moveIntervals(from source: IndexSet, to destination: Int) {
         intervals.move(fromOffsets: source, toOffset: destination)
+    }
+}
+
+// MARK: - Manager Calories Setup
+struct ManagerCaloriesSetupView: View {
+    @ObservedObject var viewModel: PM5ManagerViewModel
+    @State private var calories: String = ""
+    @State private var splitCalories: String = ""
+    @State private var navigateToDashboard: Bool = false
+    
+    private var isSendDisabled: Bool {
+        guard let c = Int(calories), c >= 5 && c <= 65535 else { return true }
+        if let s = Int(splitCalories) {
+            let minSplit = max(5, Int(ceil(Double(c) / 50.0)))
+            if s < minSplit || s > c {
+                return true
+            }
+        } else {
+            return true
+        }
+        return false
+    }
+    
+    var body: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            VStack(spacing: 24) {
+                Text("Single Calories".localized)
+                    .font(Theme.headerFont())
+                    .foregroundColor(Theme.textMain)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Calories".localized + " (cal)")
+                        .foregroundColor(Theme.textSecondary)
+                    TextField("5 - 65535", text: $calories)
+                        .keyboardType(.numberPad)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(12)
+                        .foregroundColor(.white)
+                        .font(.title)
+                        .onChange(of: calories) { _, newValue in
+                            if let c = Int(newValue) {
+                                let autoSplit = c / 5
+                                splitCalories = "\(max(autoSplit, 5))"
+                            }
+                        }
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Split Calories".localized + " (cal)")
+                        .foregroundColor(Theme.textSecondary)
+                    TextField("Min 5 cal", text: $splitCalories)
+                        .keyboardType(.numberPad)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(12)
+                        .foregroundColor(.white)
+                        .font(.title2)
+                }
+                
+                Text("Calories Range".localized)
+                    .font(.subheadline)
+                    .foregroundColor(Theme.textSecondary)
+                
+                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message")")
+                    .font(.subheadline)
+                    .foregroundColor(Theme.accent)
+                
+                Button(action: {
+                    if let c = Int(calories), let s = Int(splitCalories) {
+                        let minSplit = max(5, Int(ceil(Double(c) / 50.0)))
+                        let finalSplit = min(max(s, minSplit), c)
+                        viewModel.resetAndStartWorkout(calories: c, split: finalSplit)
+                    }
+                }) {
+                    Text("Send to all PM5s".localized)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Theme.primaryGradient)
+                        .cornerRadius(12)
+                }
+                .disabled(isSendDisabled)
+                
+                Spacer()
+            }
+            .padding()
+        }
+        .navigationTitle("Calories Setup".localized)
+        .navigationDestination(isPresented: $navigateToDashboard) {
+            ManagerWorkoutDashboardView(viewModel: viewModel)
+        }
+        .onChange(of: viewModel.showDashboard) { _, newValue in
+            if newValue {
+                navigateToDashboard = true
+                viewModel.showDashboard = false
+            }
+        }
     }
 }

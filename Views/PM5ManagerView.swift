@@ -107,7 +107,7 @@ struct PM5ManagerView: View {
                     }
                     
                     // MARK: - Connected Devices
-                    PracticeSection(title: "\("Connected PM5".localized) (\(viewModel.connectedDevices.count)\("Devices".localized))", icon: "checkmark.circle.fill") {
+                    PracticeSection(title: "\("Connected PM5") (\(viewModel.connectedDevices.count)\("Devices"))", icon: "checkmark.circle.fill") {
                         if viewModel.connectedDevices.isEmpty {
                             HStack {
                                 Image(systemName: "info.circle")

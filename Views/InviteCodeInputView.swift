@@ -100,7 +100,7 @@ struct InviteCodeInputView: View {
 
                         // コード入力フィールド
                         VStack(spacing: 16) {
-                            Text("招待コード")
+                            Text("招待コード".localized)
                                 .font(.caption)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white.opacity(0.5))
@@ -120,7 +120,7 @@ struct InviteCodeInputView: View {
                                 codeTextField(index: 1, placeholder: "XXXX")
                             }
 
-                            Text("Team / MAXユーザーから共有された8文字のコード")
+                            Text("Team / MAXユーザーから共有された8文字のコード".localized)
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.4))
                         }

@@ -84,6 +84,7 @@ struct ManagerWorkoutDashboardView: View {
                                             displayName: viewModel.displayName(for: device),
                                             targetDistance: viewModel.workoutDistance,
                                             targetTime: viewModel.workoutTime,
+                                            targetCalories: viewModel.workoutCalories,
                                             isDisconnected: viewModel.disconnectedDeviceIDs.contains(device.identifier)
                                         )
                                     } else {
@@ -93,6 +94,7 @@ struct ManagerWorkoutDashboardView: View {
                                             displayName: viewModel.displayName(for: device),
                                             targetDistance: viewModel.workoutDistance,
                                             targetTime: viewModel.workoutTime,
+                                            targetCalories: viewModel.workoutCalories,
                                             isDisconnected: viewModel.disconnectedDeviceIDs.contains(device.identifier)
                                         )
                                     }
@@ -119,7 +121,7 @@ struct ManagerWorkoutDashboardView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button(action: { showZoomSettings = true }) {
-                            Label("レースズーム", systemImage: "ruler")
+                            Label("レースズーム".localized, systemImage: "ruler")
                         }
                         Button(action: {
                             if isLocked {
@@ -129,9 +131,9 @@ struct ManagerWorkoutDashboardView: View {
                             }
                         }) {
                             if isLocked {
-                                Label("もう一度 (ロック中)", systemImage: "arrow.counterclockwise")
+                                Label("もう一度 (ロック中)".localized, systemImage: "arrow.counterclockwise")
                             } else {
-                                Label("もう一度", systemImage: "arrow.counterclockwise")
+                                Label("もう一度".localized, systemImage: "arrow.counterclockwise")
                             }
                         }
                         Button(action: {
@@ -149,7 +151,7 @@ struct ManagerWorkoutDashboardView: View {
                             Label("Settings".localized, systemImage: "gearshape.fill")
                         }
                         Button(action: { showEditSheet = true }) {
-                            Label("PM5編集", systemImage: "pencil.and.list.clipboard")
+                            Label("PM5編集".localized, systemImage: "pencil.and.list.clipboard")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle.fill")
@@ -212,24 +214,36 @@ struct ManagerWorkoutDashboardView: View {
                 viewModel.saveAllRecords(recordManager: appViewModel.recordManager)
                 triggerShareFlowIfEnabled {
                     if let rest = viewModel.workoutRestTime {
-                        viewModel.resetAndStartIntervalWorkout(distance: viewModel.workoutDistance, time: viewModel.workoutTime, rest: rest)
+                        viewModel.resetAndStartIntervalWorkout(
+                            distance: viewModel.workoutDistance,
+                            time: viewModel.workoutTime,
+                            calories: viewModel.workoutCalories,
+                            rest: rest
+                        )
                     } else {
                         viewModel.resetAndStartWorkout(
                             distance: viewModel.workoutDistance,
                             time: viewModel.workoutTime,
-                            split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : viewModel.workoutSplitTime
+                            calories: viewModel.workoutCalories,
+                            split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : (viewModel.workoutTime != nil ? viewModel.workoutSplitTime : viewModel.workoutSplitCalories)
                         )
                     }
                 }
             }
             Button("Discard and Repeat".localized, role: .destructive) {
                 if let rest = viewModel.workoutRestTime {
-                    viewModel.resetAndStartIntervalWorkout(distance: viewModel.workoutDistance, time: viewModel.workoutTime, rest: rest)
+                    viewModel.resetAndStartIntervalWorkout(
+                        distance: viewModel.workoutDistance,
+                        time: viewModel.workoutTime,
+                        calories: viewModel.workoutCalories,
+                        rest: rest
+                    )
                 } else {
                     viewModel.resetAndStartWorkout(
                         distance: viewModel.workoutDistance,
                         time: viewModel.workoutTime,
-                        split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : viewModel.workoutSplitTime
+                        calories: viewModel.workoutCalories,
+                        split: viewModel.workoutDistance != nil ? viewModel.workoutSplitDistance : (viewModel.workoutTime != nil ? viewModel.workoutSplitTime : viewModel.workoutSplitCalories)
                     )
                 }
             }
@@ -305,6 +319,13 @@ struct ManagerWorkoutDashboardView: View {
                             .font(.system(size: 26, weight: .bold, design: .rounded))
                             .foregroundColor(Theme.accent)
                         Text("Target Time".localized)
+                            .font(.system(size: 11))
+                            .foregroundColor(Theme.textSecondary)
+                    } else if let calories = viewModel.workoutCalories {
+                        Text("\(calories)Cal")
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .foregroundColor(Theme.accent)
+                        Text("Target Calories".localized)
                             .font(.system(size: 11))
                             .foregroundColor(Theme.textSecondary)
                     }
@@ -401,7 +422,7 @@ struct ManagerWorkoutDashboardView: View {
                         Image(systemName: "pencil.and.list.clipboard")
                             .font(.system(size: 24))
                             .foregroundColor(.cyan)
-                        Text("編集")
+                        Text("編集".localized)
                             .font(.system(size: 10))
                             .foregroundColor(Theme.textSecondary)
                     }
@@ -420,7 +441,7 @@ struct ManagerWorkoutDashboardView: View {
                 Image(systemName: "antenna.radiowaves.left.and.right")
                     .font(.caption2)
                     .foregroundColor(activeCount == totalCount ? .green : .orange)
-                Text("\(activeCount)/\(totalCount) PM5 \("Active".localized)")
+                Text("\(activeCount)/\(totalCount) PM5 \("Active")")
                     .font(.system(size: 11))
                     .foregroundColor(Theme.textSecondary)
             }
@@ -582,6 +603,7 @@ struct PM5MetricsCardView: View {
     let displayName: String
     let targetDistance: Int?
     let targetTime: Int?
+    let targetCalories: Int?
     let isDisconnected: Bool
     
     @AppStorage("pm5DisplayMode") private var pm5DisplayMode: Int = 1
@@ -647,7 +669,7 @@ struct PM5MetricsCardView: View {
                 VStack(spacing: 4) {
                     // 常時表示行1: 残り + 経過時間
                     HStack(spacing: 6) {
-                        // 残り距離 or 残り時間
+                        // 残り距離 or 残り時間 or 残りカロリー
                         if let targetDist = targetDistance {
                             let remaining = max(Double(targetDist) - metrics.distance, 0)
                             CompactMetricView(
@@ -665,6 +687,17 @@ struct PM5MetricsCardView: View {
                                 label: "Remaining".localized,
                                 value: formatCompactTime(seconds: Int(remaining)),
                                 icon: "clock",
+                                color: remaining > 0 ? Theme.accent : .green,
+                                isDisconnected: isDisconnected,
+                                labelFontSize: baseFontSize - 4,
+                                valueFontSize: valueFontSize
+                            )
+                        } else if let targetCals = targetCalories {
+                            let remaining = max(Double(targetCals) - metrics.calories, 0)
+                            CompactMetricView(
+                                label: "Remaining".localized,
+                                value: String(format: "%.0fCal", remaining),
+                                icon: "flame.fill",
                                 color: remaining > 0 ? Theme.accent : .green,
                                 isDisconnected: isDisconnected,
                                 labelFontSize: baseFontSize - 4,
@@ -913,7 +946,7 @@ struct ManagerModeSettingsView: View {
         NavigationStack {
             ZStack {
                 Form {
-                    Section(header: Text("ワークアウト変更")) {
+                    Section(header: Text("ワークアウト変更".localized)) {
                         Button(action: {
                             if isLocked {
                                 showLockWarning()
@@ -927,43 +960,43 @@ struct ManagerModeSettingsView: View {
                         }) {
                             HStack {
                                 Image(systemName: "slider.horizontal.3")
-                                Text("ワークアウトの内容を変更")
+                                Text("ワークアウトの内容を変更".localized)
                             }
                             .foregroundColor(isLocked ? .gray : .accentColor)
                         }
                     }
                 
-                Section(header: Text("カードの表示サイズ")) {
+                Section(header: Text("カードの表示サイズ".localized)) {
                     Picker("サイズ", selection: $pm5DisplayMode) {
-                        Text("小").tag(0)
-                        Text("中").tag(1)
-                        Text("大").tag(2)
+                        Text("小".localized).tag(0)
+                        Text("中".localized).tag(1)
+                        Text("大".localized).tag(2)
                     }
                     .pickerStyle(.segmented)
                 }
                 
-                Section(header: Text("表示個数 (列数)")) {
+                Section(header: Text("表示個数 (列数)".localized)) {
                     Picker("列数", selection: $pm5GridColumns) {
-                        Text("1列 (リスト表示)").tag(1)
-                        Text("2列 (グリッド)").tag(2)
-                        Text("3列 (グリッド)").tag(3)
+                        Text("1列 (リスト表示)".localized).tag(1)
+                        Text("2列 (グリッド)".localized).tag(2)
+                        Text("3列 (グリッド)".localized).tag(3)
                     }
                     .pickerStyle(.segmented)
                 }
                 
-                Section(header: Text("表示内容のカスタマイズ")) {
+                Section(header: Text("表示内容のカスタマイズ".localized)) {
                     Toggle("ワットを表示", isOn: $pm5ShowWatts)
                     Toggle("予測時間を表示", isOn: $pm5ShowPredicted)
                     Toggle("HR（心拍数）を表示", isOn: $pm5ShowHR)
-                    Text("ワット・予測時間・HRはデータが利用可能な場合のみ表示されます")
+                    Text("ワット・予測時間・HRはデータが利用可能な場合のみ表示されます".localized)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 
-                Section(header: Text("データ取得スピード (Hz)")) {
+                Section(header: Text("データ取得スピード (Hz)".localized)) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("取得頻度:")
+                            Text("取得頻度:".localized)
                             Spacer()
                             Text("\(viewModel.retrievalSpeedHz) Hz")
                                 .fontWeight(.bold)
@@ -1009,7 +1042,7 @@ struct ManagerModeSettingsView: View {
                 }
             }
             .navigationTitle("Settings".localized)
-            .navigationBarItems(trailing: Button("完了") {
+            .navigationBarItems(trailing: Button("完了".localized) {
                 showModeSettings = false
             })
         }

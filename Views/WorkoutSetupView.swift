@@ -21,6 +21,10 @@ struct WorkoutSetupView: View {
                     LargeWorkoutButton(title: "Single Time".localized, icon: "clock.fill")
                 }
                 
+                NavigationLink(destination: SingleCaloriesSetupView(ergManager: ergManager)) {
+                    LargeWorkoutButton(title: "Single Calories".localized, icon: "flame.fill")
+                }
+                
                 NavigationLink(destination: FixedIntervalSetupView(ergManager: ergManager)) {
                     LargeWorkoutButton(title: "Fixed Interval".localized, icon: "repeat")
                 }
@@ -278,8 +282,9 @@ struct SingleTimeSetupView: View {
 // MARK: - Fixed Interval Setup
 struct FixedIntervalSetupView: View {
     @ObservedObject var ergManager: RowErgManager
-    @State private var intervalType: Int = 0 // 0: Distance, 1: Time
+    @State private var intervalType: Int = 0 // 0: Distance, 1: Time, 2: Calories
     @State private var distance: String = ""
+    @State private var calories: String = ""
     @State private var hours: Int = 0
     @State private var minutes: Int = 2
     @State private var seconds: Int = 0
@@ -302,6 +307,7 @@ struct FixedIntervalSetupView: View {
                     Picker("Interval Type", selection: $intervalType) {
                         Text("Distance".localized).tag(0)
                         Text("Time".localized).tag(1)
+                        Text("Calories".localized).tag(2)
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal)
@@ -319,7 +325,7 @@ struct FixedIntervalSetupView: View {
                                 .foregroundColor(.white)
                                 .font(.title)
                         }
-                    } else {
+                    } else if intervalType == 1 {
                         VStack(spacing: 8) {
                             Text("Interval Time".localized)
                                 .foregroundColor(Theme.textSecondary)
@@ -334,6 +340,19 @@ struct FixedIntervalSetupView: View {
                             .padding()
                             .background(Color.white.opacity(0.05))
                             .cornerRadius(16)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Interval Calories".localized + " (cal)")
+                                .foregroundColor(Theme.textSecondary)
+                            TextField("5 - 65535", text: $calories)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.plain)
+                                .padding()
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(12)
+                                .foregroundColor(.white)
+                                .font(.title)
                         }
                     }
                     
@@ -358,9 +377,14 @@ struct FixedIntervalSetupView: View {
                                 ergManager.setFixedIntervalDistance(meters: d, rest: totalRestSeconds)
                                 dismiss()
                             }
-                        } else {
+                        } else if intervalType == 1 {
                             if totalSeconds >= 20 {
                                 ergManager.setFixedIntervalTime(seconds: totalSeconds, rest: totalRestSeconds)
+                                dismiss()
+                            }
+                        } else {
+                            if let c = Int(calories) {
+                                ergManager.setFixedIntervalCalories(calories: c, rest: totalRestSeconds)
                                 dismiss()
                             }
                         }
@@ -373,7 +397,7 @@ struct FixedIntervalSetupView: View {
                             .background(Theme.primaryGradient)
                             .cornerRadius(12)
                     }
-                    .disabled(intervalType == 0 ? (Int(distance) == nil) : (totalSeconds < 20))
+                    .disabled(intervalType == 0 ? (Int(distance) == nil) : (intervalType == 1 ? (totalSeconds < 20) : (Int(calories) == nil || Int(calories)! < 5)))
                     
                     Spacer()
                 }
@@ -487,6 +511,96 @@ struct VariableIntervalSetupView: View {
     
     private func moveIntervals(from source: IndexSet, to destination: Int) {
         intervals.move(fromOffsets: source, toOffset: destination)
+    }
+}
+
+// MARK: - Single Calories Setup
+struct SingleCaloriesSetupView: View {
+    @ObservedObject var ergManager: RowErgManager
+    @State private var calories: String = ""
+    @State private var splitCalories: String = ""
+    @Environment(\.dismiss) var dismiss
+    
+    private var isSendDisabled: Bool {
+        guard let c = Int(calories), c >= 5 && c <= 65535 else { return true }
+        if let s = Int(splitCalories) {
+            let minSplit = max(5, Int(ceil(Double(c) / 50.0)))
+            if s < minSplit || s > c {
+                return true
+            }
+        } else {
+            return true
+        }
+        return false
+    }
+    
+    var body: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            VStack(spacing: 24) {
+                Text("Single Calories".localized)
+                    .font(Theme.headerFont())
+                    .foregroundColor(Theme.textMain)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Calories".localized + " (cal)")
+                        .foregroundColor(Theme.textSecondary)
+                    TextField("5 - 65535", text: $calories)
+                        .keyboardType(.numberPad)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(12)
+                        .foregroundColor(.white)
+                        .font(.title)
+                        .onChange(of: calories) { _, newValue in
+                            if let c = Int(newValue) {
+                                let autoSplit = c / 5
+                                splitCalories = "\(max(autoSplit, 5))"
+                            }
+                        }
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Split Calories".localized + " (cal)")
+                        .foregroundColor(Theme.textSecondary)
+                    TextField("Min 5 cal", text: $splitCalories)
+                        .keyboardType(.numberPad)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(12)
+                        .foregroundColor(.white)
+                        .font(.title2)
+                }
+                
+                Text("Calories Range".localized)
+                    .font(.subheadline)
+                    .foregroundColor(Theme.textSecondary)
+                
+                Button(action: {
+                    if let c = Int(calories), let s = Int(splitCalories) {
+                        let minSplit = max(5, Int(ceil(Double(c) / 50.0)))
+                        let finalSplit = min(max(s, minSplit), c)
+                        ergManager.setWorkoutCalories(calories: c, split: finalSplit)
+                        dismiss()
+                    }
+                }) {
+                    Text("Send to PM5".localized)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Theme.primaryGradient)
+                        .cornerRadius(12)
+                }
+                .disabled(isSendDisabled)
+                
+                Spacer()
+            }
+            .padding()
+        }
+        .navigationTitle("Calories Setup".localized)
     }
 }
 

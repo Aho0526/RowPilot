@@ -170,15 +170,17 @@ struct PracticeWorkoutView: View {
             Button("Save and Repeat".localized) {
                 let dist = ergManager.targetDistance
                 let time = ergManager.targetTime
-                let split = dist != nil ? ergManager.targetSplitDistance : ergManager.targetSplitTime
+                let calories = ergManager.targetCalories
+                let split = dist != nil ? ergManager.targetSplitDistance : (time != nil ? ergManager.targetSplitTime : ergManager.targetSplitCalories)
                 saveCurrentRecord()
-                ergManager.resetAndStartWorkout(distance: dist, time: time, split: split)
+                ergManager.resetAndStartWorkout(distance: dist, time: time, calories: calories, split: split)
             }
             Button("Discard and Repeat".localized, role: .destructive) {
                 let dist = ergManager.targetDistance
                 let time = ergManager.targetTime
-                let split = dist != nil ? ergManager.targetSplitDistance : ergManager.targetSplitTime
-                ergManager.resetAndStartWorkout(distance: dist, time: time, split: split)
+                let calories = ergManager.targetCalories
+                let split = dist != nil ? ergManager.targetSplitDistance : (time != nil ? ergManager.targetSplitTime : ergManager.targetSplitCalories)
+                ergManager.resetAndStartWorkout(distance: dist, time: time, calories: calories, split: split)
             }
             Button("Cancel".localized, role: .cancel) {}
         } message: {
@@ -664,7 +666,7 @@ struct PracticeWorkoutView: View {
     }
 
     private func saveCurrentRecord() {
-        let workoutType = ergManager.targetDistance != nil ? "distance" : (ergManager.targetTime != nil ? "time" : "justRow")
+        let workoutType = ergManager.targetDistance != nil ? "distance" : (ergManager.targetTime != nil ? "time" : (ergManager.targetCalories != nil ? "calories" : "justRow"))
         let powerStr = ergManager.power > 0 ? "\(ergManager.power)W" : "N/A"
         let record = RowingRecord(
             date: Date(),
@@ -752,12 +754,14 @@ struct RPWorkoutSidebar: View {
             return min(ergManager.distance / targetDist, 1.0)
         } else if let targetTime = ergManager.targetTime, targetTime > 0 {
             return min(ergManager.elapsedTime / targetTime, 1.0)
+        } else if let targetCals = ergManager.targetCalories, targetCals > 0 {
+            return min(ergManager.totalCalories / targetCals, 1.0)
         }
         return 0
     }
 
     private var hasTarget: Bool {
-        ergManager.targetDistance != nil || ergManager.targetTime != nil
+        ergManager.targetDistance != nil || ergManager.targetTime != nil || ergManager.targetCalories != nil
     }
 
     var body: some View {
@@ -1409,7 +1413,7 @@ extension PracticeWorkoutView {
                                                 Text(formatDate(date))
                                                     .font(.caption)
                                                     .foregroundColor(Theme.textSecondary)
-                                                Text("Manager Session (\(sessionRecords.count) devices)".localized)
+                                                Text("Manager Session (\(sessionRecords.count) devices)")
                                                     .font(.subheadline.bold())
                                                     .foregroundColor(Theme.textMain)
                                             }

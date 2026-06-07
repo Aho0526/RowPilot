@@ -48,7 +48,7 @@ struct CrewEditSheet: View {
                     .padding()
                 }
             }
-            .navigationTitle("クルー編集")
+            .navigationTitle("クルー編集".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
@@ -69,7 +69,7 @@ struct CrewEditSheet: View {
                 }
             }
             .confirmationDialog("クルー情報を削除しますか？", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-                Button("削除", role: .destructive) {
+                Button("削除".localized, role: .destructive) {
                     onDelete()
                     dismiss()
                 }
@@ -82,7 +82,7 @@ struct CrewEditSheet: View {
     
     private var boatTypeSelector: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("艇種を選択", systemImage: "sailboat.fill")
+            Label("艇種を選択".localized, systemImage: "sailboat.fill")
                 .font(Theme.subHeaderFont())
                 .foregroundColor(Theme.textMain)
             
@@ -148,7 +148,7 @@ struct CrewEditSheet: View {
     
     private var previewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("プレビュー", systemImage: "eye.fill")
+            Label("プレビュー".localized, systemImage: "eye.fill")
                 .font(Theme.subHeaderFont())
                 .foregroundColor(Theme.textMain)
             
@@ -165,7 +165,7 @@ struct CrewEditSheet: View {
     
     private var crewNameInputs: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("クルー名", systemImage: "person.text.rectangle.fill")
+            Label("クルー名".localized, systemImage: "person.text.rectangle.fill")
                 .font(Theme.subHeaderFont())
                 .foregroundColor(Theme.textMain)
             
@@ -194,7 +194,7 @@ struct CrewEditSheet: View {
                     
                     VStack(alignment: .leading, spacing: 2) {
                         if isCox {
-                            Text("コックス")
+                            Text("コックス".localized)
                                 .font(.caption)
                                 .foregroundColor(.orange)
                         } else {
@@ -233,7 +233,7 @@ struct CrewEditSheet: View {
         }) {
             HStack {
                 Image(systemName: "trash.fill")
-                Text("クルー情報を削除")
+                Text("クルー情報を削除".localized)
             }
             .font(.subheadline)
             .fontWeight(.semibold)

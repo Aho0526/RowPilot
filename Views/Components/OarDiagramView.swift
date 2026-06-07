@@ -384,7 +384,7 @@ struct OarDiagramView: View {
         case .outboard:
             return "Outboard Highlight Description".localized
         case .bladeType:
-            return "Blade Type".localized + ": \(bladeType)"
+            return "Blade Type" + ": \(bladeType)"
         case .sleevePitch:
             return "Sleeve Pitch Highlight Description".localized
         case .gripDiameter:
