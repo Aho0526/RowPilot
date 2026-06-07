@@ -2,7 +2,7 @@ import Foundation
 
 /// サブスクリプションプラン（free < pro < team < max の順に権限上位）
 enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
-    case free, pro, team, max
+    case free, pro, team, max, organization, enterprise
 
     var id: String { self.rawValue }
 
@@ -12,6 +12,8 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .pro:  return "RowPilot Pro"
         case .team: return "RowPilot Team"
         case .max:  return "RowPilot MAX"
+        case .organization: return "RowPilot Organization"
+        case .enterprise: return "RowPilot Enterprise"
         }
     }
 
@@ -21,6 +23,8 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .pro:  return "¥980 / 月"
         case .team: return "¥4,980 / 月"
         case .max:  return "¥7,500 / 月"
+        case .organization: return "¥15,000 / 月"
+        case .enterprise: return "要問い合わせ"
         }
     }
 
@@ -30,6 +34,8 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .pro:  return "ForceCurveやStrava同期などプロ向けの機能を開放"
         case .team: return "PM5複数台接続＋最大3人のメンバーにプランを共有可能"
         case .max:  return "最大5人のメンバーにプラン共有可能。CSV出力、レースビュー等を開放"
+        case .organization: return "最大10人のメンバーにプラン共有可能。チーム共有最大200名、CSV出力、レースビュー等を開放"
+        case .enterprise: return "大規模導入・独自カスタマイズなど、チームに最適化されたカスタムプラン"
         }
     }
 
@@ -43,6 +49,10 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
             return ["PM5と複数台接続機能", "リアルタイム一斉トレーニング", "最大3名のメンバーとプランを共有"]
         case .max:
             return ["CSV形式出力", "レースビュー開放", "高度なアナリティクス", "最大5名のメンバーとプランを共有"]
+        case .organization:
+            return ["CSV形式出力", "レースビュー開放", "高度なアナリティクス", "最大10名のメンバーとプランを共有", "最大200名のメンバーとチーム共有"]
+        case .enterprise:
+            return ["エンタープライズサポート", "チーム人数無制限", "独自カスタマイズ", "専用クラウド・SLA保証"]
         }
     }
 
@@ -54,6 +64,8 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .pro:  return 1
         case .team: return 2
         case .max:  return 3
+        case .organization: return 4
+        case .enterprise: return 5
         }
     }
 
@@ -74,19 +86,19 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         return isAtLeast(.team)
     }
 
-    /// MAXプランのみでレースビューを解放
+    /// MAXプラン以上でレースビューを解放
     var hasRaceView: Bool {
-        return self == .max
+        return isAtLeast(.max)
     }
 
-    /// MAXプランのみでCSV形式出力を解放
+    /// MAXプラン以上でCSV形式出力を解放
     var hasCSVExport: Bool {
-        return self == .max
+        return isAtLeast(.max)
     }
 
-    /// チーム機能が利用可能か（Team/MAXのみ）
+    /// チーム機能が利用可能か（Team/MAX/Enterpriseのみ）
     var hasTeamFeature: Bool {
-        return self == .team || self == .max
+        return isAtLeast(.team)
     }
 
     /// チームメンバーの上限数
@@ -94,6 +106,8 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .team: return 30
         case .max: return 80
+        case .organization: return 200
+        case .enterprise: return 9999
         default: return 0
         }
     }

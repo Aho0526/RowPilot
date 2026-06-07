@@ -186,7 +186,7 @@ class SubscriptionManager: ObservableObject {
 
         print("Purchase applied: \(plan.displayName), expires: \(record.expiresAt?.description ?? "nil")")
 
-        if plan == .team || plan == .max {
+        if plan == .team || plan == .max || plan == .organization {
             uploadShareRecord()
         } else {
             deleteShareRecord()
@@ -231,7 +231,7 @@ class SubscriptionManager: ObservableObject {
 
         print("Subscription cancelled. Active until: \(record.expiresAt?.description ?? "nil")")
 
-        if currentPlan == .team || currentPlan == .max {
+        if currentPlan == .team || currentPlan == .max || currentPlan == .organization {
             uploadShareRecord()
         }
     }
@@ -259,7 +259,7 @@ class SubscriptionManager: ObservableObject {
                     self?.loadOrCreateLocalUserRecordId()
                 }
                 print("My User Record ID: \(self?.myUserRecordId ?? "")")
-                if self?.currentPlan == .team || self?.currentPlan == .max {
+                if self?.currentPlan == .team || self?.currentPlan == .max || self?.currentPlan == .organization {
                     self?.loadSharedMembers()
                 }
             }
@@ -275,7 +275,7 @@ class SubscriptionManager: ObservableObject {
             self.myUserRecordId = newId
         }
         print("My Local User Record ID: \(self.myUserRecordId)")
-        if self.currentPlan == .team || self.currentPlan == .max {
+        if self.currentPlan == .team || self.currentPlan == .max || self.currentPlan == .organization {
             self.loadSharedMembers()
         }
     }
@@ -286,6 +286,8 @@ class SubscriptionManager: ObservableObject {
         switch currentPlan {
         case .team: return 3
         case .max:  return 5
+        case .organization: return 10
+        case .enterprise: return 9999
         default:    return 0
         }
     }

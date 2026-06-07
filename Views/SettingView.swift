@@ -238,7 +238,7 @@ struct SettingView: View {
                 SettingsSection(title: "Manager Mode".localized, icon: "person.3.sequence.fill") {
                     SettingsToggleRow(title: "Save 0-Record PM5s".localized, isOn: $settingsManager.settings.saveZeroRecordPM5s)
                     
-                    if currentPlan == .team || currentPlan == .max {
+                    if currentPlan == .team || currentPlan == .max || currentPlan == .organization {
                         Divider().background(Theme.textSecondary.opacity(0.3))
                         NavigationLink(destination: TeamMaxManagerView()) {
                             HStack {
@@ -348,6 +348,30 @@ struct SettingView: View {
                  Text("Coming Soon".localized)
                      .font(.caption)
                      .foregroundColor(Theme.textSecondary)
+             }
+             
+             // コンタクト (Contact)
+             SettingsSection(title: "Contact".localized, icon: "envelope.fill") {
+                 Button(action: {
+                     let email = "rowpilot.jp@gmail.com"
+                     let subject = "RowPilotに関するお問い合わせ".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                     let body = "RowPilotについて、以下の内容でお問い合わせします。\n\n・お問い合わせ内容:\n".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                     if let url = URL(string: "mailto:\(email)?subject=\(subject)&body=\(body)") {
+                         UIApplication.shared.open(url)
+                     }
+                 }) {
+                     HStack {
+                         Text("Contact Us".localized)
+                             .foregroundColor(Theme.textMain)
+                         Spacer()
+                         Text("rowpilot.jp@gmail.com")
+                             .font(.caption)
+                             .foregroundColor(Theme.textSecondary)
+                         Image(systemName: "chevron.right")
+                             .font(.caption)
+                             .foregroundColor(Theme.textSecondary)
+                     }
+                 }
              }
              
              // 利用規約 (目立ちやすいようにセクション化)
