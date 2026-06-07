@@ -386,13 +386,7 @@ struct LandscapeView: View {
             }
             .id(themeManager.currentPreset)
             .sheet(isPresented: $showingHelp) {
-                HelpView(
-                    title: "RowMode Help".localized,
-                    content: """
-                    // 乗艇画面の使い方（横画面）
-                    // ここにヒントを記述してください
-                    """
-                )
+                RowModeLandscapeHelpView()
             }
         } // GeometryReader end
         .alert("Save Record".localized, isPresented: $showingSaveAlert) {

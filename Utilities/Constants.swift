@@ -7,13 +7,13 @@ enum MotionConstants {
     static let accelerationThreshold: Double = 1.2
     
     /// ストロークのダブルカウント防止間隔（秒）
-    static let strokeDebounceInterval: TimeInterval = 0.8
+    static let strokeDebounceInterval: TimeInterval = 0.6
     
     /// SPM計算用のタイムウィンドウ（秒）
     static let strokeWindowSeconds: TimeInterval = 10.0
     
     /// センサー更新間隔（秒）
-    static let sensorUpdateInterval: TimeInterval = 0.1
+    static let sensorUpdateInterval: TimeInterval = 0.02
 }
 
 // MARK: - Location Tracking Constants

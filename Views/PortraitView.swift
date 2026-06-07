@@ -219,13 +219,7 @@ struct PortraitView: View {
         // Force redraw when theme changes
         .id(themeManager.currentPreset)
         .sheet(isPresented: $showingHelp) {
-            HelpView(
-                title: "RowMode Help".localized,
-                content: """
-                // 乗艇画面の使い方（縦画面）
-                // ここにヒントを記述してください
-                """
-            )
+            RowModePortraitHelpView()
         }
     }
     

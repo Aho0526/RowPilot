@@ -71,19 +71,7 @@ struct TideContent: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .sheet(isPresented: $showingHelp) {
-                HelpView(
-                    title: "Tide Help".localized,
-                    content: """
-    気象庁が提供する全国239地点の潮汐データを取得・表示することができます。
-    GPSを用いて使用者の位置に最も近い場所の潮汐データを表示します。
-    この際のGPS情報はアプリ内部で処理されるので位置情報の漏洩等の心配はありません。
-
-    ⚠︎気象庁が予測している潮汐データに過ぎません。
-    洪水時や観測点のずれなどにより表示される潮汐データと実際の潮位は異なる可能性がありますので必ず現地の状況に応じて練習の有無等を判断してください。
-
-    ※当機能は日本国内でのみ利用可能です。
-    """
-                )
+                TideHelpView()
             }
             .animation(.easeInOut, value: LocalizationManager.shared.language)
             .onAppear {
