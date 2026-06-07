@@ -397,20 +397,29 @@ struct TideContent: View {
     // .onChange を body に追加して位置情報更新に対応する
     // (body内の NavigationStack に .onChange を追加)
     private func lookUpCurrentLocation(location: CLLocation, completion: @escaping (String) -> Void) {
-        Task {
-            let request = MKReverseGeocodingRequest(location: location)
-            do {
-                let mapItems = try await request?.mapItems
-                if let first = mapItems?.first {
-                    // プライバシー保護のため、詳細な住所（first.name）ではなく
-                    // 県名や広域エリア名（regionName / cityName）を優先して表示
-                    let name = first.addressRepresentations?.regionName ?? first.addressRepresentations?.cityName ?? first.name
-                    await MainActor.run { completion(name ?? "Current Location".localized) }
+        let geocoder = CLGeocoder()
+        geocoder.reverseGeocodeLocation(location, preferredLocale: appLocale) { placemarks, error in
+            DispatchQueue.main.async {
+                if let placemark = placemarks?.first {
+                    let locality = placemark.locality ?? ""
+                    let subLocality = placemark.subLocality ?? ""
+                    
+                    var name = ""
+                    if !locality.isEmpty {
+                        name = locality
+                    } else if !subLocality.isEmpty {
+                        name = subLocality
+                    } else if let placemarkName = placemark.name,
+                              placemarkName != placemark.country,
+                              placemarkName != placemark.administrativeArea {
+                        name = placemarkName
+                    } else {
+                        name = "Current Location".localized
+                    }
+                    completion(name)
                 } else {
-                    await MainActor.run { completion("Current Location".localized) }
+                    completion("Current Location".localized)
                 }
-            } catch {
-                await MainActor.run { completion("Current Location".localized) }
             }
         }
     }
