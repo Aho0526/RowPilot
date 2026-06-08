@@ -20,14 +20,37 @@ struct PortraitView: View {
     @State private var showSOSOverlay = false
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     
+    // Observe Settings
+    @ObservedObject var settingsManager = SettingsManager.shared
+    @State private var showingRowModeSettings = false
+
+    // UIスロット設定の保存 (UserDefaults / AppStorage)
+    @AppStorage("rowModePortraitLeftMetric") private var leftMetricRaw: String = RowModeMetric.distance.rawValue
+    @AppStorage("rowModePortraitRightMetric") private var rightMetricRaw: String = RowModeMetric.chrono.rawValue
+    
+    private var leftMetric: RowModeMetric {
+        RowModeMetric(rawValue: leftMetricRaw) ?? .distance
+    }
+    
+    private var rightMetric: RowModeMetric {
+        RowModeMetric(rawValue: rightMetricRaw) ?? .chrono
+    }
+
     // セッション状態はAppViewModelから取得
     private var isRunning: Bool { app.isSessionActive }
     private var elapsedTime: TimeInterval { app.elapsedTime }
 
     private var formattedTime: String {
-        let minutes = Int(elapsedTime) / 60
+        let hours = Int(elapsedTime) / 3600
+        let minutes = (Int(elapsedTime) % 3600) / 60
         let seconds = Int(elapsedTime) % 60
-        return String(format: "%02d:%02d", minutes, seconds)
+        let tenths = Int((elapsedTime.truncatingRemainder(dividingBy: 1)) * 10)
+        
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d.%d", hours, minutes, seconds, tenths)
+        } else {
+            return String(format: "%02d:%02d.%d", minutes, seconds, tenths)
+        }
     }
 
     private var formattedPace: String {
@@ -37,6 +60,78 @@ struct PortraitView: View {
         let minutes = Int(seconds) / 60
         let remainingSeconds = Int(seconds) % 60
         return String(format: "%d:%02d", minutes, remainingSeconds)
+    }
+
+    private var formattedDistance: String {
+        return String(format: "%.1f", app.isSessionActive ? locationManager.totalDistance : 0.0)
+    }
+
+    private var formattedAveragePace: String {
+        let dist = locationManager.totalDistance
+        guard dist > 0 else { return "--:--" }
+        let paceSeconds = (elapsedTime / dist) * 500
+        let minutes = Int(paceSeconds) / 60
+        let seconds = Int(paceSeconds) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private var formattedStrokeCount: String {
+        return "\(motionManager.strokeCount)"
+    }
+
+    private var formattedDistPerStroke: String {
+        let count = motionManager.strokeCount
+        guard count > 0 else { return "0.00" }
+        let val = locationManager.totalDistance / Double(count)
+        return String(format: "%.2f", val)
+    }
+
+    private func metricLabel(for metric: RowModeMetric) -> String {
+        return metric.label
+    }
+
+    private func metricValue(for metric: RowModeMetric) -> String {
+        guard app.isSessionActive else {
+            switch metric {
+            case .chrono: return "00:00.0"
+            case .distance: return "0"
+            case .averagePace: return "--:--"
+            case .strokeCount: return "0"
+            case .distPerStroke: return "0.00"
+            }
+        }
+        
+        switch metric {
+        case .chrono: return formattedTime
+        case .distance: return formattedDistance
+        case .averagePace: return formattedAveragePace
+        case .strokeCount: return formattedStrokeCount
+        case .distPerStroke: return formattedDistPerStroke
+        }
+    }
+
+    private func metricUnit(for metric: RowModeMetric) -> String? {
+        switch metric {
+        case .distance:
+            return "m"
+        case .distPerStroke:
+            return "m"
+        case .averagePace:
+            return "/500m"
+        default:
+            return nil
+        }
+    }
+
+    private func metricColor(for metric: RowModeMetric) -> Color {
+        switch metric {
+        case .chrono, .distance, .distPerStroke:
+            return .white
+        case .averagePace:
+            return Theme.secondaryAccent
+        case .strokeCount:
+            return Theme.accent
+        }
     }
 
     var body: some View {
@@ -75,7 +170,7 @@ struct PortraitView: View {
                             .padding(.top, 16)
                         }
                         
-                        // Help & SOS Buttons (Top Right)
+                        // Help, SOS & Settings Buttons (Top Right)
                         HStack(spacing: 12) {
                             Spacer()
                             
@@ -96,6 +191,24 @@ struct PortraitView: View {
                                     showingHelp = true
                                 }
                             }
+
+                            // Settings Gear Button
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    showingRowModeSettings = true
+                                }
+                            }) {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Theme.textMain)
+                                    .frame(width: 38, height: 38)
+                                    .background(Theme.cardBackground)
+                                    .clipShape(Circle())
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    )
+                            }
                         }
                         .padding(16)
                     }
@@ -113,13 +226,13 @@ struct PortraitView: View {
                     
                     Divider().overlay(Theme.textSecondary.opacity(0.3))
                     
-                    // 3. Distance & Time (Bottom Split)
+                    // 3. Dynamic Bottom Split Metrics
                     HStack(spacing: 0) {
                         MetricCell(
-                            label: "Distance".localized,
-                            value: app.isSessionActive ? String(format: "%.0f", locationManager.totalDistance) : "0",
-                            unit: "m",
-                            color: .white,
+                            label: metricLabel(for: leftMetric),
+                            value: metricValue(for: leftMetric),
+                            unit: metricUnit(for: leftMetric),
+                            color: metricColor(for: leftMetric),
                             width: geometry.size.width / 2,
                             height: geometry.size.height * 0.2
                         )
@@ -127,9 +240,10 @@ struct PortraitView: View {
                         Divider().overlay(Theme.textSecondary.opacity(0.3))
 
                         MetricCell(
-                            label: "Time".localized,
-                            value: formattedTime,
-                            color: .white,
+                            label: metricLabel(for: rightMetric),
+                            value: metricValue(for: rightMetric),
+                            unit: metricUnit(for: rightMetric),
+                            color: metricColor(for: rightMetric),
                             width: geometry.size.width / 2,
                             height: geometry.size.height * 0.2
                         )
@@ -173,6 +287,117 @@ struct PortraitView: View {
                     }
                     .zIndex(100)
                 }
+            }
+            
+            // RowMode Settings Modal
+            if showingRowModeSettings {
+                ZStack {
+                    Color.black.opacity(0.6)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation { showingRowModeSettings = false }
+                        }
+                    
+                    VStack(spacing: 20) {
+                        Text("Display Settings".localized)
+                            .font(.title3)
+                            .bold()
+                            .foregroundColor(Theme.textMain)
+                        
+                        HStack(spacing: 20) {
+                            // Left Element
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Left Element".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                                
+                                Picker("", selection: $leftMetricRaw) {
+                                    ForEach(RowModeMetric.allCases) { metric in
+                                        Text(metric.label).tag(metric.rawValue)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(Theme.accent)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Theme.cardBackground)
+                                .cornerRadius(8)
+                            }
+                            
+                            // Right Element
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Right Element".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                                
+                                Picker("", selection: $rightMetricRaw) {
+                                    ForEach(RowModeMetric.allCases) { metric in
+                                        Text(metric.label).tag(metric.rawValue)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(Theme.accent)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Theme.cardBackground)
+                                .cornerRadius(8)
+                            }
+                        }
+                        .padding(.horizontal)
+                        
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+                            .padding(.horizontal)
+                        
+                        // Motion Sensitivity Settings
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Motion Sensitivity".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                                Spacer()
+                                Text(String(format: "%.2f G", settingsManager.settings.accelerationThreshold))
+                                    .font(.caption)
+                                    .bold()
+                                    .foregroundColor(Theme.accent)
+                            }
+                            
+                            Slider(value: Binding(
+                                get: { min(settingsManager.settings.accelerationThreshold, 0.5) },
+                                set: { newValue in
+                                    settingsManager.settings.accelerationThreshold = newValue
+                                }
+                            ), in: 0.01...0.5, step: 0.01)
+                            .tint(Theme.accent)
+                        }
+                        .padding(.horizontal)
+                        
+                        Button(action: {
+                            withAnimation { showingRowModeSettings = false }
+                        }) {
+                            Text("Close".localized)
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(width: 120, height: 40)
+                                .background(Theme.accent)
+                                .cornerRadius(20)
+                        }
+                        .padding(.top, 10)
+                    }
+                    .padding(24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Theme.cardBackground)
+                            .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
+                    .frame(maxWidth: 320)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                .zIndex(200)
             }
         }
         // Removed local sheet as it's now in ContainerView

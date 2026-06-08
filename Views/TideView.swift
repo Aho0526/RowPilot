@@ -385,30 +385,31 @@ struct TideContent: View {
     // .onChange を body に追加して位置情報更新に対応する
     // (body内の NavigationStack に .onChange を追加)
     private func lookUpCurrentLocation(location: CLLocation, completion: @escaping (String) -> Void) {
-        let geocoder = CLGeocoder()
-        geocoder.reverseGeocodeLocation(location, preferredLocale: appLocale) { placemarks, error in
-            DispatchQueue.main.async {
-                if let placemark = placemarks?.first {
-                    let locality = placemark.locality ?? ""
-                    let subLocality = placemark.subLocality ?? ""
-                    
-                    var name = ""
-                    if !locality.isEmpty {
-                        name = locality
-                    } else if !subLocality.isEmpty {
-                        name = subLocality
-                    } else if let placemarkName = placemark.name,
-                              placemarkName != placemark.country,
-                              placemarkName != placemark.administrativeArea {
-                        name = placemarkName
+        if let request = MKReverseGeocodingRequest(location: location) {
+            Task {
+                do {
+                    let mapItems = try await request.mapItems
+                    if let firstItem = mapItems.first {
+                        var name = ""
+                        if let cityName = firstItem.addressRepresentations?.cityName, !cityName.isEmpty {
+                            name = cityName
+                        } else if let itemName = firstItem.name, !itemName.isEmpty {
+                            name = itemName
+                        } else if let shortAddress = firstItem.address?.shortAddress, !shortAddress.isEmpty {
+                            name = shortAddress
+                        } else {
+                            name = "Current Location".localized
+                        }
+                        completion(name)
                     } else {
-                        name = "Current Location".localized
+                        completion("Current Location".localized)
                     }
-                    completion(name)
-                } else {
+                } catch {
                     completion("Current Location".localized)
                 }
             }
+        } else {
+            completion("Current Location".localized)
         }
     }
 }

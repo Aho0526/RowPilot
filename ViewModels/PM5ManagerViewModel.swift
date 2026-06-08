@@ -1643,7 +1643,6 @@ extension PM5ManagerViewModel {
         // Extra Status 2: avgPower is byte 4-5, totalCalories is byte 6-7
         guard data.count >= 8 else { return }
         
-        let avgPowerRaw = UInt16(data[4]) | (UInt16(data[5]) << 8)
         let totalCalRaw = UInt16(data[6]) | (UInt16(data[7]) << 8)
         
         DispatchQueue.main.async { [weak self] in

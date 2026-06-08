@@ -504,10 +504,6 @@ struct LandscapeView: View {
 
     private func exitSession() {
         app.stopSession()
-        app.lockLandscape() // Lock it specifically
-        // No alert here if we want immediate transition? 
-        // But user said "X button pressed -> forced transition to Portrait". 
-        // We'll keep the alert for safety but ensure the transition happens.
         showingSaveAlert = true
     }
 
