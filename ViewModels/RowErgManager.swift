@@ -1274,9 +1274,12 @@ extension RowErgManager: NFCNDEFReaderSessionDelegate {
     }
     
     func readerSession(_ session: NFCNDEFReaderSession, didDetectNDEFs messages: [NFCNDEFMessage]) {
-        var foundName: String?
+        var foundSerial: String?
         for message in messages {
             for record in message.records {
+                var payloadString: String?
+                
+                // 1. Textレコード (Type "T") のパース
                 if record.typeNameFormat == .nfcWellKnown,
                    let type = String(data: record.type, encoding: .utf8), type == "T" {
                     let payload = record.payload
@@ -1286,42 +1289,92 @@ extension RowErgManager: NFCNDEFReaderSessionDelegate {
                         let textEncoding = (statusByte & 0x80) == 0 ? String.Encoding.utf8 : String.Encoding.utf16
                         if payload.count > 1 + languageCodeLength {
                             let textData = payload.dropFirst(1 + languageCodeLength)
-                            if let text = String(data: textData, encoding: textEncoding) {
-                                print("RowErgManager: NFC Parsed Text -> \(text)")
-                                if text.contains("PM5") {
-                                    foundName = text
-                                    break
-                                }
+                            payloadString = String(data: textData, encoding: textEncoding)
+                        }
+                    }
+                }
+                // 2. URIレコード (Type "U") のパース
+                else if record.typeNameFormat == .nfcWellKnown,
+                        let type = String(data: record.type, encoding: .utf8), type == "U" {
+                    let payload = record.payload
+                    if payload.count > 1 {
+                        // 1バイト目はプレフィックスなのでスキップ
+                        let uriData = payload.dropFirst(1)
+                        payloadString = String(data: uriData, encoding: .utf8)
+                    }
+                }
+                // 3. その他のレコードタイプ（フォールバック：バイナリ形式のExternalレコード等を含む）
+                else {
+                    let payload = record.payload
+                    // PM5のBLEペアリングExternalレコード（BLE MACアドレス(6)+タイプ(1)=7バイトの後にデバイス名が続く）
+                    if payload.count > 7 {
+                        let nameData = payload.dropFirst(7)
+                        if let nameStr = String(data: nameData, encoding: .utf8) ?? String(data: nameData, encoding: .ascii) {
+                            // 制御文字を除去
+                            let cleaned = nameStr.trimmingCharacters(in: .controlCharacters).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if cleaned.localizedCaseInsensitiveContains("PM5") {
+                                payloadString = cleaned
+                                print("RowErgManager: NFC Parsed Name from External Payload -> \(cleaned)")
                             }
                         }
                     }
-                } else if let string = String(data: record.payload, encoding: .utf8) ?? String(data: record.payload, encoding: .ascii) {
-                    if string.contains("PM5") {
-                         foundName = string
-                         break
+                    
+                    // それでも取得できない場合は、全体を単純文字列化
+                    if payloadString == nil {
+                        payloadString = String(data: payload, encoding: .utf8) ?? String(data: payload, encoding: .ascii)
+                    }
+                }
+                
+                if let str = payloadString {
+                    print("RowErgManager: NFC Raw Payload String -> \(str)")
+                    
+                    // シリアル番号 (Concept2 PM5のシリアルは通常9桁の数字) を探す
+                    if let range = str.range(of: "\\d{9}", options: .regularExpression) {
+                        foundSerial = String(str[range])
+                        print("RowErgManager: NFC Found Serial Number (9 digits) -> \(foundSerial!)")
+                        break
+                    }
+                    
+                    // URLのパスからpm5の直後の数字を取り出す (9桁以外でも対応できるように)
+                    // 例: pm5/1234567890
+                    if let range = str.range(of: "(?i)pm5/([0-9a-zA-Z]+)", options: .regularExpression) {
+                        let matched = String(str[range])
+                        let clean = matched.replacingOccurrences(of: "pm5/", with: "", options: .caseInsensitive)
+                        foundSerial = clean
+                        print("RowErgManager: NFC Found Serial (from URL path) -> \(clean)")
+                        break
+                    }
+                    
+                    // フォールバック: "PM5"または"pm5"を含む文字列全体
+                    if str.localizedCaseInsensitiveContains("PM5") {
+                        foundSerial = str.trimmingCharacters(in: .whitespacesAndNewlines)
+                        print("RowErgManager: NFC Fallback text contains PM5 -> \(foundSerial!)")
+                        break
                     }
                 }
             }
-            if foundName != nil { break }
+            if foundSerial != nil { break }
         }
         
-        if let name = foundName {
-            session.alertMessage = "PM5を検出: \(name)\n接続を開始します..."
+        if let serial = foundSerial {
+            session.alertMessage = "PM5を検出しました。\n接続を開始します..."
+            print("RowErgManager: NFC Matched Serial -> \(serial)")
             DispatchQueue.main.async {
-                self.targetPeripheralName = name
+                self.targetPeripheralName = serial
                 if !self.isScanning {
                     self.startScanning()
                 } else {
-                    if let existing = self.discoveredDevices.first(where: { ($0.name ?? "").contains(name) }) {
+                    if let existing = self.discoveredDevices.first(where: { ($0.name ?? "").localizedCaseInsensitiveContains(serial) }) {
                         self.connect(existing)
                     }
                 }
             }
         } else {
-             session.alertMessage = "PM5情報を読み取れませんでした。"
+             session.alertMessage = "PM5シリアル番号を読み取れませんでした。"
         }
     }
 }
+
 
 // MARK: - CBCentralManagerDelegate
 extension RowErgManager: CBCentralManagerDelegate {
@@ -1333,13 +1386,14 @@ extension RowErgManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         let name = peripheral.name ?? "Unknown"
         let isPM5 = name.contains("PM5")
+        let isTarget = targetPeripheralName != nil && name.localizedCaseInsensitiveContains(targetPeripheralName!)
         
-        if isPM5 || targetPeripheralName != nil {
+        if isPM5 || isTarget {
             if !discoveredDevices.contains(where: { $0.identifier == peripheral.identifier }) {
                 print("RowErgManager: Discovered -> \(name)")
                 discoveredDevices.append(peripheral)
                 
-                if let target = targetPeripheralName, name.contains(target) {
+                if let target = targetPeripheralName, name.localizedCaseInsensitiveContains(target) {
                     print("RowErgManager: Target Matched via NFC! Connecting...")
                     connect(peripheral)
                     targetPeripheralName = nil

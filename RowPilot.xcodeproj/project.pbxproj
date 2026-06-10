@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4167541A2FD958D600C41241 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 416754192FD958D600C41241 /* StoreKit.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		42CAC64F2E23472C004D2122 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		416754192FD958D600C41241 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		42401AE12EF69EDA00AF9EBE /* RowPilot-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "RowPilot-Info.plist"; sourceTree = "<group>"; };
 		42BFCF912E23823A00E939D8 /* RowPilotDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RowPilotDebug.entitlements; sourceTree = "<group>"; };
 		42CAC6402E234716004D2122 /* RowPilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RowPilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -79,6 +84,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4167541A2FD958D600C41241 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -99,6 +105,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		416754182FD958D600C41241 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				416754192FD958D600C41241 /* StoreKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		42CAC6372E234716004D2122 = {
 			isa = PBXGroup;
 			children = (
@@ -112,6 +126,7 @@
 				42CAC6AD2E2379CD004D2122 /* Utilities */,
 				42CAC6512E23472C004D2122 /* RowPilotTests */,
 				42CAC65B2E23472C004D2122 /* RowPilotUITests */,
+				416754182FD958D600C41241 /* Frameworks */,
 				42CAC6412E234716004D2122 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -466,7 +481,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jp.rowpilot.app;
+				PRODUCT_BUNDLE_IDENTIFIER = "aho-project.RowPilot";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -516,7 +531,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jp.rowpilot.app;
+				PRODUCT_BUNDLE_IDENTIFIER = "aho-project.RowPilot";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;

@@ -1,0 +1,129 @@
+{
+  "identifier" : "RowPilotStoreKitConfiguration",
+  "nonRenewingSubscriptions" : [ ],
+  "products" : [ ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "ja_JP",
+    "_storefront" : "JPN",
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "rowpilot_subscriptions",
+      "localizations" : [ ],
+      "name" : "RowPilot Subscriptions",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [ ],
+          "codeOffers" : [ ],
+          "displayPrice" : "980",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "rowpilot_pro",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "競技力向上をサポート",
+              "displayName" : "RowPilot Pro",
+              "locale" : "ja"
+            }
+          ],
+          "productID" : "rowpilot_pro",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "RowPilot Pro",
+          "subscriptionGroupID" : "rowpilot_subscriptions",
+          "type" : "Recurring Subscription"
+        },
+        {
+          "adHocOffers" : [ ],
+          "codeOffers" : [ ],
+          "displayPrice" : "2980",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "rowpilot_manager",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "個人向け上位機能(Pro+マネージャー機能)",
+              "displayName" : "RowPilot Manager",
+              "locale" : "ja"
+            }
+          ],
+          "productID" : "rowpilot_manager",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "RowPilot Manager",
+          "subscriptionGroupID" : "rowpilot_subscriptions",
+          "type" : "Recurring Subscription"
+        },
+        {
+          "adHocOffers" : [ ],
+          "codeOffers" : [ ],
+          "displayPrice" : "4980",
+          "familyShareable" : false,
+          "groupNumber" : 3,
+          "internalID" : "rowpilot_team",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "チーム全員で使える",
+              "displayName" : "RowPilot Team",
+              "locale" : "ja"
+            }
+          ],
+          "productID" : "rowpilot_team",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "RowPilot Team",
+          "subscriptionGroupID" : "rowpilot_subscriptions",
+          "type" : "Recurring Subscription"
+        },
+        {
+          "adHocOffers" : [ ],
+          "codeOffers" : [ ],
+          "displayPrice" : "7500",
+          "familyShareable" : false,
+          "groupNumber" : 4,
+          "internalID" : "rowpilot_max",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "プロコーチのための最高峰",
+              "displayName" : "RowPilot MAX",
+              "locale" : "ja"
+            }
+          ],
+          "productID" : "rowpilot_max",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "RowPilot MAX",
+          "subscriptionGroupID" : "rowpilot_subscriptions",
+          "type" : "Recurring Subscription"
+        },
+        {
+          "adHocOffers" : [ ],
+          "codeOffers" : [ ],
+          "displayPrice" : "15000",
+          "familyShareable" : false,
+          "groupNumber" : 5,
+          "internalID" : "rowpilot_org",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "中〜大規模チームで共有して使う",
+              "displayName" : "RowPilot Organization",
+              "locale" : "ja"
+            }
+          ],
+          "productID" : "rowpilot_org",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "RowPilot Organization",
+          "subscriptionGroupID" : "rowpilot_subscriptions",
+          "type" : "Recurring Subscription"
+        }
+      ]
+    }
+  ],
+  "version" : [
+    1,
+    2
+  ]
+}

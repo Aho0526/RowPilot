@@ -1,5 +1,4 @@
 import SwiftUI
-import LocalAuthentication
 
 // MARK: - Plan定義（アイコン・グラデーション）
 private extension SubscriptionPlan {
@@ -7,6 +6,7 @@ private extension SubscriptionPlan {
         switch self {
         case .free: return "leaf.fill"
         case .pro:  return "bolt.fill"
+        case .manager: return "briefcase.fill"
         case .team: return "person.3.fill"
         case .max:  return "crown.fill"
         case .organization: return "building.fill"
@@ -18,6 +18,7 @@ private extension SubscriptionPlan {
         switch self {
         case .free: return [Color(hex: "5E6C84"), Color(hex: "3A4255")]
         case .pro:  return [Color(hex: "5B8DEF"), Color(hex: "3563C3")]
+        case .manager: return [Color(hex: "7B2FBE"), Color(hex: "C77DFF")]
         case .team: return [Color(hex: "10B981"), Color(hex: "065F46")]
         case .max:  return [Color(hex: "F59E0B"), Color(hex: "B45309")]
         case .organization: return [Color(hex: "6366F1"), Color(hex: "4338CA")]
@@ -31,6 +32,7 @@ private extension SubscriptionPlan {
         switch self {
         case .free: return "まずは基本機能から".localized
         case .pro:  return "競技力向上をサポート".localized
+        case .manager: return "マネージャー機能とPro機能".localized
         case .team: return "チーム全員で使える".localized
         case .max:  return "プロコーチのための最高峰".localized
         case .organization: return "中〜大規模チームで共有して使う".localized
@@ -102,12 +104,22 @@ struct SubscriptionView: View {
         .navigationTitle("Subscriptions".localized)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Restore".localized) {
+                    Task {
+                        await subManager.restorePurchases()
+                    }
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Done".localized) { dismiss() }
             }
         }
         .onAppear {
             subManager.checkSubscriptionStatus()
+            Task {
+                await subManager.loadProducts()
+            }
         }
     }
 
@@ -264,6 +276,7 @@ struct SubscriptionView: View {
             SectionLabel(text: "individual")
             PlanCard(plan: .free, currentPlan: subManager.currentPlan)
             PlanCard(plan: .pro,  currentPlan: subManager.currentPlan)
+            PlanCard(plan: .manager, currentPlan: subManager.currentPlan)
 
             SectionLabel(text: "For Teams")
                 .padding(.top, 8)
@@ -305,6 +318,14 @@ private struct PlanCard: View {
     let plan: SubscriptionPlan
     let currentPlan: SubscriptionPlan
     var isSelected: Bool { currentPlan == plan }
+    
+    private var priceDisplay: String {
+        if let productId = plan.productId,
+           let product = SubscriptionManager.shared.products.first(where: { $0.id == productId }) {
+            return product.displayPrice
+        }
+        return plan.priceString.localized
+    }
 
     var body: some View {
         NavigationLink(destination: SubscriptionDetailView(plan: plan)) {
@@ -337,7 +358,7 @@ private struct PlanCard: View {
 
                 // 金額 + 矢印
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(plan.priceString.localized)
+                    Text(priceDisplay)
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(plan.accentColor)
                     if isSelected {
@@ -380,6 +401,14 @@ struct SubscriptionDetailView: View {
     @State private var authErrorMessage = ""
 
     var isSelected: Bool { subManager.currentPlan == plan }
+
+    private var priceDisplay: String {
+        if let productId = plan.productId,
+           let product = subManager.products.first(where: { $0.id == productId }) {
+            return product.displayPrice
+        }
+        return plan.priceString.localized
+    }
 
     var body: some View {
         ZStack {
@@ -438,7 +467,7 @@ struct SubscriptionDetailView: View {
                 Text(plan.tagline)
                     .font(.subheadline)
                     .foregroundColor(.white.opacity(0.6))
-                Text(plan.priceString.localized)
+                Text(priceDisplay)
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundStyle(
@@ -476,7 +505,9 @@ struct SubscriptionDetailView: View {
         case .free:
             return "RowPilotの中核となる基本的な機能を使用できます。潮汐情報の確認やGPSレート計、PM5との1:1接続など、日常のトレーニングに必要な機能を揃えています。".localized
         case .pro:
-            return "ForceCurveの可視化やゴーストレース機能、Stravaとの連携（準備中）など、より深いパフォーマンス分析が可能になります。個人アスリートに最適なプランです。".localized
+            return "ForceCurveの可見化やゴーストレース機能、Stravaとの連携（準備中）など、より深いパフォーマンス分析が可能になります。個人アスリートに最適なプランです。".localized
+        case .manager:
+            return "Proプランのすべての機能に加え、PM5との複数接続やマネージャーモードといった、管理者・コーチ向けの高度な機能を利用可能にするプランです。".localized
         case .team:
             return "PM5複数台同時接続機能に加え、最大3名のメンバーにプランを共有できます。チーム全員でデータを共有し、練習の効率化と記録管理を一元化できます。".localized
         case .max:
@@ -638,25 +669,27 @@ struct SubscriptionDetailView: View {
     }
 
     private func purchase() {
-        let context = LAContext()
-        var error: NSError?
+        guard let productId = plan.productId else { return }
+        guard let product = subManager.products.first(where: { $0.id == productId }) else {
+            authErrorMessage = "商品情報が見つかりません。時間をおいて再度お試しください。".localized
+            showingAuthError = true
+            return
+        }
 
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication,
-                                   localizedReason: "Confirm your subscription purchase.".localized) { success, authError in
-                DispatchQueue.main.async {
-                    if success {
-                        withAnimation { subManager.purchasePlan(plan) }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { dismiss() }
-                    } else if let e = authError as? LAError, e.code != .userCancel {
-                        authErrorMessage = e.localizedDescription
-                        showingAuthError = true
+        Task {
+            do {
+                let success = try await subManager.purchase(product)
+                if success {
+                    await MainActor.run {
+                        dismiss()
                     }
                 }
+            } catch {
+                await MainActor.run {
+                    authErrorMessage = error.localizedDescription
+                    showingAuthError = true
+                }
             }
-        } else {
-            withAnimation { subManager.purchasePlan(plan) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { dismiss() }
         }
     }
 

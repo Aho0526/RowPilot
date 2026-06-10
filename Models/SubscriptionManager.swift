@@ -2,10 +2,11 @@ import Foundation
 import CloudKit
 import Combine
 import SwiftUI
+import StoreKit
 
 // MARK: - サブスクリプションレコード
 
-/// App Store / RevenueCat から受け取るサブスクリプション情報
+/// App Store から受け取るサブスクリプション情報
 struct SubscriptionRecord: Codable {
     var subscriptionTier: SubscriptionPlan
     var autoRenew: Bool
@@ -40,8 +41,6 @@ struct SubscriptionRecord: Codable {
 // MARK: - SubscriptionManager
 
 /// サブスクリプション状態を管理するマネージャー
-/// - App Store / RevenueCat の情報を正として expiresAt を保存
-/// - 独自の期限延長・独自計算は行わない
 class SubscriptionManager: ObservableObject {
     static let shared = SubscriptionManager()
 
@@ -76,6 +75,20 @@ class SubscriptionManager: ObservableObject {
     @Published var autoRenew: Bool = false
     /// 有効期限（App Store の値）
     @Published var expiresAt: Date? = nil
+    
+    // MARK: - StoreKit2 Properties
+    @Published var products: [Product] = []
+    @Published var isPurchasing = false
+
+    private let productIds = [
+        "rowpilot_pro",
+        "rowpilot_manager",
+        "rowpilot_team",
+        "rowpilot_max",
+        "rowpilot_org"
+    ]
+
+    private var updatesTask: Task<Void, Never>? = nil
 
     // 旧APIの互換エイリアス
     var isAutoRenew: Bool { autoRenew }
@@ -123,8 +136,20 @@ class SubscriptionManager: ObservableObject {
     // MARK: - Init
 
     init() {
+        print("StoreKit: StoreKit初期化開始")
+        print("StoreKit: Product ID一覧: \(productIds)")
+        
         fetchMyUserRecordID()
         refreshPublishedState()
+
+        // StoreKit 2 トランザクション監視の開始
+        startTransactionListener()
+
+        // 起動時に最新の契約状態を同期＆商品情報を取得
+        Task {
+            await updateSubscriptionStatus()
+            await loadProducts()
+        }
 
         // 定期チェック：期限切れ検出 → Freeへ自動移行
         statusTimer = Timer.publish(every: 10.0, on: .main, in: .common)
@@ -132,6 +157,151 @@ class SubscriptionManager: ObservableObject {
             .sink { [weak self] _ in
                 self?.checkSubscriptionStatus()
             }
+    }
+
+    deinit {
+        updatesTask?.cancel()
+    }
+
+    // MARK: - StoreKit 2 Logic
+
+    func startTransactionListener() {
+        updatesTask = Task {
+            for await update in Transaction.updates {
+                do {
+                    let transaction = try checkVerified(update)
+                    await updateSubscriptionStatus()
+                    await transaction.finish()
+                } catch {
+                    print("Transaction verification error: \(error)")
+                }
+            }
+        }
+    }
+
+    func loadProducts() async {
+        print("StoreKit: Product.products(for:) 呼び出し前 (IDリスト: \(productIds))")
+        do {
+            let fetchedProducts = try await Product.products(for: productIds)
+            print("StoreKit: Product.products(for:) 呼び出し後")
+            print("StoreKit: 取得件数: \(fetchedProducts.count)")
+            for product in fetchedProducts {
+                print("StoreKit: 取得商品 - ID: \(product.id), 名称: \(product.displayName), 価格: \(product.displayPrice)")
+            }
+
+            await MainActor.run {
+                // SubscriptionPlan のレベル順にソートして保持
+                self.products = fetchedProducts.sorted { p1, p2 in
+                    let l1 = self.plan(for: p1.id)?.level ?? 0
+                    let l2 = self.plan(for: p2.id)?.level ?? 0
+                    return l1 < l2
+                }
+            }
+        } catch {
+            print("StoreKit: 商品取得失敗エラー: \(error.localizedDescription) (詳細: \(error))")
+        }
+    }
+
+    func purchase(_ product: Product) async throws -> Bool {
+        await MainActor.run { self.isPurchasing = true }
+        defer {
+            Task { @MainActor in self.isPurchasing = false }
+        }
+
+        let result = try await product.purchase()
+        switch result {
+        case .success(let verification):
+            let transaction = try checkVerified(verification)
+            await updateSubscriptionStatus()
+            await transaction.finish()
+            return true
+        case .pending:
+            return false
+        case .userCancelled:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    func restorePurchases() async {
+        do {
+            try await AppStore.sync()
+            await updateSubscriptionStatus()
+        } catch {
+            print("StoreKit: Failed to sync App Store: \(error)")
+        }
+    }
+
+    func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
+        switch result {
+        case .unverified(_, let error):
+            throw error
+        case .verified(let safe):
+            return safe
+        }
+    }
+
+    private func plan(for productId: String) -> SubscriptionPlan? {
+        switch productId {
+        case "rowpilot_pro": return .pro
+        case "rowpilot_manager": return .manager
+        case "rowpilot_team": return .team
+        case "rowpilot_max": return .max
+        case "rowpilot_org": return .organization
+        default: return nil
+        }
+    }
+
+    func updateSubscriptionStatus() async {
+        var highestPlan: SubscriptionPlan = .free
+        var latestExpirationDate: Date? = nil
+        var activeProductId: String? = nil
+        var hasActiveSubscription = false
+
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result else { continue }
+
+            if let expirationDate = transaction.expirationDate {
+                if expirationDate < Date() {
+                    continue // 期限切れ
+                }
+            }
+
+            if let plan = plan(for: transaction.productID) {
+                if plan.level > highestPlan.level {
+                    highestPlan = plan
+                    latestExpirationDate = transaction.expirationDate
+                    activeProductId = transaction.productID
+                    hasActiveSubscription = true
+                }
+            }
+        }
+
+        let planToApply = highestPlan
+        let expiration = latestExpirationDate
+        let prodId = activeProductId
+
+        await MainActor.run {
+            self.currentPlan = planToApply
+            self.expiresAt = expiration
+            self.autoRenew = hasActiveSubscription
+
+            let record = SubscriptionRecord(
+                subscriptionTier: planToApply,
+                autoRenew: hasActiveSubscription,
+                expiresAtMs: expiration.map { Int64($0.timeIntervalSince1970 * 1000) },
+                productId: prodId
+            )
+            self.savedRecord = record
+            self.refreshPublishedState()
+
+            if planToApply == .team || planToApply == .max || planToApply == .organization {
+                self.uploadShareRecord()
+            } else {
+                self.deleteShareRecord()
+            }
+        }
     }
 
     // MARK: - Core: 公開状態を保存レコードから同期
@@ -167,13 +337,8 @@ class SubscriptionManager: ObservableObject {
         }
     }
 
-    // MARK: - 購入（App Store / RevenueCat から呼び出す）
+    // MARK: - 購入（互換性のために残す、内部からは呼ばれない）
 
-    /// App Store または RevenueCat の情報を受け取って保存する
-    /// - Parameters:
-    ///   - plan: 購入したプラン
-    ///   - expiresAtMs: App Store が返す有効期限（ミリ秒 Unix タイムスタンプ）
-    ///   - productId: 購入した商品ID
     func applyPurchase(plan: SubscriptionPlan, expiresAtMs: Int64, productId: String?) {
         let record = SubscriptionRecord(
             subscriptionTier: plan,
@@ -193,34 +358,6 @@ class SubscriptionManager: ObservableObject {
         }
     }
 
-    /// デバッグ・テスト用：1ヶ月後の期限で購入を適用する
-    func purchasePlan(_ plan: SubscriptionPlan) {
-        guard plan != .free else {
-            cancelAndExpireNow()
-            return
-        }
-
-        let oneMonthFromNow = Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()
-        let ms = Int64(oneMonthFromNow.timeIntervalSince1970 * 1000)
-        applyPurchase(plan: plan, expiresAtMs: ms, productId: "debug_\(plan.rawValue)_monthly")
-
-        isSharedManagerPlan = false
-        sharedFromOwnerId = nil
-    }
-
-    // MARK: - 自動更新の更新（App Store 課金成功時）
-
-    /// 自動更新成功時に新しい有効期限を保存する
-    func applyRenewal(newExpiresAtMs: Int64) {
-        var record = savedRecord
-        record.expiresAtMs = newExpiresAtMs
-        record.autoRenew = true
-        savedRecord = record
-        refreshPublishedState()
-        print("Subscription renewed. New expiration: \(record.expiresAt?.description ?? "nil")")
-    }
-
-    // MARK: - 解約（自動更新を停止）
 
     /// 解約処理：autoRenew を false にする。有効期限まではプラン継続。
     func cancelSubscription() {

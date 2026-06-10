@@ -423,7 +423,7 @@ struct SettingView: View {
                         .underline()
                 }
                 Text("Test Flight v1.0")
-                Text("Build from June 8")
+                Text("Build from June 11")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)
