@@ -422,8 +422,8 @@ struct SettingView: View {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("Test Flight v1.0")
-                Text("Build from June 11")
+                Text("Test Flight v1.0(Build 4)")
+                Text("Build from June 12")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

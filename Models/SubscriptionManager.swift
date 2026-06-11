@@ -241,8 +241,17 @@ class SubscriptionManager: ObservableObject {
             print("[StoreKit] Purchase result: success — verifying...")
             let transaction = try checkVerified(verification)
             print("[StoreKit] ✅ Purchase completed — productID: \(transaction.productID), transactionID: \(transaction.id)")
-            await updateSubscriptionStatus()
+
+            // トランザクションを先にfinishしてから状態を更新
+            // （finish後にcurrentEntitlementsが正しく更新される）
             await transaction.finish()
+            print("[StoreKit] Transaction finished, now updating subscription status...")
+
+            // アップグレード購入後はcurrentEntitlementsが更新されるまで
+            // 少し待機してから再取得する（StoreKit内部処理の完了を待つ）
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+            await updateSubscriptionStatus()
+            print("[StoreKit] Subscription status updated after purchase")
             return true
         case .pending:
             print("[StoreKit] Purchase result: pending (waiting for parent approval or SCA)")
@@ -301,6 +310,13 @@ class SubscriptionManager: ObservableObject {
                 continue
             }
 
+            // 失効済み（払い戻し等）はスキップ
+            if let revocationDate = transaction.revocationDate {
+                print("[StoreKit] Skipping revoked entitlement: \(transaction.productID), revoked: \(revocationDate)")
+                continue
+            }
+
+            // 有効期限切れはスキップ
             if let expirationDate = transaction.expirationDate {
                 if expirationDate < Date() {
                     print("[StoreKit] Skipping expired entitlement: \(transaction.productID), expired: \(expirationDate)")
@@ -308,8 +324,15 @@ class SubscriptionManager: ObservableObject {
                 }
             }
 
+            // 同一グループ内でアップグレードされた旧プランはスキップ
+            // isUpgraded が true の場合、このトランザクションは上位プランに置き換えられている
+            if transaction.isUpgraded {
+                print("[StoreKit] Skipping upgraded-away entitlement: \(transaction.productID) (replaced by higher plan)")
+                continue
+            }
+
             if let plan = plan(for: transaction.productID) {
-                print("[StoreKit] Active entitlement: \(transaction.productID) → \(plan.displayName)")
+                print("[StoreKit] Valid entitlement: \(transaction.productID) → \(plan.displayName), expires: \(transaction.expirationDate?.description ?? "none"), isUpgraded: \(transaction.isUpgraded)")
                 if plan.level > highestPlan.level {
                     highestPlan = plan
                     latestExpirationDate = transaction.expirationDate
