@@ -79,6 +79,8 @@ class SubscriptionManager: ObservableObject {
     // MARK: - StoreKit2 Properties
     @Published var products: [Product] = []
     @Published var isPurchasing = false
+    @Published var isLoadingProducts = false
+    @Published var productsLoadError: String? = nil
 
     private let productIds = [
         "rowpilot_pro",
@@ -136,8 +138,8 @@ class SubscriptionManager: ObservableObject {
     // MARK: - Init
 
     init() {
-        print("StoreKit: StoreKit初期化開始")
-        print("StoreKit: Product ID一覧: \(productIds)")
+        print("[StoreKit] ✅ StoreKit initialization started")
+        print("[StoreKit] Product IDs: \(productIds)")
         
         fetchMyUserRecordID()
         refreshPublishedState()
@@ -147,7 +149,9 @@ class SubscriptionManager: ObservableObject {
 
         // 起動時に最新の契約状態を同期＆商品情報を取得
         Task {
+            print("[StoreKit] Updating subscription status on launch...")
             await updateSubscriptionStatus()
+            print("[StoreKit] Loading products on launch...")
             await loadProducts()
         }
 
@@ -166,27 +170,40 @@ class SubscriptionManager: ObservableObject {
     // MARK: - StoreKit 2 Logic
 
     func startTransactionListener() {
+        print("[StoreKit] Transaction listener started")
         updatesTask = Task {
             for await update in Transaction.updates {
                 do {
                     let transaction = try checkVerified(update)
+                    print("[StoreKit] Transaction update received: productID=\(transaction.productID)")
                     await updateSubscriptionStatus()
                     await transaction.finish()
+                    print("[StoreKit] Transaction finished: productID=\(transaction.productID)")
                 } catch {
-                    print("Transaction verification error: \(error)")
+                    print("[StoreKit] ❌ Transaction verification error: \(error)")
                 }
             }
         }
     }
 
     func loadProducts() async {
-        print("StoreKit: Product.products(for:) 呼び出し前 (IDリスト: \(productIds))")
+        print("[StoreKit] Product request started — IDs: \(productIds)")
+        await MainActor.run {
+            self.isLoadingProducts = true
+            self.productsLoadError = nil
+        }
+
         do {
             let fetchedProducts = try await Product.products(for: productIds)
-            print("StoreKit: Product.products(for:) 呼び出し後")
-            print("StoreKit: 取得件数: \(fetchedProducts.count)")
+            print("[StoreKit] Product request completed")
+            print("[StoreKit] Products loaded count: \(fetchedProducts.count)")
+
+            if fetchedProducts.isEmpty {
+                print("[StoreKit] ⚠️ WARNING: No products returned from App Store. Check product IDs and StoreKit configuration.")
+            }
+
             for product in fetchedProducts {
-                print("StoreKit: 取得商品 - ID: \(product.id), 名称: \(product.displayName), 価格: \(product.displayPrice)")
+                print("[StoreKit] ✅ Product loaded — ID: \(product.id), Name: \(product.displayName), Price: \(product.displayPrice)")
             }
 
             await MainActor.run {
@@ -196,46 +213,64 @@ class SubscriptionManager: ObservableObject {
                     let l2 = self.plan(for: p2.id)?.level ?? 0
                     return l1 < l2
                 }
+                self.isLoadingProducts = false
+                self.productsLoadError = nil
             }
         } catch {
-            print("StoreKit: 商品取得失敗エラー: \(error.localizedDescription) (詳細: \(error))")
+            print("[StoreKit] ❌ Product fetch failed: \(error.localizedDescription)")
+            print("[StoreKit] ❌ Error detail: \(error)")
+            await MainActor.run {
+                self.isLoadingProducts = false
+                self.productsLoadError = error.localizedDescription
+            }
         }
     }
 
     func purchase(_ product: Product) async throws -> Bool {
+        print("[StoreKit] Purchase button tapped — productID: \(product.id), price: \(product.displayPrice)")
         await MainActor.run { self.isPurchasing = true }
         defer {
             Task { @MainActor in self.isPurchasing = false }
         }
 
+        print("[StoreKit] Purchase started — productID: \(product.id)")
         let result = try await product.purchase()
+
         switch result {
         case .success(let verification):
+            print("[StoreKit] Purchase result: success — verifying...")
             let transaction = try checkVerified(verification)
+            print("[StoreKit] ✅ Purchase completed — productID: \(transaction.productID), transactionID: \(transaction.id)")
             await updateSubscriptionStatus()
             await transaction.finish()
             return true
         case .pending:
+            print("[StoreKit] Purchase result: pending (waiting for parent approval or SCA)")
             return false
         case .userCancelled:
+            print("[StoreKit] Purchase result: user cancelled")
             return false
         @unknown default:
+            print("[StoreKit] Purchase result: unknown")
             return false
         }
     }
 
     func restorePurchases() async {
+        print("[StoreKit] Restore purchases started")
         do {
             try await AppStore.sync()
             await updateSubscriptionStatus()
+            print("[StoreKit] ✅ Restore purchases completed")
         } catch {
-            print("StoreKit: Failed to sync App Store: \(error)")
+            print("[StoreKit] ❌ Failed to sync App Store: \(error)")
         }
     }
 
     func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {
         case .unverified(_, let error):
+            print("[StoreKit] ❌ Transaction unverified: \(error)")
             throw error
         case .verified(let safe):
             return safe
@@ -254,21 +289,27 @@ class SubscriptionManager: ObservableObject {
     }
 
     func updateSubscriptionStatus() async {
+        print("[StoreKit] Checking current entitlements...")
         var highestPlan: SubscriptionPlan = .free
         var latestExpirationDate: Date? = nil
         var activeProductId: String? = nil
         var hasActiveSubscription = false
 
         for await result in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = result else { continue }
+            guard case .verified(let transaction) = result else {
+                print("[StoreKit] Skipping unverified entitlement")
+                continue
+            }
 
             if let expirationDate = transaction.expirationDate {
                 if expirationDate < Date() {
-                    continue // 期限切れ
+                    print("[StoreKit] Skipping expired entitlement: \(transaction.productID), expired: \(expirationDate)")
+                    continue
                 }
             }
 
             if let plan = plan(for: transaction.productID) {
+                print("[StoreKit] Active entitlement: \(transaction.productID) → \(plan.displayName)")
                 if plan.level > highestPlan.level {
                     highestPlan = plan
                     latestExpirationDate = transaction.expirationDate
@@ -278,18 +319,21 @@ class SubscriptionManager: ObservableObject {
             }
         }
 
+        print("[StoreKit] Effective plan: \(highestPlan.displayName), expires: \(latestExpirationDate?.description ?? "none")")
+
         let planToApply = highestPlan
         let expiration = latestExpirationDate
         let prodId = activeProductId
+        let isActive = hasActiveSubscription  // Swift 6対応: 変数をローカルにコピー
 
         await MainActor.run {
             self.currentPlan = planToApply
             self.expiresAt = expiration
-            self.autoRenew = hasActiveSubscription
+            self.autoRenew = isActive
 
             let record = SubscriptionRecord(
                 subscriptionTier: planToApply,
-                autoRenew: hasActiveSubscription,
+                autoRenew: isActive,
                 expiresAtMs: expiration.map { Int64($0.timeIntervalSince1970 * 1000) },
                 productId: prodId
             )
@@ -314,7 +358,7 @@ class SubscriptionManager: ObservableObject {
         autoRenew   = effective == .free ? false : record.autoRenew
         expiresAt   = effective == .free ? nil   : record.expiresAt
 
-        // 全ビューの @AppStorage("userSubscriptionPlan") と互换性のあるキーにも同期書き込み
+        // 全ビューの @AppStorage("userSubscriptionPlan") と互換性のあるキーにも同期書き込み
         UserDefaults.standard.set(effective.rawValue, forKey: "userSubscriptionPlan")
 
         // 期限切れで降格した場合はレコードも更新
@@ -323,7 +367,7 @@ class SubscriptionManager: ObservableObject {
             updated.subscriptionTier = .free
             updated.autoRenew = false
             savedRecord = updated
-            print("Subscription expired. Downgraded to Free.")
+            print("[StoreKit] Subscription expired. Downgraded to Free.")
         }
     }
 
@@ -349,7 +393,7 @@ class SubscriptionManager: ObservableObject {
         savedRecord = record
         refreshPublishedState()
 
-        print("Purchase applied: \(plan.displayName), expires: \(record.expiresAt?.description ?? "nil")")
+        print("[StoreKit] Purchase applied: \(plan.displayName), expires: \(record.expiresAt?.description ?? "nil")")
 
         if plan == .team || plan == .max || plan == .organization {
             uploadShareRecord()
@@ -366,7 +410,7 @@ class SubscriptionManager: ObservableObject {
         savedRecord = record
         refreshPublishedState()
 
-        print("Subscription cancelled. Active until: \(record.expiresAt?.description ?? "nil")")
+        print("[StoreKit] Subscription cancelled. Active until: \(record.expiresAt?.description ?? "nil")")
 
         if currentPlan == .team || currentPlan == .max || currentPlan == .organization {
             uploadShareRecord()
@@ -395,7 +439,7 @@ class SubscriptionManager: ObservableObject {
                 } else {
                     self?.loadOrCreateLocalUserRecordId()
                 }
-                print("My User Record ID: \(self?.myUserRecordId ?? "")")
+                print("[StoreKit] My User Record ID: \(self?.myUserRecordId ?? "")")
                 if self?.currentPlan == .team || self?.currentPlan == .max || self?.currentPlan == .organization {
                     self?.loadSharedMembers()
                 }
@@ -411,7 +455,7 @@ class SubscriptionManager: ObservableObject {
             UserDefaults.standard.set(newId, forKey: "RowPilot_LocalUserRecordId")
             self.myUserRecordId = newId
         }
-        print("My Local User Record ID: \(self.myUserRecordId)")
+        print("[StoreKit] My Local User Record ID: \(self.myUserRecordId)")
         if self.currentPlan == .team || self.currentPlan == .max || self.currentPlan == .organization {
             self.loadSharedMembers()
         }

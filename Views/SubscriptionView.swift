@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 
 // MARK: - Plan定義（アイコン・グラデーション）
 private extension SubscriptionPlan {
@@ -37,6 +38,14 @@ private extension SubscriptionPlan {
         case .max:  return "プロコーチのための最高峰".localized
         case .organization: return "中〜大規模チームで共有して使う".localized
         case .enterprise: return "大規模チーム・団体向け".localized
+        }
+    }
+
+    /// サブスクリプション期間の表示テキスト（Guideline 3.1.2(c)準拠）
+    var periodString: String {
+        switch self {
+        case .free: return "無料"
+        case .pro, .manager, .team, .max, .organization, .enterprise: return "月額（毎月自動更新）"
         }
     }
 
@@ -96,6 +105,10 @@ struct SubscriptionView: View {
 
                     // ── プランカードリスト ──
                     plansSection
+                        .padding(.bottom, 8)
+
+                    // ── Guideline 3.1.2(c): Privacy Policy & Terms of Use ──
+                    legalLinksSection
                         .padding(.bottom, 48)
                 }
                 .padding(.horizontal, 16)
@@ -117,8 +130,10 @@ struct SubscriptionView: View {
         }
         .onAppear {
             subManager.checkSubscriptionStatus()
-            Task {
-                await subManager.loadProducts()
+            if subManager.products.isEmpty {
+                Task {
+                    await subManager.loadProducts()
+                }
             }
         }
     }
@@ -273,6 +288,58 @@ struct SubscriptionView: View {
     // MARK: - Plans Section
     private var plansSection: some View {
         VStack(spacing: 12) {
+            // 商品取得中の表示
+            if subManager.isLoadingProducts {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .tint(.white)
+                    Text("価格情報を取得中...")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(12)
+                .background(Color.white.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
+            // 商品取得エラー時の表示
+            if let errorMsg = subManager.productsLoadError, !subManager.isLoadingProducts {
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("価格情報の取得に失敗しました")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                    Text(errorMsg)
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.4))
+                        .multilineTextAlignment(.center)
+                    Button(action: {
+                        Task { await subManager.loadProducts() }
+                    }) {
+                        Label("再試行", systemImage: "arrow.clockwise")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.orange.opacity(0.3))
+                            .clipShape(Capsule())
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(12)
+                .background(Color.orange.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+                )
+            }
+
             SectionLabel(text: "individual")
             PlanCard(plan: .free, currentPlan: subManager.currentPlan)
             PlanCard(plan: .pro,  currentPlan: subManager.currentPlan)
@@ -294,6 +361,62 @@ struct SubscriptionView: View {
                 .padding(.top, 8)
             PlanCard(plan: .enterprise, currentPlan: subManager.currentPlan)
         }
+    }
+
+    // MARK: - Legal Links (Guideline 3.1.2(c))
+    private var legalLinksSection: some View {
+        VStack(spacing: 10) {
+            Text("サブスクリプションについて".localized)
+                .font(.caption2)
+                .fontWeight(.bold)
+                .tracking(0.8)
+                .foregroundColor(.white.opacity(0.35))
+                .textCase(.uppercase)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("サブスクリプションは購入確認後、Apple IDアカウントに課金されます。サブスクリプションは現在の期間終了の24時間以上前にキャンセルしない限り自動更新されます。")
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.4))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 16) {
+                Link(destination: URL(string: "https://rowpilot.jp/privacy-policy")!) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.shield")
+                            .font(.caption2)
+                        Text("Privacy Policy")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(Color(hex: "5B8DEF"))
+                }
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.15))
+                    .frame(width: 1, height: 14)
+
+                Link(destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text")
+                            .font(.caption2)
+                        Text("Terms of Use")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(Color(hex: "5B8DEF"))
+                }
+
+                Spacer()
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
     }
 }
 
@@ -402,9 +525,14 @@ struct SubscriptionDetailView: View {
 
     var isSelected: Bool { subManager.currentPlan == plan }
 
+    /// StoreKit から取得した Product（あれば）
+    private var storeProduct: Product? {
+        guard let productId = plan.productId else { return nil }
+        return subManager.products.first(where: { $0.id == productId })
+    }
+
     private var priceDisplay: String {
-        if let productId = plan.productId,
-           let product = subManager.products.first(where: { $0.id == productId }) {
+        if let product = storeProduct {
             return product.displayPrice
         }
         return plan.priceString.localized
@@ -420,6 +548,9 @@ struct SubscriptionDetailView: View {
                     // ── ヒーローヘッダー ──
                     heroHeader
 
+                    // ── サブスクリプション詳細（Guideline 3.1.2(c)）──
+                    subscriptionInfoSection
+
                     // ── 概要説明 ──
                     descriptionSection
 
@@ -430,6 +561,9 @@ struct SubscriptionDetailView: View {
 
                     // ── アクションボタン ──
                     actionArea
+
+                    // ── Legal Links（Guideline 3.1.2(c)）──
+                    detailLegalSection
                 }
                 .padding(24)
                 .padding(.bottom, 40)
@@ -477,6 +611,65 @@ struct SubscriptionDetailView: View {
             }
         }
         .padding(.top, 8)
+    }
+
+    // MARK: - Subscription Info (Guideline 3.1.2(c): 名称・期間・価格)
+    private var subscriptionInfoSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("プラン詳細".localized)
+                .font(.caption)
+                .fontWeight(.bold)
+                .tracking(0.8)
+                .foregroundColor(.white.opacity(0.4))
+                .textCase(.uppercase)
+                .padding(.bottom, 10)
+
+            VStack(spacing: 0) {
+                infoRow(label: "サブスクリプション名", value: plan.displayName)
+                Divider().background(Color.white.opacity(0.08))
+                infoRow(label: "期間", value: plan.periodString)
+                if plan != .free && plan != .enterprise {
+                    Divider().background(Color.white.opacity(0.08))
+                    // 商品取得中・取得済みで表示を変える
+                    if subManager.isLoadingProducts {
+                        HStack {
+                            Text("価格")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.55))
+                            Spacer()
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.8)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                    } else {
+                        infoRow(label: "価格", value: priceDisplay, valueColor: plan.accentColor)
+                    }
+                }
+            }
+            .background(Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+        }
+    }
+
+    private func infoRow(label: String, value: String, valueColor: Color = .white) -> some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.55))
+            Spacer()
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(valueColor)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 
     // MARK: - Description
@@ -582,24 +775,96 @@ struct SubscriptionDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .shadow(color: plan.accentColor.opacity(0.4), radius: 12, x: 0, y: 5)
                 }
+            } else if plan == .free {
+                // Freeプランは購入ボタン不要
+                EmptyView()
             } else {
-                Button(action: purchase) {
-                    HStack(spacing: 10) {
-                        Image(systemName: plan.icon)
-                            .font(.headline)
-                        Text("\(plan.displayName) を購入")
-                            .font(.headline)
-                            .fontWeight(.bold)
+                VStack(spacing: 12) {
+                    // 商品取得中のローディング
+                    if subManager.isLoadingProducts {
+                        VStack(spacing: 8) {
+                            ProgressView()
+                                .tint(plan.accentColor)
+                            Text("価格情報を取得中...")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    } else if let product = storeProduct {
+                        // StoreKit商品が取得できている場合 → 購入ボタン表示
+                        Button(action: { purchase(product: product) }) {
+                            HStack(spacing: 10) {
+                                if subManager.isPurchasing {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .scaleEffect(0.9)
+                                } else {
+                                    Image(systemName: plan.icon)
+                                        .font(.headline)
+                                }
+                                Text(subManager.isPurchasing ? "購入処理中..." : "\(plan.displayName) を購入 — \(priceDisplay)/月")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                subManager.isPurchasing
+                                    ? LinearGradient(colors: [Color.gray.opacity(0.5), Color.gray.opacity(0.4)],
+                                                     startPoint: .leading, endPoint: .trailing)
+                                    : LinearGradient(colors: plan.gradientColors,
+                                                     startPoint: .leading, endPoint: .trailing)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .shadow(color: plan.accentColor.opacity(0.4), radius: 12, x: 0, y: 5)
+                        }
+                        .disabled(subManager.isPurchasing)
+                        .id("purchase_button_\(plan.rawValue)")
+
+                    } else if subManager.productsLoadError != nil {
+                        // 商品取得エラー時 → 再試行ボタン
+                        Button(action: { Task { await subManager.loadProducts() } }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.clockwise")
+                                Text("価格情報を再取得")
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundColor(.orange)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color.orange.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+                    } else {
+                        // 商品IDはあるがproductsが空（Sandbox未設定など）
+                        Button(action: { purchase(product: nil) }) {
+                            HStack(spacing: 10) {
+                                Image(systemName: plan.icon)
+                                    .font(.headline)
+                                Text("\(plan.displayName) を購入")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                LinearGradient(colors: plan.gradientColors,
+                                               startPoint: .leading, endPoint: .trailing)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .shadow(color: plan.accentColor.opacity(0.4), radius: 12, x: 0, y: 5)
+                        }
+                        .id("purchase_button_fallback_\(plan.rawValue)")
                     }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(
-                        LinearGradient(colors: plan.gradientColors,
-                                       startPoint: .leading, endPoint: .trailing)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .shadow(color: plan.accentColor.opacity(0.4), radius: 12, x: 0, y: 5)
                 }
             }
         } else {
@@ -668,11 +933,66 @@ struct SubscriptionDetailView: View {
         }
     }
 
-    private func purchase() {
-        guard let productId = plan.productId else { return }
-        guard let product = subManager.products.first(where: { $0.id == productId }) else {
-            authErrorMessage = "商品情報が見つかりません。時間をおいて再度お試しください。".localized
+    // MARK: - Detail Legal Section (Guideline 3.1.2(c))
+    private var detailLegalSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if plan != .free && plan != .enterprise {
+                Text("サブスクリプションは購入確認後、Apple IDアカウントに課金されます。現在の期間終了の24時間以上前にキャンセルしない限り自動更新されます。購入後は「設定 > Apple ID > サブスクリプション」からいつでも管理・キャンセルできます。")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.35))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 16) {
+                Link(destination: URL(string: "https://rowpilot.jp/privacy-policy")!) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.shield")
+                            .font(.caption2)
+                        Text("Privacy Policy")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(Color(hex: "5B8DEF"))
+                }
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.15))
+                    .frame(width: 1, height: 14)
+
+                Link(destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text")
+                            .font(.caption2)
+                        Text("Terms of Use (EULA)")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(Color(hex: "5B8DEF"))
+                }
+
+                Spacer()
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.03))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Purchase Logic
+    private func purchase(product: Product?) {
+        print("[StoreKit] Purchase button tapped — plan: \(plan.displayName)")
+
+        guard let product = product else {
+            // StoreKit productが取得できていない場合のフォールバック
+            print("[StoreKit] ⚠️ No StoreKit product found for plan: \(plan.rawValue). Attempting to reload products.")
+            authErrorMessage = "商品情報が見つかりません。ネットワーク接続を確認して再度お試しください。"
             showingAuthError = true
+            Task { await subManager.loadProducts() }
             return
         }
 
@@ -686,6 +1006,7 @@ struct SubscriptionDetailView: View {
                 }
             } catch {
                 await MainActor.run {
+                    print("[StoreKit] ❌ Purchase failed: \(error.localizedDescription)")
                     authErrorMessage = error.localizedDescription
                     showingAuthError = true
                 }
