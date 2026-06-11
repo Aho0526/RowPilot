@@ -16,7 +16,6 @@
 	<key>com.apple.developer.nfc.readersession.formats</key>
 	<array>
 		<string>TAG</string>
-		<string>NDEF</string>
 		<string>PACE</string>
 	</array>
 </dict>
