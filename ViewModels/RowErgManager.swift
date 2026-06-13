@@ -43,6 +43,7 @@ class RowErgManager: NSObject, ObservableObject {
     @Published var isScanning: Bool = false
     @Published var connectionState: ConnectionState = .disconnected
     @Published var discoveredDevices: [CBPeripheral] = []
+    @Published var isNFCConnecting: Bool = false
     
     // Published Metric Data
     @Published var strokeRate: Int = 0
@@ -1361,6 +1362,7 @@ extension RowErgManager: NFCNDEFReaderSessionDelegate {
             print("RowErgManager: NFC Matched Serial -> \(serial)")
             DispatchQueue.main.async {
                 self.targetPeripheralName = serial
+                self.isNFCConnecting = true
                 if !self.isScanning {
                     self.startScanning()
                 } else {
@@ -1426,6 +1428,7 @@ extension RowErgManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         print("RowErgManager: Failed to connect -> \(error?.localizedDescription ?? "")")
         connectionState = .disconnected
+        isNFCConnecting = false
     }
     
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
@@ -1436,6 +1439,7 @@ extension RowErgManager: CBCentralManagerDelegate {
         strokeRate = 0
         pace500m = 0.0
         power = 0
+        isNFCConnecting = false
         // Internal tracking cleanup
         lastStrokeCount = -1
         stopDataRecordingTimer()

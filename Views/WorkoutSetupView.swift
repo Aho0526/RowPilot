@@ -2,76 +2,110 @@ import SwiftUI
 
 struct WorkoutSetupView: View {
     @ObservedObject var ergManager: RowErgManager
-    
+
+    private struct WorkoutOption: Identifiable {
+        let id = UUID()
+        let title: String
+        let subtitle: String
+        let icon: String
+        let iconColor: Color
+    }
+
+    private let options: [WorkoutOption] = [
+        WorkoutOption(title: "Single Distance",  subtitle: "目標距離を設定してスタート",      icon: "arrow.right.to.line.alt", iconColor: Color(hex: "5E9EFF")),
+        WorkoutOption(title: "Single Time",       subtitle: "目標時間を設定してスタート",      icon: "clock.fill",              iconColor: Color(hex: "A78BFA")),
+        WorkoutOption(title: "Single Calories",   subtitle: "目標カロリーを設定してスタート",  icon: "flame.fill",              iconColor: Color(hex: "F97316")),
+        WorkoutOption(title: "Fixed Interval",    subtitle: "固定インターバルを設定",          icon: "repeat",                  iconColor: Color(hex: "34D399")),
+        WorkoutOption(title: "Variable Interval", subtitle: "可変インターバルを設定",          icon: "repeat.1",                iconColor: Color(hex: "FB7185")),
+    ]
+
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
-            
-            VStack(spacing: 30) {
-                Text("Select Workout Type".localized)
-                    .font(Theme.headerFont())
-                    .foregroundColor(Theme.textMain)
-                    .padding(.top, 40)
-                
-                NavigationLink(destination: SingleDistanceSetupView(ergManager: ergManager)) {
-                    LargeWorkoutButton(title: "Single Distance".localized, icon: "arrow.right.to.line.alt")
-                }
-                
-                NavigationLink(destination: SingleTimeSetupView(ergManager: ergManager)) {
-                    LargeWorkoutButton(title: "Single Time".localized, icon: "clock.fill")
-                }
-                
-                NavigationLink(destination: SingleCaloriesSetupView(ergManager: ergManager)) {
-                    LargeWorkoutButton(title: "Single Calories".localized, icon: "flame.fill")
-                }
-                
-                NavigationLink(destination: FixedIntervalSetupView(ergManager: ergManager)) {
-                    LargeWorkoutButton(title: "Fixed Interval".localized, icon: "repeat")
-                }
-                
-                NavigationLink(destination: VariableIntervalSetupView(ergManager: ergManager)) {
-                    LargeWorkoutButton(title: "Variable Interval".localized, icon: "repeat.1")
-                }
-                
-                Spacer()
-                
-                if ergManager.isResearchWriteBusy {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                            .tint(Theme.accent)
-                        Text("Sending CSAFE...".localized)
-                            .foregroundColor(Theme.accent)
-                            .bold()
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
+                        workoutRow(for: option, index: index)
                     }
-                    .padding(.bottom, 40)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 32)
+            }
+
+            if ergManager.isResearchWriteBusy {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        ProgressView().tint(Theme.accent)
+                        Text("Sending CSAFE...".localized)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(Theme.accent)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .padding(.bottom, 32)
                 }
             }
-            .padding()
         }
         .navigationTitle("Workout Setup".localized)
         .navigationBarTitleDisplayMode(.inline)
     }
-}
 
-struct LargeWorkoutButton: View {
-    let title: String
-    let icon: String
-    
-    var body: some View {
-        HStack {
-            Image(systemName: icon)
-                .font(.title2)
-            Text(title)
-                .font(.title2)
-                .fontWeight(.bold)
+    @ViewBuilder
+    private func workoutRow(for option: WorkoutOption, index: Int) -> some View {
+        let destination: AnyView = {
+            switch index {
+            case 0: return AnyView(SingleDistanceSetupView(ergManager: ergManager))
+            case 1: return AnyView(SingleTimeSetupView(ergManager: ergManager))
+            case 2: return AnyView(SingleCaloriesSetupView(ergManager: ergManager))
+            case 3: return AnyView(FixedIntervalSetupView(ergManager: ergManager))
+            default: return AnyView(VariableIntervalSetupView(ergManager: ergManager))
+            }
+        }()
+
+        NavigationLink(destination: destination) {
+            HStack(spacing: 16) {
+                // Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(option.iconColor.opacity(0.15))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: option.icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(option.iconColor)
+                }
+
+                // Labels
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(option.title.localized)
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundColor(Theme.textMain)
+                    Text(option.subtitle)
+                        .font(.subheadline)
+                        .foregroundColor(Theme.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Theme.textSecondary.opacity(0.5))
+            }
+            .padding(.vertical, 18)
+            .padding(.horizontal, 18)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(0.07), lineWidth: 1)
+            )
         }
-        .foregroundColor(.white)
-        .frame(maxWidth: .infinity)
-        .frame(height: 80)
-        .background(Theme.primaryGradient)
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
+        .buttonStyle(.plain)
+        .padding(.top, index == 0 ? 0 : 12)
     }
 }
 

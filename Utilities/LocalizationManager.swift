@@ -379,6 +379,7 @@ class LocalizationManager: ObservableObject {
         "Practice(Dev)": [.japanese: "練習(開発中)", .english: "Practice(Dev)"],
         
         // MARK: - Workout Setup
+        "Other Workouts (Workout List)": [.japanese: "その他のワークアウト（ワークアウト一覧へ）", .english: "Other Workouts (Go to Workout List)"],
         "Select Workout Type": [.japanese: "ワークアウト種目を選択", .english: "Select Workout Type"],
         "Single Distance": [.japanese: "単一距離", .english: "Single Distance"],
         "Single Time": [.japanese: "単一時間", .english: "Single Time"],
@@ -404,6 +405,7 @@ class LocalizationManager: ObservableObject {
         "Remaining": [.japanese: "残り", .english: "Remaining"],
         "Finish": [.japanese: "終了", .english: "FINISH"],
         "Practice Workout": [.japanese: "練習ワークアウト", .english: "PRACTICE WORKOUT"],
+        "Max connection limit is 10 devices": [.japanese: "接続できるデバイスは最大10台までです", .english: "Max connection limit is 10 devices"],
         
         // MARK: - Manager Session Custom Labels
         "Save 0-Record PM5s": [.japanese: "記録が0のPM5も残す", .english: "Save 0-Record PM5s"],

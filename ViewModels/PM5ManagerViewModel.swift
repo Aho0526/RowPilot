@@ -160,6 +160,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// ダッシュボード表示フラグ
     @Published var showDashboard: Bool = false
     
+    /// ダッシュボード遷移元フラグ（設定画面から元のダッシュボードに戻る制御用）
+    @Published var isFromDashboard: Bool = false
+    @Published var shouldPopToDashboard: Bool = false
+    
     /// 保存済みフラグ
     @Published var isSaved: Bool = false
     
@@ -257,6 +261,12 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     func addDevice(_ peripheral: CBPeripheral) {
         guard !connectingDeviceIDs.contains(peripheral.identifier),
               !connectedDevices.contains(where: { $0.identifier == peripheral.identifier }) else {
+            return
+        }
+        
+        // 接続数の上限を10台に制限
+        guard connectedDevices.count + connectingDeviceIDs.count < 10 else {
+            errorMessage = "Max connection limit is 10 devices".localized
             return
         }
         
@@ -781,7 +791,11 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         print("PM5ManagerVM: Starting Variable Interval workout (\(intervals.count) intervals)")
         
         isSending = true
-        showDashboard = true
+        if isFromDashboard {
+            shouldPopToDashboard = true
+        } else {
+            showDashboard = true
+        }
         workoutDistance = nil
         workoutTime = nil
         workoutRestTime = nil
@@ -977,15 +991,27 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         }
     }
     
-    /// 全デバイスのメトリクスを初期化
+    /// 全デバイスのメトリクスを初期化（新規ワークアウト送信時に以前のデータを完全にクリア）
     private func initializeAllMetrics() {
+        stopDataRecordingTimer()
         for device in connectedDevices {
-            if deviceMetrics[device.identifier] == nil {
-                deviceMetrics[device.identifier] = PM5DeviceMetrics(
-                    id: device.identifier, name: device.name ?? "Unknown PM5"
-                )
+            if let metrics = deviceMetrics[device.identifier] {
+                DispatchQueue.main.async {
+                    metrics.distance = 0
+                    metrics.elapsedTime = 0
+                    metrics.pace500m = 0
+                    metrics.power = 0
+                    metrics.strokeRate = 0
+                    metrics.lastStrokeCount = -1
+                    metrics.configStatus = .resetting
+                    metrics.workoutDataPoints = []
+                }
             } else {
-                deviceMetrics[device.identifier]?.workoutDataPoints = []
+                let metrics = PM5DeviceMetrics(id: device.identifier, name: device.name ?? "Unknown PM5")
+                metrics.configStatus = .resetting
+                DispatchQueue.main.async {
+                    self.deviceMetrics[device.identifier] = metrics
+                }
             }
         }
         startDataRecordingTimer()
@@ -1097,9 +1123,13 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     func resetAndStartWorkout(distance: Int? = nil, time: Int? = nil, calories: Int? = nil, split: Int? = nil) {
         print("PM5ManagerVM: Resetting and starting v4 workflow (Immediate transition to dashboard)")
         
-        // 1. 即座にダッシュボードへ遷移 (Optimistic UI)
+        // 1. 即座にダッシュボードへ遷移 / またはポップして戻る
         isSending = true
-        showDashboard = true
+        if isFromDashboard {
+            shouldPopToDashboard = true
+        } else {
+            showDashboard = true
+        }
         workoutDistance = distance
         workoutSplitDistance = distance != nil ? split : nil
         workoutTime = time
@@ -1134,7 +1164,11 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         print("PM5ManagerVM: Resetting and starting Interval workflow")
         
         isSending = true
-        showDashboard = true
+        if isFromDashboard {
+            shouldPopToDashboard = true
+        } else {
+            showDashboard = true
+        }
         workoutDistance = distance
         workoutTime = time
         workoutCalories = calories

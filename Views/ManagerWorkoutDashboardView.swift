@@ -198,6 +198,13 @@ struct ManagerWorkoutDashboardView: View {
         .navigationDestination(isPresented: $showWorkoutSetup) {
             ManagerWorkoutSetupView(viewModel: viewModel)
         }
+        .onChange(of: viewModel.shouldPopToDashboard) { _, newValue in
+            if newValue {
+                viewModel.shouldPopToDashboard = false
+                viewModel.isFromDashboard = false
+                showWorkoutSetup = false
+            }
+        }
         .alert("Save Results".localized, isPresented: $showSaveAlert) {
             Button("Save".localized) {
                 viewModel.saveAllRecords(recordManager: appViewModel.recordManager)
@@ -951,8 +958,8 @@ struct ManagerModeSettingsView: View {
                             if isLocked {
                                 showLockWarning()
                             } else {
+                                viewModel.isFromDashboard = true
                                 showModeSettings = false
-                                viewModel.resetAllDevices() // ワークアウト変更前に全デバイスを強制終了
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                     showWorkoutSetup = true
                                 }

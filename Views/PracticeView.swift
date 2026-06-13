@@ -50,6 +50,17 @@ struct PracticeView: View {
                     .padding(.vertical, 12)
                 }
             }
+            .navigationDestination(for: String.self) { value in
+                if value == "WorkoutSetupView" {
+                    WorkoutSetupView(ergManager: ergManager)
+                }
+            }
+            .onChange(of: ergManager.connectionState) { _, newState in
+                if newState == .connected && ergManager.isNFCConnecting {
+                    ergManager.isNFCConnecting = false
+                    app.practiceNavigationPath.append("WorkoutSetupView")
+                }
+            }
             .fullScreenCover(isPresented: $ergManager.showingWorkoutExecution) {
                 PracticeWorkoutView(ergManager: ergManager)
             }
@@ -235,22 +246,24 @@ struct ConnectionHubView: View {
                     .disabled(!ergManager.isBluetoothPoweredOn)
 
                     // NFC Button
-                    Button(action: { ergManager.startNFCScan() }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "wave.3.right")
-                                .font(.subheadline)
-                            Text("NFC".localized)
-                                .font(.subheadline.weight(.semibold))
+                    if UIDevice.current.userInterfaceIdiom != .pad {
+                        Button(action: { ergManager.startNFCScan() }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "wave.3.right")
+                                    .font(.subheadline)
+                                Text("NFC".localized)
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .foregroundColor(Theme.accent)
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 18)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Theme.accent.opacity(0.5), lineWidth: 1)
+                            )
                         }
-                        .foregroundColor(Theme.accent)
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 18)
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Theme.accent.opacity(0.5), lineWidth: 1)
-                        )
                     }
                 }
             }
@@ -397,6 +410,34 @@ struct WorkoutLaunchGrid: View {
                     SingleTimeSetupView(ergManager: ergManager)
                 }
             }
+
+            NavigationLink(destination: WorkoutSetupView(ergManager: ergManager)) {
+                HStack(spacing: 8) {
+                    Image(systemName: "list.bullet.rectangle.portrait.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Other Workouts (Workout List)".localized)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Theme.accent.opacity(0.4), Theme.secondaryAccent.opacity(0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Theme.accent.opacity(0.15), radius: 8, x: 0, y: 4)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
         }
     }
 }

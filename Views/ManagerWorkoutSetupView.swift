@@ -9,100 +9,105 @@ struct ManagerWorkoutSetupView: View {
         ZStack {
             Theme.background.ignoresSafeArea()
             
-            VStack(spacing: 30) {
-                // ヘッダー
-                VStack(spacing: 8) {
-                    Text("Workout Setup".localized)
-                        .font(Theme.headerFont())
-                        .foregroundColor(Theme.textMain)
-                    
-                    Text("\(viewModel.connectedDevices.count)\("Bulk Send Message")")
-                        .font(.subheadline)
-                        .foregroundColor(Theme.textSecondary)
-                }
-                .padding(.top, 20)
-                
-                // ワークアウトタイプ選択
-                NavigationLink {
-                    ManagerDistanceSetupView(viewModel: viewModel)
-                } label: {
-                    ManagerWorkoutButton(title: "Single Distance".localized, icon: "arrow.right.to.line.alt",
-                                         subtitle: "100m 〜 60,000m")
-                }
-                
-                NavigationLink {
-                    ManagerTimeSetupView(viewModel: viewModel)
-                } label: {
-                    ManagerWorkoutButton(title: "Single Time".localized, icon: "clock.fill",
-                                         subtitle: "Min duration is 20s".localized)
-                }
-
-                NavigationLink {
-                    ManagerCaloriesSetupView(viewModel: viewModel)
-                } label: {
-                    ManagerWorkoutButton(title: "Single Calories".localized, icon: "flame.fill",
-                                         subtitle: "5cal 〜 65,535cal")
-                }
-                
-                NavigationLink {
-                    ManagerIntervalSetupView(viewModel: viewModel)
-                } label: {
-                    ManagerWorkoutButton(title: "Fixed Interval".localized, icon: "repeat",
-                                         subtitle: "Fixed distance or time intervals")
-                }
-                
-                NavigationLink {
-                    ManagerVariableIntervalSetupView(viewModel: viewModel)
-                } label: {
-                    ManagerWorkoutButton(title: "Variable Interval".localized, icon: "repeat.1",
-                                         subtitle: "Different duration/rest per interval")
-                }
-                
-                Spacer()
-                
-                // 送信中インジケーター
-                if viewModel.isSending {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                            .tint(Theme.accent)
-                        Text("Sending CSAFE...".localized)
-                            .foregroundColor(Theme.accent)
-                            .bold()
+            ScrollView {
+                VStack(spacing: 24) {
+                    // ヘッダー (二重タイトルを避けるため、Workout Setup テキストは削除し、件数表示のみを上部に配置)
+                    VStack(spacing: 8) {
+                        Text("\(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
+                            .font(.subheadline)
+                            .foregroundColor(Theme.textSecondary)
                     }
-                    .padding(.bottom, 40)
-                }
-                
-                // 接続中PM5一覧（コンパクト表示）
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Connected PM5s".localized)
-                        .font(.caption)
-                        .foregroundColor(Theme.textSecondary)
+                    .padding(.top, 10)
                     
-                    ForEach(viewModel.connectedDevices, id: \.identifier) { device in
-                        let isDisconnected = viewModel.disconnectedDeviceIDs.contains(device.identifier)
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(isDisconnected ? Color.gray : Color.green)
-                                .frame(width: 8, height: 8)
-                            Text(device.name ?? "Unknown PM5")
-                                .font(.caption)
-                                .foregroundColor(isDisconnected ? .gray : Theme.textMain)
-                            if isDisconnected {
-                                Text("Reconnecting".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(.gray)
+                    // ワークアウトタイプ選択
+                    VStack(spacing: 16) {
+                        NavigationLink {
+                            ManagerDistanceSetupView(viewModel: viewModel)
+                        } label: {
+                            ManagerWorkoutButton(title: "Single Distance".localized, icon: "arrow.right.to.line.alt",
+                                                 subtitle: "100m 〜 60,000m")
+                        }
+                        
+                        NavigationLink {
+                            ManagerTimeSetupView(viewModel: viewModel)
+                        } label: {
+                            ManagerWorkoutButton(title: "Single Time".localized, icon: "clock.fill",
+                                                 subtitle: "Min duration is 20s".localized)
+                        }
+
+                        NavigationLink {
+                            ManagerCaloriesSetupView(viewModel: viewModel)
+                        } label: {
+                            ManagerWorkoutButton(title: "Single Calories".localized, icon: "flame.fill",
+                                                 subtitle: "5cal 〜 65,535cal")
+                        }
+                        
+                        NavigationLink {
+                            ManagerIntervalSetupView(viewModel: viewModel)
+                        } label: {
+                            ManagerWorkoutButton(title: "Fixed Interval".localized, icon: "repeat",
+                                                 subtitle: "Fixed distance or time intervals")
+                        }
+                        
+                        NavigationLink {
+                            ManagerVariableIntervalSetupView(viewModel: viewModel)
+                        } label: {
+                            ManagerWorkoutButton(title: "Variable Interval".localized, icon: "repeat.1",
+                                                 subtitle: "Different duration/rest per interval")
+                        }
+                    }
+                    
+                    // 送信中インジケーター
+                    if viewModel.isSending {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(1.2)
+                                .tint(Theme.accent)
+                            Text("Sending CSAFE...".localized)
+                                .foregroundColor(Theme.accent)
+                                .bold()
+                        }
+                        .padding(.vertical, 10)
+                    }
+                    
+                    // 接続中PM5一覧（コンパクト表示 - 横スクロールスワイプ可能）
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Connected PM5s".localized)
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                            .padding(.horizontal, 4)
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(viewModel.connectedDevices, id: \.identifier) { device in
+                                    let isDisconnected = viewModel.disconnectedDeviceIDs.contains(device.identifier)
+                                    HStack(spacing: 8) {
+                                        Circle()
+                                            .fill(isDisconnected ? Color.gray : Color.green)
+                                            .frame(width: 8, height: 8)
+                                        Text(device.name ?? "Unknown PM5")
+                                            .font(.caption)
+                                            .foregroundColor(isDisconnected ? .gray : Theme.textMain)
+                                        if isDisconnected {
+                                            Text("Reconnecting".localized)
+                                                .font(.caption2)
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(Color.white.opacity(0.08))
+                                    .cornerRadius(8)
+                                }
                             }
                         }
                     }
+                    .padding()
+                    .background(Color.white.opacity(0.05))
+                    .cornerRadius(12)
                 }
                 .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(12)
-                .padding(.bottom, 20)
             }
-            .padding()
         }
         .navigationTitle("Workout Setup".localized)
         .navigationBarTitleDisplayMode(.inline)
@@ -207,7 +212,7 @@ struct ManagerDistanceSetupView: View {
                     .font(.subheadline)
                     .foregroundColor(Theme.textSecondary)
                 
-                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message")")
+                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
                     .font(.subheadline)
                     .foregroundColor(Theme.accent)
                 
@@ -331,7 +336,7 @@ struct ManagerTimeSetupView: View {
                     .opacity(isAutoSplit ? 0.6 : 1.0)
                 }
                 
-                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message")")
+                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
                     .font(.subheadline)
                     .foregroundColor(Theme.accent)
                 
@@ -485,7 +490,7 @@ struct ManagerIntervalSetupView: View {
                         .cornerRadius(16)
                     }
                     
-                    Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message")")
+                    Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
                         .font(.subheadline)
                         .foregroundColor(Theme.accent)
                     
@@ -588,7 +593,7 @@ struct ManagerVariableIntervalSetupView: View {
                 
                 // 送信ボタン
                 VStack(spacing: 8) {
-                    Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message")")
+                    Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
                         .font(.caption)
                         .foregroundColor(Theme.accent)
                     
@@ -714,7 +719,7 @@ struct ManagerCaloriesSetupView: View {
                     .font(.subheadline)
                     .foregroundColor(Theme.textSecondary)
                 
-                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message")")
+                Text("※ \(viewModel.connectedDevices.count)\("Bulk Send Message".localized)")
                     .font(.subheadline)
                     .foregroundColor(Theme.accent)
                 

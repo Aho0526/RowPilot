@@ -85,6 +85,7 @@ struct PM5ManagerView: View {
                                             .font(.caption)
                                             .foregroundColor(Theme.accent)
                                     } else {
+                                        let isLimitReached = (viewModel.connectedDevices.count + viewModel.connectingDeviceIDs.count) >= 10
                                         Button(action: {
                                             viewModel.addDevice(device)
                                         }) {
@@ -94,9 +95,12 @@ struct PM5ManagerView: View {
                                                 .foregroundColor(.white)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 8)
-                                                .background(Theme.primaryGradient)
+                                                .background(isLimitReached
+                                                    ? LinearGradient(colors: [.gray], startPoint: .top, endPoint: .bottom)
+                                                    : Theme.primaryGradient)
                                                 .cornerRadius(8)
                                         }
+                                        .disabled(isLimitReached)
                                     }
                                 }
                                 .padding()

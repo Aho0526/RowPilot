@@ -90,6 +90,129 @@ struct PracticeWorkoutView: View {
                         .tag(5)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
+
+                // === Fixed Menu Button (Top-Left) ===
+                if !showingActionMenu {
+                    VStack {
+                        HStack {
+                            RPMenuButton(action: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                    showingActionMenu = true
+                                }
+                            })
+                            .padding(.leading, 20)
+                            .padding(.top, 20)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                }
+
+                // === Slide-in Left Drawer (Side Menu) ===
+                if showingActionMenu {
+                    // Dark background overlay
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                showingActionMenu = false
+                            }
+                        }
+                        .transition(.opacity)
+
+                    // Drawer Panel
+                    HStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 20) {
+                            // Header
+                            HStack {
+                                Text("Workout Menu".localized)
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                                    .foregroundColor(Theme.textMain)
+                                Spacer()
+                                Button(action: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                        showingActionMenu = false
+                                    }
+                                }) {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundColor(Theme.textSecondary)
+                                        .padding(6)
+                                        .background(Color.white.opacity(0.08))
+                                        .clipShape(Circle())
+                                }
+                            }
+                            .padding(.bottom, 8)
+
+                            Divider()
+                                .background(Color.white.opacity(0.1))
+
+                            VStack(spacing: 12) {
+                                // 繰り返すボタン
+                                Button(action: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                        showingActionMenu = false
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+                                        showRepeatAlert = true
+                                    }
+                                }) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.system(size: 15, weight: .bold))
+                                        Text("Repeat Workout".localized)
+                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    }
+                                    .foregroundColor(Theme.textMain)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 16)
+                                    .background(Color.white.opacity(0.06))
+                                    .cornerRadius(10)
+                                }
+
+                                // 終了ボタン
+                                Button(action: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                        showingActionMenu = false
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+                                        showSaveAlert = true
+                                    }
+                                }) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 15, weight: .bold))
+                                        Text("Finish Workout".localized)
+                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    }
+                                    .foregroundColor(.red)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 16)
+                                    .background(Color.red.opacity(0.12))
+                                    .cornerRadius(10)
+                                }
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 24)
+                        .frame(width: 260)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                        .padding(.leading, 12)
+                        .padding(.vertical, 12)
+                        .transition(.move(edge: .leading))
+
+                        Spacer()
+                    }
+                }
             }
             .ignoresSafeArea()
         }
@@ -140,15 +263,6 @@ struct PracticeWorkoutView: View {
         }
         .onChange(of: ergManager.isWorkoutFinished) { _, finished in
             // ワークアウト終了直後の自動保存アラートは廃止（退出時に選択させる）
-        }
-        .confirmationDialog("Workout Menu".localized, isPresented: $showingActionMenu, titleVisibility: .visible) {
-            Button("Finish Workout".localized, role: .destructive) {
-                showSaveAlert = true
-            }
-            Button("Repeat Workout".localized) {
-                showRepeatAlert = true
-            }
-            Button("Cancel".localized, role: .cancel) {}
         }
         .alert("Save Workout".localized, isPresented: $showSaveAlert) {
             Button("Save".localized) {
@@ -211,7 +325,6 @@ struct PracticeWorkoutView: View {
             RPWorkoutSidebar(
                 ergManager: ergManager,
                 averagePace: averagePace500m,
-                onMenuTap: { showingActionMenu = true },
                 sidebarWidth: sidebarWidth
             )
 
@@ -317,10 +430,7 @@ struct PracticeWorkoutView: View {
         HStack(spacing: 10) {
             // Left column
             VStack(spacing: 10) {
-                HStack {
-                    RPMenuButton(action: { showingActionMenu = true })
-                    Spacer()
-                }
+                Spacer().frame(height: 36)
                 RPMetricCard(
                     label: ergManager.targetDistance != nil ? "残り m" : "m",
                     value: formatDistance(ergManager.distance),
@@ -392,7 +502,6 @@ struct PracticeWorkoutView: View {
             RPWorkoutSidebar(
                 ergManager: ergManager,
                 averagePace: averagePace500m,
-                onMenuTap: { showingActionMenu = true },
                 sidebarWidth: sidebarWidth
             )
 
@@ -470,10 +579,7 @@ struct PracticeWorkoutView: View {
     private func threeMetricsView(width: CGFloat, height: CGFloat) -> some View {
         HStack(spacing: 10) {
             VStack(spacing: 10) {
-                HStack {
-                    RPMenuButton(action: { showingActionMenu = true })
-                    Spacer()
-                }
+                Spacer().frame(height: 36)
                 RPMetricCard(
                     label: ergManager.targetDistance != nil ? "残り m" : "m",
                     value: formatDistance(ergManager.distance),
@@ -544,10 +650,7 @@ struct PracticeWorkoutView: View {
 
         return HStack(spacing: 8) {
             VStack(spacing: 6) {
-                HStack {
-                    RPMenuButton(action: { showingActionMenu = true })
-                    Spacer()
-                }
+                Spacer().frame(height: 36)
                 RPMetricCardCompact(label: ergManager.targetDistance != nil ? "残り m" : "m", value: formatDistance(ergManager.distance), accentColor: Theme.secondaryAccent)
                 RPMetricCardCompact(label: "s/m", value: "\(ergManager.strokeRate)", accentColor: .orange)
                 RPMetricCardCompact(label: "watts", value: "\(ergManager.power)", accentColor: Color(hex: "FFB300"))
@@ -744,7 +847,7 @@ struct PracticeWorkoutView: View {
 struct RPWorkoutSidebar: View {
     @ObservedObject var ergManager: RowErgManager
     let averagePace: Double
-    var onMenuTap: () -> Void
+    var onMenuTap: (() -> Void)? = nil
     var sidebarWidth: CGFloat = 130
     var hideAveragePace: Bool = false
 
@@ -766,9 +869,8 @@ struct RPWorkoutSidebar: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            // Header: Menu + Progress
+            // Header: Progress only (Menu button is globally placed now)
             HStack(spacing: 8) {
-                RPMenuButton(action: onMenuTap)
                 Spacer()
                 if hasTarget {
                     // Circular progress
@@ -843,19 +945,12 @@ struct RPBigPaceCard: View {
             Spacer(minLength: 0)
             Text(pace)
                 .font(.system(size: fontSize, weight: .black, design: .monospaced))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [accentColor, accentColor.opacity(0.7)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .foregroundColor(Theme.textMain)
                 .lineLimit(1)
                 .minimumScaleFactor(0.4)
-                .shadow(color: accentColor.opacity(0.5), radius: 16, x: 0, y: 0)
             Spacer(minLength: 0)
             Text(label)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundColor(Theme.textSecondary)
                 .padding(.bottom, 6)
         }
@@ -864,16 +959,8 @@ struct RPBigPaceCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [accentColor.opacity(0.5), accentColor.opacity(0.15)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.5
-                )
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
-        .shadow(color: accentColor.opacity(0.2), radius: 14, x: 0, y: 4)
     }
 }
 
@@ -889,20 +976,13 @@ struct RPMetricCard: View {
             Spacer(minLength: 0)
             Text(value)
                 .font(.system(size: fontSize, weight: .black, design: .monospaced))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [accentColor, accentColor.opacity(0.7)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .foregroundColor(Theme.textMain)
                 .lineLimit(1)
                 .minimumScaleFactor(0.4)
                 .multilineTextAlignment(.center)
-                .shadow(color: accentColor.opacity(0.3), radius: 8, x: 0, y: 0)
 
             Text(label)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
             Spacer(minLength: 0)
@@ -914,16 +994,8 @@ struct RPMetricCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [accentColor.opacity(0.4), accentColor.opacity(0.1)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
-        .shadow(color: accentColor.opacity(0.1), radius: 6, x: 0, y: 2)
     }
 }
 
@@ -938,20 +1010,13 @@ struct RPMetricCardCompact: View {
             Spacer(minLength: 0)
             Text(value)
                 .font(.system(size: 24, weight: .black, design: .monospaced))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [accentColor, accentColor.opacity(0.7)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .foregroundColor(Theme.textMain)
                 .lineLimit(1)
                 .minimumScaleFactor(0.4)
                 .multilineTextAlignment(.center)
-                .shadow(color: accentColor.opacity(0.25), radius: 6, x: 0, y: 0)
 
             Text(label)
-                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
                 .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
             Spacer(minLength: 0)
@@ -963,16 +1028,8 @@ struct RPMetricCardCompact: View {
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [accentColor.opacity(0.35), accentColor.opacity(0.08)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.8
-                )
+                .stroke(Color.white.opacity(0.08), lineWidth: 0.8)
         )
-        .shadow(color: accentColor.opacity(0.08), radius: 4, x: 0, y: 1)
     }
 }
 
@@ -987,20 +1044,13 @@ struct SidebarMetricBoxRP: View {
         VStack(alignment: .center, spacing: 2) {
             Text(value)
                 .font(.system(size: isLarge ? 32 : 22, weight: .black, design: .monospaced))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [accentColor, accentColor.opacity(0.7)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .foregroundColor(Theme.textMain)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .multilineTextAlignment(.center)
-                .shadow(color: accentColor.opacity(0.3), radius: 4, x: 0, y: 0)
 
             Text(unit)
-                .font(.system(size: isLarge ? 12 : 9, weight: .bold, design: .rounded))
+                .font(.system(size: isLarge ? 12 : 9, weight: .semibold, design: .rounded))
                 .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -1011,7 +1061,7 @@ struct SidebarMetricBoxRP: View {
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(accentColor.opacity(0.2), lineWidth: 1)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
 }
@@ -1120,7 +1170,7 @@ struct SidebarView: View {
     let averagePace: Double
     var onMenuTap: () -> Void
     var body: some View {
-        RPWorkoutSidebar(ergManager: ergManager, averagePace: averagePace, onMenuTap: onMenuTap, sidebarWidth: 130)
+        RPWorkoutSidebar(ergManager: ergManager, averagePace: averagePace, sidebarWidth: 130)
     }
 }
 
@@ -1272,7 +1322,6 @@ extension PracticeWorkoutView {
             RPWorkoutSidebar(
                 ergManager: ergManager,
                 averagePace: averagePace500m,
-                onMenuTap: { showingActionMenu = true },
                 sidebarWidth: sidebarWidth,
                 hideAveragePace: true
             )
