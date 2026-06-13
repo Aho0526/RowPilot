@@ -12,6 +12,9 @@ struct SettingView: View {
     @State private var targetDistanceInput = ""
     @State private var showingInviteCodeInput = false
     @State private var showingTeamCodeInput = false
+    @State private var showingICloudDeleteAlert = false
+    @State private var showingICloudSyncAllAlert = false
+    @ObservedObject private var iCloudSync = ICloudSyncManager.shared
     
     var body: some View {
         NavigationStack(path: $app.settingsNavigationPath) {
@@ -52,6 +55,25 @@ struct SettingView: View {
                 Button("Cancel".localized, role: .cancel) {}
             } message: {
                 Text("Delete All Alert Message".localized)
+            }
+            .alert("iCloudのデータを削除", isPresented: $showingICloudDeleteAlert) {
+                Button("すべて削除", role: .destructive) {
+                    ICloudSyncManager.shared.deleteAllFromICloud { _ in }
+                }
+                Button("キャンセル", role: .cancel) {
+                    // OFFにしたがキャンセル → トグルを戻す
+                    settingsManager.settings.iCloudSyncEnabled = true
+                }
+            } message: {
+                Text("iCloud上のRowPilotのデータをすべて削除しますか？\nこの操作は取り消せません。ローカルのデータには影響しません。")
+            }
+            .alert("iCloud同期", isPresented: $showingICloudSyncAllAlert) {
+                Button("今すぐ同期", role: .none) {
+                    ICloudSyncManager.shared.syncAll(records: app.recordManager.records)
+                }
+                Button("キャンセル", role: .cancel) {}
+            } message: {
+                Text("ローカルのすべての記録（\(app.recordManager.records.count)件）をiCloudにアップロードします。")
             }
             .sheet(isPresented: $showingInviteCodeInput) {
                 InviteCodeInputView()
@@ -339,15 +361,74 @@ struct SettingView: View {
             }
             // データ同期
              SettingsSection(title: "Data Sync".localized, icon: "icloud.fill") {
-                 // Disabled toggle with Coming Soon style
-                 Toggle("iCloud Sync", isOn: .constant(false))
-                     .disabled(true)
+                 VStack(alignment: .leading, spacing: 10) {
+                     Toggle("記録を自動でiCloudに同期", isOn: Binding(
+                         get: { settingsManager.settings.iCloudSyncEnabled },
+                         set: { newValue in
+                             if !newValue {
+                                 // OFFにする際に確認アラート
+                                 showingICloudDeleteAlert = true
+                             }
+                             settingsManager.settings.iCloudSyncEnabled = newValue
+                         }
+                     ))
+                     .foregroundColor(Theme.textMain)
                      .tint(Theme.accent)
-                     .opacity(0.5)
-                 
-                 Text("Coming Soon".localized)
-                     .font(.caption)
-                     .foregroundColor(Theme.textSecondary)
+                     
+                     if settingsManager.settings.iCloudSyncEnabled {
+                         // iCloud利用可否の表示（非同期で確認済み）
+                         // ※ CoreData(CloudKit)での同期は常に動作中。この表示はiCloud Driveへの追加バックアップの状態。
+                         HStack(spacing: 6) {
+                             Image(systemName: iCloudSync.isAvailable ? "checkmark.icloud.fill" : "icloud.fill")
+                                 .foregroundColor(iCloudSync.isAvailable ? .green : Theme.textSecondary)
+                                 .font(.caption)
+                             Text(iCloudSync.isAvailable ? "iCloud Drive同期: 有効" : "iCloud Drive: 確認中...")
+                                 .font(.caption)
+                                 .foregroundColor(Theme.textSecondary)
+                         }
+                         
+                         if let lastSync = iCloudSync.lastSyncDate {
+                             Text("最終同期: \(lastSync.formatted(date: .abbreviated, time: .shortened))")
+                                 .font(.caption2)
+                                 .foregroundColor(Theme.textSecondary)
+                         }
+                         
+                         if let error = iCloudSync.syncError {
+                             Text("⚠️ \(error)")
+                                 .font(.caption2)
+                                 .foregroundColor(.orange)
+                         }
+                         
+                         Divider().background(Theme.textSecondary.opacity(0.3))
+                         
+                         // 今すぐ全記録を同期
+                         Button(action: { showingICloudSyncAllAlert = true }) {
+                             HStack {
+                                 Image(systemName: iCloudSync.isSyncing ? "arrow.triangle.2.circlepath" : "icloud.and.arrow.up")
+                                     .symbolEffect(.rotate, isActive: iCloudSync.isSyncing)
+                                 Text(iCloudSync.isSyncing ? "同期中..." : "今すぐ全記録を同期")
+                                     .foregroundColor(Theme.textMain)
+                                 Spacer()
+                             }
+                             .foregroundColor(Theme.accent)
+                         }
+                         .disabled(iCloudSync.isSyncing)
+                         
+                         // iCloud上のデータを削除
+                         Button(action: { showingICloudDeleteAlert = true }) {
+                             HStack {
+                                 Image(systemName: "trash.fill")
+                                 Text("iCloudのRowPilotデータを削除")
+                                 Spacer()
+                             }
+                             .foregroundColor(.red)
+                         }
+                     }
+                     
+                     Text("iCloud Sync Notice".localized)
+                         .font(.caption)
+                         .foregroundColor(Theme.textSecondary)
+                 }
              }
              
              // コンタクト (Contact)
@@ -422,8 +503,8 @@ struct SettingView: View {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("Test Flight v1.0(Build 4)")
-                Text("Build from June 12")
+                Text("Test Flight v1.0(Build 5)")
+                Text("Build from June 13")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

@@ -35,9 +35,9 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .free: return "基本機能(潮汐確認、GPSレート計、PM5と1:1接続など)"
         case .pro:  return "ForceCurveやStrava同期などプロ向けの機能を開放"
         case .manager: return "個人向け上位機能(Pro機能に加えてマネージャー機能を開放)"
-        case .team: return "PM5複数台接続＋最大3人のメンバーにプランを共有可能"
-        case .max:  return "最大5人のメンバーにプラン共有可能。CSV出力、レースビュー等を開放"
-        case .organization: return "最大10人のメンバーにプラン共有可能。チーム共有最大200名、CSV出力、レースビュー等を開放"
+        case .team: return "3人に「マネージャープラン」を共有、30人のメンバーをまとめて管理、AIとテンプレート型の分析機能(準備中)"
+        case .max:  return "5人に「マネージャープラン」を共有、3人を管理者に指定、最大50人をメンバー化、AIと対話型の分析機能(準備中)"
+        case .organization: return "最大10人に「マネージャープラン」を共有、7人を管理者として指定、最大200人をメンバーとして追加、AIと対話型の分析機能"
         case .enterprise: return "大規模導入・独自カスタマイズなど、チームに最適化されたカスタムプラン"
         }
     }
@@ -51,11 +51,11 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .manager:
             return ["Proプランの全機能", "PM5複数台接続機能", "マネージャー機能"]
         case .team:
-            return ["PM5と複数台接続機能", "リアルタイム一斉トレーニング", "最大3名のメンバーとプランを共有"]
+            return ["「マネージャープラン」を3人に共有", "30人のメンバーをまとめて管理", "AIとテンプレート型の分析機能 (準備中)"]
         case .max:
-            return ["CSV形式出力", "レースビュー開放", "高度なアナリティクス", "最大5名のメンバーとプランを共有"]
+            return ["「マネージャープラン」を5人に共有", "3人を管理者に指定", "最大50人をメンバー化", "AIと対話型の分析機能 (準備中)"]
         case .organization:
-            return ["CSV形式出力", "レースビュー開放", "高度なアナリティクス", "最大10名のメンバーとプランを共有", "最大200名のメンバーとチーム共有"]
+            return ["「マネージャープラン」を最大10人に共有", "7人を管理者として指定", "最大200人をメンバーとして追加", "AIと対話型の分析機能"]
         case .enterprise:
             return ["エンタープライズサポート", "チーム人数無制限", "独自カスタマイズ", "専用クラウド・SLA保証"]
         }
@@ -111,7 +111,7 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
     var teamMemberLimit: Int {
         switch self {
         case .team: return 30
-        case .max: return 80
+        case .max: return 50
         case .organization: return 200
         case .enterprise: return 9999
         default: return 0

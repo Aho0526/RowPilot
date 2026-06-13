@@ -31,16 +31,16 @@ class RecordManager: ObservableObject {
     // MARK: - dataPoints JSONファイル管理
     // CoreDataのTransformableでSwift structを保存する際の制限を避けるため、
     // dataPointsはDocuments/DataPoints/配下のJSONファイルで管理する
-    private var dataPointsDirectory: URL {
+    var dataPointsDirectory: URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         return docs.appendingPathComponent("DataPoints", isDirectory: true)
     }
     
-    private func dataPointsURL(for id: UUID) -> URL {
+    func dataPointsURL(for id: UUID) -> URL {
         dataPointsDirectory.appendingPathComponent("\(id.uuidString).json")
     }
     
-    private func saveDataPoints(_ points: [WorkoutDataPoint], for id: UUID) {
+    func saveDataPoints(_ points: [WorkoutDataPoint], for id: UUID) {
         do {
             try FileManager.default.createDirectory(at: dataPointsDirectory, withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(points)
@@ -50,28 +50,28 @@ class RecordManager: ObservableObject {
         }
     }
     
-    private func loadDataPoints(for id: UUID) -> [WorkoutDataPoint]? {
+    func loadDataPoints(for id: UUID) -> [WorkoutDataPoint]? {
         let url = dataPointsURL(for: id)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode([WorkoutDataPoint].self, from: data)
     }
     
-    private func deleteDataPoints(for id: UUID) {
+    func deleteDataPoints(for id: UUID) {
         try? FileManager.default.removeItem(at: dataPointsURL(for: id))
     }
     
     // MARK: - crewInfo JSONファイル管理
     // dataPointsと同様にDocuments/CrewInfo/配下のJSONファイルで管理する
-    private var crewInfoDirectory: URL {
+    var crewInfoDirectory: URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         return docs.appendingPathComponent("CrewInfo", isDirectory: true)
     }
     
-    private func crewInfoURL(for id: UUID) -> URL {
+    func crewInfoURL(for id: UUID) -> URL {
         crewInfoDirectory.appendingPathComponent("\(id.uuidString).json")
     }
     
-    private func saveCrewInfo(_ crewInfo: CrewInfo, for id: UUID) {
+    func saveCrewInfo(_ crewInfo: CrewInfo, for id: UUID) {
         do {
             try FileManager.default.createDirectory(at: crewInfoDirectory, withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(crewInfo)
@@ -81,27 +81,27 @@ class RecordManager: ObservableObject {
         }
     }
     
-    private func loadCrewInfo(for id: UUID) -> CrewInfo? {
+    func loadCrewInfo(for id: UUID) -> CrewInfo? {
         let url = crewInfoURL(for: id)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(CrewInfo.self, from: data)
     }
     
-    private func deleteCrewInfo(for id: UUID) {
+    func deleteCrewInfo(for id: UUID) {
         try? FileManager.default.removeItem(at: crewInfoURL(for: id))
     }
     
     // MARK: - routePoints JSONファイル管理
-    private var routePointsDirectory: URL {
+    var routePointsDirectory: URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         return docs.appendingPathComponent("RoutePoints", isDirectory: true)
     }
     
-    private func routePointsURL(for id: UUID) -> URL {
+    func routePointsURL(for id: UUID) -> URL {
         routePointsDirectory.appendingPathComponent("\(id.uuidString).json")
     }
     
-    private func saveRoutePoints(_ points: [LocationData], for id: UUID) {
+    func saveRoutePoints(_ points: [LocationData], for id: UUID) {
         do {
             try FileManager.default.createDirectory(at: routePointsDirectory, withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(points)
@@ -111,13 +111,13 @@ class RecordManager: ObservableObject {
         }
     }
     
-    private func loadRoutePoints(for id: UUID) -> [LocationData]? {
+    func loadRoutePoints(for id: UUID) -> [LocationData]? {
         let url = routePointsURL(for: id)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode([LocationData].self, from: data)
     }
     
-    private func deleteRoutePoints(for id: UUID) {
+    func deleteRoutePoints(for id: UUID) {
         try? FileManager.default.removeItem(at: routePointsURL(for: id))
     }
     
@@ -204,6 +204,19 @@ class RecordManager: ObservableObject {
         
         // チームに参加中の場合、サマリーをCloudにアップロード
         TeamRecordUploader.shared.uploadRecordSummary(record)
+        
+        // iCloud Driveに.rowpilotファイルとしてアップロード（フルデータ）
+        var recordForCloud = record
+        if recordForCloud.dataPoints == nil || recordForCloud.dataPoints?.isEmpty == true {
+            recordForCloud.dataPoints = loadDataPoints(for: record.id)
+        }
+        if recordForCloud.crewInfo == nil {
+            recordForCloud.crewInfo = loadCrewInfo(for: record.id)
+        }
+        if recordForCloud.routePoints == nil || recordForCloud.routePoints?.isEmpty == true {
+            recordForCloud.routePoints = loadRoutePoints(for: record.id)
+        }
+        ICloudSyncManager.shared.upload(record: recordForCloud)
     }
     
     func deleteAllRecords() {
@@ -228,7 +241,12 @@ class RecordManager: ObservableObject {
             }
         }
         
-        // 2. CoreDataからすべてのエンティティを削除
+        // 2. iCloud Driveからも全ファイルを削除
+        ICloudSyncManager.shared.deleteAllFromICloud { success in
+            print("ICloudSyncManager: deleteAll result: \(success)")
+        }
+        
+        // 3. CoreDataからすべてのエンティティを削除
         let fetchRequest: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: "RowingRecordEntity")
         let deleteRequest = NSBatchDeleteRequest(fetchRequest: fetchRequest)
         
@@ -249,6 +267,9 @@ class RecordManager: ObservableObject {
         deleteDataPoints(for: record.id)
         deleteCrewInfo(for: record.id)
         deleteRoutePoints(for: record.id)
+        
+        // iCloud Driveからも削除
+        ICloudSyncManager.shared.delete(recordId: record.id)
         
         let request = NSFetchRequest<NSManagedObject>(entityName: "RowingRecordEntity")
         request.predicate = NSPredicate(format: "id == %@", record.id as CVarArg)

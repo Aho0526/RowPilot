@@ -19,6 +19,10 @@ struct RowPilotApp: App {
     @State private var pendingImportData: SharedWorkoutData?
     @State private var importBannerMessage: String?
     @State private var showImportBanner = false
+    
+    // iCloud起動読み込み
+    @State private var iCloudImportBannerMessage: String?
+    @State private var showICloudImportBanner = false
 
     var body: some Scene {
         WindowGroup {
@@ -66,6 +70,12 @@ struct RowPilotApp: App {
             .preferredColorScheme(getPreferredColorScheme())
             .onChange(of: scenePhase) { _, newPhase in
                 app.handleScenePhaseChange(newPhase)
+            }
+            .onChange(of: app.isSplashVisible) { _, isVisible in
+                // スプラッシュ溈了後（起動時）にiCloudから未取得の記録をインポート
+                if !isVisible {
+                    importFromICloudOnLaunch()
+                }
             }
             .onOpenURL { url in
                 handleIncomingFile(url: url)
@@ -137,6 +147,25 @@ struct RowPilotApp: App {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
             withAnimation {
                 showImportBanner = false
+            }
+        }
+    }
+    
+    // MARK: - iCloud Launch Import
+    
+    private func importFromICloudOnLaunch() {
+        let settings = SettingsManager.shared.settings
+        guard settings.iCloudSyncEnabled else { return }
+        
+        ICloudSyncManager.shared.importAll(into: app.recordManager) { importedCount in
+            guard importedCount > 0 else { return }
+            let message = "iCloudから\(importedCount)件の記録を取得しました"
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                importBannerMessage = message
+                showImportBanner = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                withAnimation { showImportBanner = false }
             }
         }
     }

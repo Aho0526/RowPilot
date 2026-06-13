@@ -72,7 +72,7 @@ struct UserSettings: Codable {
         minSPMThreshold: Int = 10,
         accelerationThreshold: Double = 0.5,
         gpsAccuracy: GPSAccuracyLevel = .best,
-        iCloudSyncEnabled: Bool = false,
+        iCloudSyncEnabled: Bool = true,
         distanceUnit: DistanceUnit = .meters,
         speedUnit: SpeedUnit = .kilometersPerHour,
         language: AppLanguage = .japanese,

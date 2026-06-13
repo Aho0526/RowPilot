@@ -55,15 +55,23 @@ private extension SubscriptionPlan {
             ("GPSレート計".localized,                    [.free, .pro, .team, .max, .manager, .organization, .enterprise]),
             ("PM5との1:1接続".localized,                [.free, .pro, .team, .max, .manager, .organization, .enterprise]),
             ("リギングの管理".localized,                 [.free, .pro, .team, .max, .manager, .organization, .enterprise]),
+            ("iCloudバックアップ".localized,             [.free, .pro, .team, .max, .manager, .organization, .enterprise]),
             ("Force Curve の表示".localized,             [.pro, .team, .max, .manager, .organization, .enterprise]),
             ("ゴーストレース機能".localized,             [.pro, .team, .max, .manager, .organization, .enterprise]),
             ("Strava同期 (準備中)".localized,            [.pro, .team, .max, .manager, .organization, .enterprise]),
             ("PM5 複数台同時接続".localized,             [.team, .max, .organization, .manager, .enterprise]),
             ("リアルタイム一斉トレーニング".localized,    [.team, .max, .organization, .manager, .enterprise]),
-            ("プランの共有 (最大3名)".localized,         [.team]),
-            ("プランの共有 (最大5名)".localized,         [.max]),
-            ("プランの共有 (最大10名)".localized,        [.organization]),
-            ("プランの共有 (無制限)".localized,          [.enterprise]),
+            ("マネージャープランの共有 (3名)".localized,    [.team]),
+            ("マネージャープランの共有 (5名)".localized,    [.max]),
+            ("マネージャープランの共有 (最大10名)".localized, [.organization]),
+            ("メンバー管理 (最大30名)".localized,         [.team]),
+            ("メンバー管理 (最大50名)".localized,         [.max]),
+            ("メンバー管理 (最大200名)".localized,        [.organization]),
+            ("管理者の指定 (3名)".localized,             [.max]),
+            ("管理者の指定 (7名)".localized,             [.organization]),
+            ("AIとテンプレート型の分析機能 (準備中)".localized, [.team]),
+            ("AIと対話型の分析機能 (準備中)".localized,    [.max]),
+            ("AIと対話型の分析機能".localized,            [.organization]),
             ("CSV形式での記録出力".localized,             [.max, .organization, .enterprise]),
             ("レースビュー (高度な可視化)".localized,     [.max, .organization, .enterprise]),
         ]
@@ -71,15 +79,21 @@ private extension SubscriptionPlan {
             .filter { item in
                 let name = item.0
                 if self == .team {
-                    return name != "プランの共有 (最大5名)" && name != "プランの共有 (最大10名)" && name != "プランの共有 (無制限)"
+                    return !name.contains("共有 (5名)") && !name.contains("共有 (最大10名)") &&
+                           !name.contains("メンバー管理 (最大50名)") && !name.contains("メンバー管理 (最大200名)") &&
+                           !name.contains("管理者の指定") && !name.contains("対話型の分析機能")
                 } else if self == .max {
-                    return name != "プランの共有 (最大3名)" && name != "プランの共有 (最大10名)" && name != "プランの共有 (無制限)"
+                    return !name.contains("共有 (3名)") && !name.contains("共有 (最大10名)") &&
+                           !name.contains("メンバー管理 (最大30名)") && !name.contains("メンバー管理 (最大200名)") &&
+                           !name.contains("管理者の指定 (7名)") && !name.contains("テンプレート型") &&
+                           name != "AIと対話型の分析機能".localized
                 } else if self == .organization {
-                    return name != "プランの共有 (最大3名)" && name != "プランの共有 (最大5名)" && name != "プランの共有 (無制限)"
-                } else if self == .enterprise {
-                    return name != "プランの共有 (最大3名)" && name != "プランの共有 (最大5名)" && name != "プランの共有 (最大10名)"
+                    return !name.contains("共有 (3名)") && !name.contains("共有 (5名)") &&
+                           !name.contains("メンバー管理 (最大30名)") && !name.contains("メンバー管理 (最大50名)") &&
+                           !name.contains("管理者の指定 (3名)") && !name.contains("テンプレート型") &&
+                           !name.contains("(準備中)")
                 } else {
-                    return name != "プランの共有 (最大3名)" && name != "プランの共有 (最大5名)" && name != "プランの共有 (最大10名)" && name != "プランの共有 (無制限)"
+                    return !name.contains("共有 (") && !name.contains("メンバー管理") && !name.contains("管理者の指定") && !name.contains("分析機能")
                 }
             }
             .map { ($0.0, $0.1.contains(self)) }
@@ -340,17 +354,17 @@ struct SubscriptionView: View {
                 )
             }
 
-            SectionLabel(text: "individual")
+            SectionLabel(text: "Individual")
             PlanCard(plan: .free, currentPlan: subManager.currentPlan)
             PlanCard(plan: .pro,  currentPlan: subManager.currentPlan)
+
+            SectionLabel(text: "For Manager")
+                .padding(.top, 8)
             PlanCard(plan: .manager, currentPlan: subManager.currentPlan)
 
-            SectionLabel(text: "For Teams")
+            SectionLabel(text: "For Team")
                 .padding(.top, 8)
             PlanCard(plan: .team, currentPlan: subManager.currentPlan)
-
-            SectionLabel(text: "For Group or Advanced Team")
-                .padding(.top, 8)
             PlanCard(plan: .max,  currentPlan: subManager.currentPlan)
 
             SectionLabel(text: "For Organization")
@@ -702,11 +716,11 @@ struct SubscriptionDetailView: View {
         case .manager:
             return "Proプランのすべての機能に加え、PM5との複数接続やマネージャーモードといった、管理者・コーチ向けの高度な機能を利用可能にするプランです。".localized
         case .team:
-            return "PM5複数台同時接続機能に加え、最大3名のメンバーにプランを共有できます。チーム全員でデータを共有し、練習の効率化と記録管理を一元化できます。".localized
+            return "最大3人に「RowPilot Manager」を共有でき、最大30人のメンバーをまとめて管理できます。さらに、AIとテンプレート型の分析機能（準備中）が利用可能です。".localized
         case .max:
-            return "最大5名のメンバーへのプラン共有に加え、CSV形式での記録出力や高度なレースビュー、グラフィカルなアナリティクスを開放します。プロコーチ・エリートチームのためのプランです。".localized
+            return "最大5人に「RowPilot Manager」を共有でき、最大3人を管理者として指定、最大50人をメンバーとして追加できます。さらに、AIと対話型の分析機能（準備中）が追加されます。".localized
         case .organization:
-            return "最大10名のメンバーへのプラン共有に加え、最大200名のチーム共有、CSV形式での記録出力や高度なレースビューを開放します。大規模なクラブ・組織のためのプランです。".localized
+            return "最大10人に「RowPilot Manager」を共有でき、最大7人の管理者として指定、最大200人をメンバーとして追加できます。さらに、AIと対話型の分析機能が利用可能です。".localized
         case .enterprise:
             return "お問い合わせください。".localized
         }

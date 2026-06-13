@@ -1090,6 +1090,13 @@ struct RecordRowCard: View {
             
             Spacer()
             
+            if SettingsManager.shared.settings.iCloudSyncEnabled {
+                Image(systemName: "checkmark.icloud.fill")
+                    .font(.title3)
+                    .foregroundColor(.blue)
+                    .padding(.trailing, 4)
+            }
+            
             Image(systemName: "chevron.right")
                 .foregroundColor(Theme.textSecondary.opacity(0.5))
         }
@@ -1144,6 +1151,13 @@ struct ManagerSessionRowCard: View {
             }
             
             Spacer()
+            
+            if SettingsManager.shared.settings.iCloudSyncEnabled {
+                Image(systemName: "checkmark.icloud.fill")
+                    .font(.title3)
+                    .foregroundColor(.blue)
+                    .padding(.trailing, 4)
+            }
             
             Image(systemName: "chevron.right")
                 .foregroundColor(Theme.textSecondary.opacity(0.5))

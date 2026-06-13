@@ -4,13 +4,18 @@ import SwiftUI
 class PersistenceController: ObservableObject {
     static let shared = PersistenceController()
 
-    let container: NSPersistentContainer // Regular container, NOT CloudKit
+    let container: NSPersistentContainer
     
     @Published var isStoreLoaded = false
 
     init(inMemory: Bool = false) {
-        // Use regular NSPersistentContainer (no CloudKit)
-        container = NSPersistentContainer(name: "RowPilot")
+        let iCloudEnabled = UserSettings.load().iCloudSyncEnabled
+        
+        if iCloudEnabled {
+            container = NSPersistentCloudKitContainer(name: "RowPilot")
+        } else {
+            container = NSPersistentContainer(name: "RowPilot")
+        }
         
         guard let description = container.persistentStoreDescriptions.first else {
             return

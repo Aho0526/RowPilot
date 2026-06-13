@@ -45,7 +45,7 @@ class SubscriptionManager: ObservableObject {
     static let shared = SubscriptionManager()
 
     // CloudKitを使用するかどうかの制御フラグ
-    let useCloudKit = false
+    let useCloudKit = true
 
     // MARK: - Persisted State（UserDefaults）
 

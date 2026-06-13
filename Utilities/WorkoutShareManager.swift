@@ -138,11 +138,46 @@ class WorkoutShareManager {
         return sharedData
     }
     
-    /// レコードをRecordManagerにインポート（重複チェック付き）
+    /// レコードをRecordManagerにインポート（重複チェック付き。ただし詳細データが不足している場合は復元する）
     @discardableResult
     func importToRecordManager(_ sharedData: SharedWorkoutData, recordManager: RecordManager) -> ImportResult {
-        // 重複チェック
-        if recordManager.records.contains(where: { $0.id == sharedData.record.id }) {
+        let recordId = sharedData.record.id
+        let isDuplicate = recordManager.records.contains(where: { $0.id == recordId })
+        
+        if isDuplicate {
+            var updatedAny = false
+            
+            // dataPoints の復元
+            if let points = sharedData.dataPoints, !points.isEmpty {
+                let url = recordManager.dataPointsURL(for: recordId)
+                if !FileManager.default.fileExists(atPath: url.path) {
+                    recordManager.saveDataPoints(points, for: recordId)
+                    updatedAny = true
+                }
+            }
+            
+            // crewInfo の復元
+            if let crewInfo = sharedData.crewInfo {
+                let url = recordManager.crewInfoURL(for: recordId)
+                if !FileManager.default.fileExists(atPath: url.path) {
+                    recordManager.saveCrewInfo(crewInfo, for: recordId)
+                    updatedAny = true
+                }
+            }
+            
+            // routePoints の復元
+            if let routePoints = sharedData.routePoints, !routePoints.isEmpty {
+                let url = recordManager.routePointsURL(for: recordId)
+                if !FileManager.default.fileExists(atPath: url.path) {
+                    recordManager.saveRoutePoints(routePoints, for: recordId)
+                    updatedAny = true
+                }
+            }
+            
+            if updatedAny {
+                recordManager.fetchRecords()
+                return .success
+            }
             return .duplicate
         }
         
