@@ -75,7 +75,12 @@ class SubscriptionManager: ObservableObject {
     @Published var autoRenew: Bool = false
     /// 有効期限（App Store の値）
     @Published var expiresAt: Date? = nil
-    
+
+    /// 次の更新期間から適用される予定のプラン（ダウングレード等）
+    @Published var pendingPlan: SubscriptionPlan? = nil
+    /// pendingPlan が適用される日（現在の期間終了日）
+    @Published var pendingPlanDate: Date? = nil
+
     // MARK: - StoreKit2 Properties
     @Published var products: [Product] = []
     @Published var isPurchasing = false
@@ -304,6 +309,10 @@ class SubscriptionManager: ObservableObject {
         var activeProductId: String? = nil
         var hasActiveSubscription = false
 
+        // ダウングレード予定の検出用
+        var detectedPendingPlan: SubscriptionPlan? = nil
+        var detectedPendingDate: Date? = nil
+
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else {
                 print("[StoreKit] Skipping unverified entitlement")
@@ -324,8 +333,8 @@ class SubscriptionManager: ObservableObject {
                 }
             }
 
-            // 同一グループ内でアップグレードされた旧プランはスキップ
-            // isUpgraded が true の場合、このトランザクションは上位プランに置き換えられている
+            // isUpgraded = true → このトランザクションは上位プランに置き換えられた（アップグレード済み）
+            // 現在は上位プランが有効なので、このエントリは「過去のプラン」として pending 候補にはしない
             if transaction.isUpgraded {
                 print("[StoreKit] Skipping upgraded-away entitlement: \(transaction.productID) (replaced by higher plan)")
                 continue
@@ -342,17 +351,66 @@ class SubscriptionManager: ObservableObject {
             }
         }
 
+
+        // ── プラン変更予定の検出 ──
+        // StoreKit2 の正しいアプローチ: Product.SubscriptionInfo.Status の
+        // renewalInfo.autoRenewProductID を確認する。
+        // これが現在アクティブなプランのIDと異なる場合、次回の更新で別プランが適用される。
+        // → アップグレード・ダウングレード両方を検出できる。
+        // ※ 同一サブスクグループ内でのアップグレードは StoreKit が即時反映するため、
+        //   この pendingPlan 検出は主にダウングレード・クロスグループ変更に有効。
+        if !productIds.isEmpty {
+            do {
+                let storeProducts = try await Product.products(for: productIds)
+                for product in storeProducts {
+                    guard let subInfo = product.subscription else { continue }
+                    let statuses = try await subInfo.status
+                    for status in statuses {
+                        guard case .verified(let renewalInfo) = status.renewalInfo else { continue }
+                        guard case .verified(let txn) = status.transaction else { continue }
+                        // 失効・期限切れは無視
+                        guard txn.revocationDate == nil else { continue }
+                        if let exp = txn.expirationDate, exp < Date() { continue }
+
+                        let currentProductID = txn.productID
+                        // autoRenewPreference: 次の更新時に適用されるプロダクトID（変更がなければ nil）
+                        let autoRenewPreference = renewalInfo.autoRenewPreference
+
+                        // 自動更新がオンで、かつ次回更新プランが現在と異なる場合 → 変更予定あり
+                        if renewalInfo.willAutoRenew,
+                           let nextID = autoRenewPreference,
+                           nextID != currentProductID,
+                           let nextPlan = plan(for: nextID) {
+                            detectedPendingPlan = nextPlan
+                            // 適用日は現在のトランザクションの有効期限（＝次の更新日）
+                            detectedPendingDate = txn.expirationDate ?? latestExpirationDate
+                            print("[StoreKit] Detected pending plan change: \(currentProductID) → \(nextID) (\(nextPlan.displayName)) at \(detectedPendingDate?.description ?? "unknown")")
+                        }
+                    }
+                }
+            } catch {
+                print("[StoreKit] ⚠️ Could not fetch subscription status for pending detection: \(error)")
+            }
+        }
+
         print("[StoreKit] Effective plan: \(highestPlan.displayName), expires: \(latestExpirationDate?.description ?? "none")")
+        if let pp = detectedPendingPlan {
+            print("[StoreKit] Pending plan change: → \(pp.displayName) from \(detectedPendingDate?.description ?? "unknown")")
+        }
 
         let planToApply = highestPlan
         let expiration = latestExpirationDate
         let prodId = activeProductId
         let isActive = hasActiveSubscription  // Swift 6対応: 変数をローカルにコピー
+        let pendingPlanValue = detectedPendingPlan
+        let pendingDateValue = detectedPendingDate
 
         await MainActor.run {
             self.currentPlan = planToApply
             self.expiresAt = expiration
             self.autoRenew = isActive
+            self.pendingPlan = pendingPlanValue
+            self.pendingPlanDate = pendingDateValue
 
             let record = SubscriptionRecord(
                 subscriptionTier: planToApply,
@@ -426,17 +484,30 @@ class SubscriptionManager: ObservableObject {
     }
 
 
-    /// 解約処理：autoRenew を false にする。有効期限まではプラン継続。
-    func cancelSubscription() {
-        var record = savedRecord
-        record.autoRenew = false
-        savedRecord = record
-        refreshPublishedState()
-
-        print("[StoreKit] Subscription cancelled. Active until: \(record.expiresAt?.description ?? "nil")")
-
-        if currentPlan == .team || currentPlan == .max || currentPlan == .organization {
-            uploadShareRecord()
+    /// サブスクリプション管理シートをアプリ内で表示する（Appleガイドライン3.1.1準拠）
+    /// StoreKit 2公式API: AppStore.showManageSubscriptions(in:) を使用
+    /// ユーザーは RowPilot のサブスクリプション管理画面に直接遷移できる
+    @MainActor
+    func showManageSubscriptions() async {
+        guard let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first else {
+            // フォールバック：ブラウザでApp Storeを開く
+            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                await UIApplication.shared.open(url)
+            }
+            print("[StoreKit] ⚠️ No window scene found, falling back to URL.")
+            return
+        }
+        do {
+            try await AppStore.showManageSubscriptions(in: windowScene)
+            print("[StoreKit] ✅ Showed manage subscriptions sheet.")
+        } catch {
+            // フォールバック：ブラウザでApp Storeを開く
+            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                await UIApplication.shared.open(url)
+            }
+            print("[StoreKit] ❌ showManageSubscriptions failed: \(error). Falling back to URL.")
         }
     }
 

@@ -38,12 +38,16 @@ class RiggingManager: ObservableObject {
                     name: "Single Scull Default".localized,
                     boatType: .singleSculls,
                     oarType: .scull,
-                    oarTotalLength: 289.0,
-                    oarInboard: 88.0,
+                    oarTotalLengthPort: 289.0,
+                    oarTotalLengthStarboard: 289.0,
+                    oarInboardPort: 88.0,
+                    oarInboardStarboard: 88.0,
                     oarBladeType: "Smoothie2",
                     boatSpan: 160.0,
-                    boatWorkHeight: 16.0,
-                    boatPitch: 4.0,
+                    boatWorkHeightPort: 16.0,
+                    boatWorkHeightStarboard: 16.0,
+                    boatPitchPort: 4.0,
+                    boatPitchStarboard: 4.0,
                     boatFootstretch: 8.0
                 )
                 configs.append(defaultSingle)

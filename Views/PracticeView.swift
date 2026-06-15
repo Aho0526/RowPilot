@@ -32,12 +32,12 @@ struct PracticeView: View {
                         }
 
                         // MARK: - Plan Features Module (Manager Mode & Team Management)
-                        if currentPlan.hasManagerMode {
-                            ManagerModeModule(
-                                currentPlan: currentPlan,
-                                showingSubscription: $showingSubscription
-                            )
-                            
+                        ManagerModeModule(
+                            currentPlan: currentPlan,
+                            showingSubscription: $showingSubscription
+                        )
+
+                        if currentPlan.hasTeamFeature {
                             TeamManagementModule()
                         } else {
                             JoinTeamModule()

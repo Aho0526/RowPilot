@@ -3,8 +3,7 @@ import SwiftUI
 /// メンバー側：チーム招待コードを入力してチーム参加を申請するView
 struct TeamInviteCodeInputView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var teamManager = TeamManager.shared
-    @ObservedObject private var subManager = SubscriptionManager.shared
+    @ObservedObject private var ckTeam = CloudKitTeamManager.shared
     @ObservedObject private var settingsManager = SettingsManager.shared
 
     @State private var showingResult = false
@@ -56,20 +55,35 @@ struct TeamInviteCodeInputView: View {
                                 .foregroundColor(.white.opacity(0.6))
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
+
+                            // すでにチーム参加中の場合は注意表示
+                            if ckTeam.isTeamMember {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                    Text("現在すでにチームに参加しています。\n脱退してから別のチームに参加できます。")
+                                        .font(.caption)
+                                        .foregroundColor(.orange)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                .padding()
+                                .background(Color.orange.opacity(0.08))
+                                .cornerRadius(12)
+                                .padding(.horizontal)
+                            }
                         }
 
-                        // 共有名の確認
                         // 共有名の入力・確認
                         VStack(alignment: .leading, spacing: 10) {
                             Text("申請時の表示名".localized)
                                 .font(.caption)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white.opacity(0.5))
-                            
+
                             HStack(spacing: 12) {
                                 Image(systemName: "person.fill.checkmark")
                                     .foregroundColor(teamColor)
-                                
+
                                 TextField("表示名を入力してください".localized, text: $settingsManager.settings.sharingName)
                                     .textFieldStyle(.plain)
                                     .font(.subheadline)
@@ -80,7 +94,7 @@ struct TeamInviteCodeInputView: View {
                                     .background(Color.white.opacity(0.08))
                                     .cornerRadius(8)
                             }
-                            
+
                             if settingsManager.settings.sharingName.isEmpty {
                                 Text("⚠️ 申請する前に、上のフィールドに表示名を入力してください。この名前が顧問に表示されます。".localized)
                                     .font(.caption2)
@@ -127,7 +141,7 @@ struct TeamInviteCodeInputView: View {
                         // 申請ボタン
                         Button(action: submitRequest) {
                             HStack(spacing: 10) {
-                                if teamManager.isLoading {
+                                if ckTeam.isLoading {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 } else {
@@ -147,10 +161,10 @@ struct TeamInviteCodeInputView: View {
                             .cornerRadius(14)
                             .shadow(color: isFormValid ? teamColor.opacity(0.4) : .clear, radius: 8)
                         }
-                        .disabled(!isFormValid || teamManager.isLoading)
+                        .disabled(!isFormValid || ckTeam.isLoading || ckTeam.isTeamMember)
                         .padding(.horizontal)
 
-                        // 説明カード
+                        // 参加の流れ説明
                         VStack(alignment: .leading, spacing: 12) {
                             Label("参加の流れ".localized, systemImage: "info.circle.fill")
                                 .font(.subheadline)
@@ -169,13 +183,13 @@ struct TeamInviteCodeInputView: View {
                         .cornerRadius(16)
                         .padding(.horizontal)
 
-                        // Manager Plan共有との違い
+                        // 仕組みの説明
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("ℹ️ Manager Plan共有との違い".localized)
+                            Text("ℹ️ チーム参加の仕組み".localized)
                                 .font(.caption)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white.opacity(0.6))
-                            Text("チーム参加はManagerプランの共有とは異なります。チーム参加では、あなたの練習記録が顧問の端末に配信されます。Managerプランの機能が共有されるわけではありません。".localized)
+                            Text("あなたの個人データ（練習記録）はあなた自身のiCloudに保存されます。チーム参加により、記録のサマリーと詳細が顧問の端末へ共有されます。個人データの所有権はあなた自身に残ります。")
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.4))
                                 .lineSpacing(3)
@@ -264,17 +278,15 @@ struct TeamInviteCodeInputView: View {
 
     private var isFormValid: Bool {
         codeParts[0].count == 4 && codeParts[1].count == 4
-            && !settingsManager.settings.sharingName.isEmpty
+            && !settingsManager.settings.sharingName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private func submitRequest() {
-        let myID = subManager.myUserRecordId
-        let name = settingsManager.settings.sharingName
+        let name = settingsManager.settings.sharingName.trimmingCharacters(in: .whitespaces)
 
-        teamManager.sendJoinRequest(
-            code: fullCode,
-            requestorName: name,
-            requestorID: myID
+        ckTeam.sendJoinRequest(
+            inviteCode: fullCode,
+            requesterName: name
         ) { success, error in
             resultSuccess = success
             resultMessage = success

@@ -62,7 +62,7 @@ struct UserSettings: Codable {
     var monthlyTargetDistance: Double // メートル単位
     
     init(
-        soundEnabled: Bool = true,
+        soundEnabled: Bool = false,
         voiceFeedbackEnabled: Bool = false,
         feedbackInterval: TimeInterval = 60,
         preferredColorScheme: ColorSchemePreference = .system,

@@ -12,6 +12,7 @@ struct SettingView: View {
     @State private var targetDistanceInput = ""
     @State private var showingInviteCodeInput = false
     @State private var showingTeamCodeInput = false
+    @ObservedObject private var ckTeam = CloudKitTeamManager.shared
     @State private var showingICloudDeleteAlert = false
     @State private var showingICloudSyncAllAlert = false
     @ObservedObject private var iCloudSync = ICloudSyncManager.shared
@@ -149,22 +150,24 @@ struct SettingView: View {
             }
             
             // SOS設定
-            SettingsSection(title: "Emergency Contact".localized, icon: "sos") {
-                NavigationLink(value: "SOSSettings") {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("SOS Settings".localized)
-                                .foregroundColor(Theme.textMain)
-                            if !settingsManager.settings.sosContactName.isEmpty {
-                                Text(settingsManager.settings.sosContactName)
-                                    .font(.caption)
-                                    .foregroundColor(Theme.textSecondary)
+            if UIDevice.current.userInterfaceIdiom != .pad {
+                SettingsSection(title: "Emergency Contact".localized, icon: "sos") {
+                    NavigationLink(value: "SOSSettings") {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("SOS Settings".localized)
+                                    .foregroundColor(Theme.textMain)
+                                if !settingsManager.settings.sosContactName.isEmpty {
+                                    Text(settingsManager.settings.sosContactName)
+                                        .font(.caption)
+                                        .foregroundColor(Theme.textSecondary)
+                                }
                             }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
                         }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(Theme.textSecondary)
                     }
                 }
             }
@@ -187,36 +190,22 @@ struct SettingView: View {
                 }
             }
             
-            // 音声設定
-            SettingsSection(title: "Voice Feedback".localized, icon: "speaker.wave.3.fill") {
-                SettingsToggleRow(title: "Sound Effects".localized, isOn: $settingsManager.settings.soundEnabled)
-                SettingsToggleRow(title: "Voice Guide".localized, isOn: $settingsManager.settings.voiceFeedbackEnabled)
-                
-                if settingsManager.settings.voiceFeedbackEnabled {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Interval: \(Int(settingsManager.settings.feedbackInterval))s")
-                            .foregroundColor(Theme.textMain)
-                            .font(.subheadline)
-                        Slider(value: $settingsManager.settings.feedbackInterval, in: 30...300, step: 30)
-                            .tint(Theme.accent)
-                    }
-                    .padding(.top, 4)
-                }
-            }
-            
+
             // 表示設定
             SettingsSection(title: "Display".localized, icon: "display") {
                 SettingsToggleRow(title: "Show Battery".localized, isOn: $settingsManager.settings.showBatteryStatus)
                 SettingsToggleRow(title: "Show GPS Accuracy".localized, isOn: $settingsManager.settings.showGPSAccuracy)
                 SettingsToggleRow(title: "Show Help Buttons".localized, isOn: $settingsManager.settings.showHelpButtons)
                 
-                Divider().background(Theme.textSecondary.opacity(0.3))
-                
-                VStack(alignment: .leading, spacing: 6) {
-                    SettingsToggleRow(title: "Prevent Screen Dimming".localized, isOn: $settingsManager.settings.preventScreenDimming)
-                    Text("Screen Dimming Warning Hint".localized)
-                        .font(.caption)
-                        .foregroundColor(Theme.textSecondary)
+                if UIDevice.current.userInterfaceIdiom != .pad {
+                    Divider().background(Theme.textSecondary.opacity(0.3))
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        SettingsToggleRow(title: "Prevent Screen Dimming".localized, isOn: $settingsManager.settings.preventScreenDimming)
+                        Text("Screen Dimming Warning Hint".localized)
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                    }
                 }
                 
                 Divider().background(Theme.textSecondary.opacity(0.3))
@@ -260,7 +249,7 @@ struct SettingView: View {
                 SettingsSection(title: "Manager Mode".localized, icon: "person.3.sequence.fill") {
                     SettingsToggleRow(title: "Save 0-Record PM5s".localized, isOn: $settingsManager.settings.saveZeroRecordPM5s)
                     
-                    if currentPlan == .team || currentPlan == .max || currentPlan == .organization {
+                    if currentPlan.hasTeamFeature {
                         Divider().background(Theme.textSecondary.opacity(0.3))
                         NavigationLink(destination: TeamMaxManagerView()) {
                             HStack {
@@ -285,6 +274,98 @@ struct SettingView: View {
                                 Text("招待コードで申請".localized)
                                     .foregroundColor(Theme.textMain)
                                 Text("Team/MAXユーザーのコードを入力してManagerプランを利用".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                    }
+                }
+            }
+            
+            // ─── チーム機能セクション ───
+            if currentPlan.hasTeamFeature {
+                // チーム管理（Team/MAX以上：顧問・管理者向け）
+                SettingsSection(title: "チーム管理".localized, icon: "person.3.fill") {
+                    NavigationLink(destination: TeamDashboardView()) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("チームダッシュボード")
+                                    .foregroundColor(Theme.textMain)
+                                let activeCount = ckTeam.memberships.filter { $0.isActive }.count
+                                Text(ckTeam.myTeam != nil
+                                     ? "\(activeCount)名のメンバーを管理中"
+                                     : "チームを作成してメンバーを管理")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            Spacer()
+                            if ckTeam.pendingJoinRequests.count > 0 {
+                                Text("\(ckTeam.pendingJoinRequests.count)")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange.opacity(0.8))
+                                    .foregroundColor(.white)
+                                    .clipShape(Capsule())
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                    }
+                }
+            }
+            
+            // チームに参加（選手向け・全プランで表示）
+            SettingsSection(title: "チームに参加".localized, icon: "person.badge.plus") {
+                if ckTeam.isTeamMember {
+                    // 参加中の表示
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("チーム参加中")
+                                .foregroundColor(.green)
+                                .fontWeight(.semibold)
+                            if let membership = ckTeam.myMembership {
+                                Text("参加日: \(membership.joinedAt.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                    }
+                    
+                    Divider().background(Theme.textSecondary.opacity(0.3))
+                    
+                    // 脱退ボタン
+                    Button(action: {
+                        if let m = ckTeam.myMembership {
+                            ckTeam.leaveTeam(membershipID: m.id) { success, error in
+                                // フィードバックは不要（状態が更新される）
+                            }
+                        }
+                    }) {
+                        HStack {
+                            Text("チームを脱退する")
+                                .foregroundColor(.red)
+                            Spacer()
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .foregroundColor(.red)
+                        }
+                    }
+                } else {
+                    Button(action: { showingTeamCodeInput = true }) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("チームに参加")
+                                    .foregroundColor(Theme.textMain)
+                                Text("顧問から招待コードをもらって参加")
                                     .font(.caption)
                                     .foregroundColor(Theme.textSecondary)
                             }
@@ -504,7 +585,7 @@ struct SettingView: View {
                         .underline()
                 }
                 Text("Test Flight v1.0(Build 5)")
-                Text("Build from June 13")
+                Text("Build from June 14")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

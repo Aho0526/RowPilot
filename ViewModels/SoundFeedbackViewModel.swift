@@ -7,7 +7,7 @@ class SoundFeedbackViewModel: ObservableObject {
     private var speechSynthesizer = AVSpeechSynthesizer()
     private var feedbackTimer: Timer?
     
-    @Published var isEnabled: Bool = true
+    @Published var isEnabled: Bool = false
     @Published var voiceFeedbackEnabled: Bool = false
     @Published var feedbackInterval: TimeInterval = FeedbackConstants.defaultVoiceFeedbackInterval
     

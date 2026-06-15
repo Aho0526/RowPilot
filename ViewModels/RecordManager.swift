@@ -202,8 +202,8 @@ class RecordManager: ObservableObject {
         saveContext()
         fetchRecords()
         
-        // チームに参加中の場合、サマリーをCloudにアップロード
-        TeamRecordUploader.shared.uploadRecordSummary(record)
+        // チームに参加中の場合、Shared DBにワークアウトをアップロード（個人データの正本はPrivate DB/CoreDataに保存済み）
+        TeamRecordUploader.shared.uploadIfNeeded(record: record)
         
         // iCloud Driveに.rowpilotファイルとしてアップロード（フルデータ）
         var recordForCloud = record

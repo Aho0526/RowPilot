@@ -225,7 +225,7 @@ struct RiggingConfigRowCard: View {
                     Text("Oar".localized)
                         .font(.caption2)
                         .foregroundColor(Theme.textSecondary)
-                    Text("L:\(String(format: "%.0f", config.oarTotalLength))/I:\(String(format: "%.0f", config.oarInboard))/G:\(String(format: "%.0f", config.oarGripDiameter))")
+                    Text(getOarDetailText(config: config))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundColor(Theme.textMain.opacity(0.9))
                 }
@@ -251,7 +251,7 @@ struct RiggingConfigRowCard: View {
                     Text("Height".localized)
                         .font(.caption2)
                         .foregroundColor(Theme.textSecondary)
-                    Text("\(String(format: "%.1f", config.boatWorkHeight))")
+                    Text(getHeightDetailText(config: config))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundColor(Theme.textMain.opacity(0.9))
                 }
@@ -264,7 +264,7 @@ struct RiggingConfigRowCard: View {
                     Text("Pitch".localized)
                         .font(.caption2)
                         .foregroundColor(Theme.textSecondary)
-                    Text("\(String(format: "%.0f", config.boatPitch))°(\(config.boatLateralPitch))/\(String(format: "%.0f", config.oarSleevePitch))°")
+                    Text(getPitchDetailText(config: config))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundColor(Theme.textMain.opacity(0.9))
                 }
@@ -292,6 +292,44 @@ struct RiggingConfigRowCard: View {
                     .stroke(isActive ? Theme.accent.opacity(0.4) : Color.white.opacity(0.1), lineWidth: 1)
             )
         }
+    }
+    
+    private func getOarDetailText(config: RiggingConfig) -> String {
+        let lPort = String(format: "%.0f", config.oarTotalLengthPort)
+        let lStbd = String(format: "%.0f", config.oarTotalLengthStarboard)
+        let lStr = lPort == lStbd ? lPort : "\(lPort)/\(lStbd)"
+        
+        let iPort = String(format: "%.0f", config.oarInboardPort)
+        let iStbd = String(format: "%.0f", config.oarInboardStarboard)
+        let iStr = iPort == iStbd ? iPort : "\(iPort)/\(iStbd)"
+        
+        let gPort = String(format: "%.0f", config.oarGripDiameterPort)
+        let gStbd = String(format: "%.0f", config.oarGripDiameterStarboard)
+        let gStr = gPort == gStbd ? gPort : "\(gPort)/\(gStbd)"
+        
+        return "L:\(lStr)/I:\(iStr)/G:\(gStr)"
+    }
+    
+    private func getHeightDetailText(config: RiggingConfig) -> String {
+        let hPort = String(format: "%.1f", config.boatWorkHeightPort)
+        let hStbd = String(format: "%.1f", config.boatWorkHeightStarboard)
+        return hPort == hStbd ? hPort : "\(hPort)/\(hStbd)"
+    }
+    
+    private func getPitchDetailText(config: RiggingConfig) -> String {
+        let pPort = String(format: "%.0f", config.boatPitchPort)
+        let pStbd = String(format: "%.0f", config.boatPitchStarboard)
+        let pStr = pPort == pStbd ? "\(pPort)°" : "\(pPort)°/\(pStbd)°"
+        
+        let lpPort = config.boatLateralPitchPort
+        let lpStbd = config.boatLateralPitchStarboard
+        let lpStr = lpPort == lpStbd ? lpPort : "\(lpPort)/\(lpStbd)"
+        
+        let spPort = String(format: "%.0f", config.oarSleevePitchPort)
+        let spStbd = String(format: "%.0f", config.oarSleevePitchStarboard)
+        let spStr = spPort == spStbd ? "\(spPort)°" : "\(spPort)°/\(spStbd)°"
+        
+        return "\(pStr)(\(lpStr))/\(spStr)"
     }
     
     private func formatDate(_ date: Date) -> String {

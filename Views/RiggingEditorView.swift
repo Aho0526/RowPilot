@@ -12,17 +12,24 @@ struct RiggingEditorView: View {
     @State private var oarType: OarType
     
     // Oar
-    @State private var oarTotalLength: Double
-    @State private var oarInboard: Double
+    @State private var oarTotalLengthPort: Double
+    @State private var oarTotalLengthStarboard: Double
+    @State private var oarInboardPort: Double
+    @State private var oarInboardStarboard: Double
     @State private var oarBladeType: String
-    @State private var oarSleevePitch: Double
-    @State private var oarGripDiameter: Double
+    @State private var oarSleevePitchPort: Double
+    @State private var oarSleevePitchStarboard: Double
+    @State private var oarGripDiameterPort: Double
+    @State private var oarGripDiameterStarboard: Double
     
     // Boat
     @State private var boatSpan: Double
-    @State private var boatWorkHeight: Double
-    @State private var boatPitch: Double
-    @State private var boatLateralPitch: String
+    @State private var boatWorkHeightPort: Double
+    @State private var boatWorkHeightStarboard: Double
+    @State private var boatPitchPort: Double
+    @State private var boatPitchStarboard: Double
+    @State private var boatLateralPitchPort: String
+    @State private var boatLateralPitchStarboard: String
     @State private var boatFootstretch: Double
     @State private var boatFootplateAngle: Double
     @State private var boatFootplateHeight: Double
@@ -35,21 +42,31 @@ struct RiggingEditorView: View {
     // Focused states
     enum Field: Hashable {
         case name
-        case oarTotalLength
-        case oarInboard
+        case oarTotalLengthPort, oarTotalLengthStarboard
+        case oarInboardPort, oarInboardStarboard
         case oarBladeType
-        case oarSleevePitch
-        case oarGripDiameter
+        case oarSleevePitchPort, oarSleevePitchStarboard
+        case oarGripDiameterPort, oarGripDiameterStarboard
         case boatSpan
-        case boatWorkHeight
-        case boatPitch
-        case boatLateralPitch
+        case boatWorkHeightPort, boatWorkHeightStarboard
+        case boatPitchPort, boatPitchStarboard
+        case boatLateralPitchPort, boatLateralPitchStarboard
         case boatFootstretch
         case boatFootplateAngle
         case boatFootplateHeight
         case boatSeatPosition
     }
     @FocusState private var focusedField: Field?
+    
+    private var activeSide: RiggingSide {
+        guard let focused = focusedField else { return .starboard }
+        switch focused {
+        case .oarTotalLengthPort, .oarInboardPort, .oarSleevePitchPort, .oarGripDiameterPort, .boatWorkHeightPort, .boatPitchPort, .boatLateralPitchPort:
+            return .port
+        default:
+            return .starboard
+        }
+    }
     
     // Interactive diagram states
     @State private var boatDiagramTab: Int = 0 // 0: Top, 1: Side
@@ -69,16 +86,23 @@ struct RiggingEditorView: View {
         _boatType = State(initialValue: config.boatType)
         _oarType = State(initialValue: config.oarType)
         
-        _oarTotalLength = State(initialValue: config.oarTotalLength)
-        _oarInboard = State(initialValue: config.oarInboard)
+        _oarTotalLengthPort = State(initialValue: config.oarTotalLengthPort)
+        _oarTotalLengthStarboard = State(initialValue: config.oarTotalLengthStarboard)
+        _oarInboardPort = State(initialValue: config.oarInboardPort)
+        _oarInboardStarboard = State(initialValue: config.oarInboardStarboard)
         _oarBladeType = State(initialValue: config.oarBladeType)
-        _oarSleevePitch = State(initialValue: config.oarSleevePitch)
-        _oarGripDiameter = State(initialValue: config.oarGripDiameter)
+        _oarSleevePitchPort = State(initialValue: config.oarSleevePitchPort)
+        _oarSleevePitchStarboard = State(initialValue: config.oarSleevePitchStarboard)
+        _oarGripDiameterPort = State(initialValue: config.oarGripDiameterPort)
+        _oarGripDiameterStarboard = State(initialValue: config.oarGripDiameterStarboard)
         
         _boatSpan = State(initialValue: config.boatSpan)
-        _boatWorkHeight = State(initialValue: config.boatWorkHeight)
-        _boatPitch = State(initialValue: config.boatPitch)
-        _boatLateralPitch = State(initialValue: config.boatLateralPitch)
+        _boatWorkHeightPort = State(initialValue: config.boatWorkHeightPort)
+        _boatWorkHeightStarboard = State(initialValue: config.boatWorkHeightStarboard)
+        _boatPitchPort = State(initialValue: config.boatPitchPort)
+        _boatPitchStarboard = State(initialValue: config.boatPitchStarboard)
+        _boatLateralPitchPort = State(initialValue: config.boatLateralPitchPort)
+        _boatLateralPitchStarboard = State(initialValue: config.boatLateralPitchStarboard)
         _boatFootstretch = State(initialValue: config.boatFootstretch)
         _boatFootplateAngle = State(initialValue: config.boatFootplateAngle)
         _boatFootplateHeight = State(initialValue: config.boatFootplateHeight)
@@ -113,22 +137,31 @@ struct RiggingEditorView: View {
         
         // Standard defaults based on scull vs sweep
         if boatType.isScull {
-            _oarTotalLength = State(initialValue: 289.0)
-            _oarInboard = State(initialValue: 88.0)
+            _oarTotalLengthPort = State(initialValue: 289.0)
+            _oarTotalLengthStarboard = State(initialValue: 289.0)
+            _oarInboardPort = State(initialValue: 88.0)
+            _oarInboardStarboard = State(initialValue: 88.0)
             _boatSpan = State(initialValue: 160.0)
         } else {
-            _oarTotalLength = State(initialValue: 373.0)
-            _oarInboard = State(initialValue: 114.0)
+            _oarTotalLengthPort = State(initialValue: 373.0)
+            _oarTotalLengthStarboard = State(initialValue: 373.0)
+            _oarInboardPort = State(initialValue: 114.0)
+            _oarInboardStarboard = State(initialValue: 114.0)
             _boatSpan = State(initialValue: 84.0)
         }
         
         _oarBladeType = State(initialValue: "Smoothie2")
-        _oarSleevePitch = State(initialValue: 0.0)
-        _oarGripDiameter = State(initialValue: 34.0)
+        _oarSleevePitchPort = State(initialValue: 0.0)
+        _oarSleevePitchStarboard = State(initialValue: 0.0)
+        _oarGripDiameterPort = State(initialValue: 34.0)
+        _oarGripDiameterStarboard = State(initialValue: 34.0)
         
-        _boatWorkHeight = State(initialValue: 16.0)
-        _boatPitch = State(initialValue: 4.0)
-        _boatLateralPitch = State(initialValue: "4/4")
+        _boatWorkHeightPort = State(initialValue: 16.0)
+        _boatWorkHeightStarboard = State(initialValue: 16.0)
+        _boatPitchPort = State(initialValue: 4.0)
+        _boatPitchStarboard = State(initialValue: 4.0)
+        _boatLateralPitchPort = State(initialValue: "4/4")
+        _boatLateralPitchStarboard = State(initialValue: "4/4")
         _boatFootstretch = State(initialValue: 8.0)
         _boatFootplateAngle = State(initialValue: 42.0)
         _boatFootplateHeight = State(initialValue: 15.0)
@@ -176,12 +209,16 @@ struct RiggingEditorView: View {
                                 .onChange(of: boatType) { _, newType in
                                     oarType = newType.isScull ? .scull : .sweep
                                     if newType.isScull {
-                                        oarTotalLength = 289.0
-                                        oarInboard = 88.0
+                                        oarTotalLengthPort = 289.0
+                                        oarTotalLengthStarboard = 289.0
+                                        oarInboardPort = 88.0
+                                        oarInboardStarboard = 88.0
                                         boatSpan = 160.0
                                     } else {
-                                        oarTotalLength = 373.0
-                                        oarInboard = 114.0
+                                        oarTotalLengthPort = 373.0
+                                        oarTotalLengthStarboard = 373.0
+                                        oarInboardPort = 114.0
+                                        oarInboardStarboard = 114.0
                                         boatSpan = 84.0
                                     }
                                 }
@@ -199,37 +236,118 @@ struct RiggingEditorView: View {
                                 .foregroundColor(Theme.textMain)
                             
                             OarDiagramView(
-                                totalLength: oarTotalLength,
-                                inboard: oarInboard,
+                                totalLength: activeSide == .port ? oarTotalLengthPort : oarTotalLengthStarboard,
+                                inboard: activeSide == .port ? oarInboardPort : oarInboardStarboard,
                                 bladeType: selectedBladePreset == "Other" ? customBladeName : selectedBladePreset,
-                                sleevePitch: oarSleevePitch,
+                                sleevePitch: activeSide == .port ? oarSleevePitchPort : oarSleevePitchStarboard,
                                 selectedField: activeOarField
                             )
                             
-                            VStack(spacing: 12) {
-                                HStack {
-                                    Text("Total Length".localized)
-                                        .foregroundColor(Theme.textSecondary)
-                                    Spacer()
-                                    NumericTextField(value: $oarTotalLength, suffix: "cm")
-                                        .focused($focusedField, equals: .oarTotalLength)
+                            VStack(spacing: 14) {
+                                // Total Length (Port & Starboard)
+                                VStack(spacing: 6) {
+                                    HStack {
+                                        Text("Total Length".localized)
+                                            .foregroundColor(Theme.textSecondary)
+                                        Spacer()
+                                    }
+                                    HStack(spacing: 12) {
+                                        HStack {
+                                            Text("Port".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $oarTotalLengthPort, suffix: "cm")
+                                                .focused($focusedField, equals: .oarTotalLengthPort)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        
+                                        HStack {
+                                            Text("Starboard".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $oarTotalLengthStarboard, suffix: "cm")
+                                                .focused($focusedField, equals: .oarTotalLengthStarboard)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                    }
                                 }
                                 
-                                HStack {
-                                    Text("Inboard".localized)
-                                        .foregroundColor(Theme.textSecondary)
-                                    Spacer()
-                                    NumericTextField(value: $oarInboard, suffix: "cm")
-                                        .focused($focusedField, equals: .oarInboard)
+                                // Inboard (Port & Starboard)
+                                VStack(spacing: 6) {
+                                    HStack {
+                                        Text("Inboard".localized)
+                                            .foregroundColor(Theme.textSecondary)
+                                        Spacer()
+                                    }
+                                    HStack(spacing: 12) {
+                                        HStack {
+                                            Text("Port".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $oarInboardPort, suffix: "cm")
+                                                .focused($focusedField, equals: .oarInboardPort)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        
+                                        HStack {
+                                            Text("Starboard".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $oarInboardStarboard, suffix: "cm")
+                                                .focused($focusedField, equals: .oarInboardStarboard)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                    }
                                 }
                                 
-                                HStack {
-                                    Text("Outboard".localized)
-                                        .foregroundColor(Theme.textSecondary)
-                                    Spacer()
-                                    Text(String(format: "%.1f cm", max(0, oarTotalLength - oarInboard)))
-                                        .foregroundColor(Theme.textMain.opacity(0.8))
-                                        .fontWeight(.semibold)
+                                // Outboard (Port & Starboard Display)
+                                VStack(spacing: 6) {
+                                    HStack {
+                                        Text("Outboard".localized)
+                                            .foregroundColor(Theme.textSecondary)
+                                        Spacer()
+                                    }
+                                    HStack(spacing: 12) {
+                                        HStack {
+                                            Text("Port".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            Text(String(format: "%.1f cm", max(0, oarTotalLengthPort - oarInboardPort)))
+                                                .foregroundColor(Theme.textMain.opacity(0.8))
+                                                .fontWeight(.semibold)
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 6)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        
+                                        HStack {
+                                            Text("Starboard".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            Text(String(format: "%.1f cm", max(0, oarTotalLengthStarboard - oarInboardStarboard)))
+                                                .foregroundColor(Theme.textMain.opacity(0.8))
+                                                .fontWeight(.semibold)
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 6)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                    }
                                 }
                                 
                                 HStack {
@@ -265,20 +383,72 @@ struct RiggingEditorView: View {
                                     .transition(.opacity)
                                 }
                                 
-                                HStack {
-                                    Text("Sleeve Pitch".localized)
-                                        .foregroundColor(Theme.textSecondary)
-                                    Spacer()
-                                    NumericTextField(value: $oarSleevePitch, suffix: "°")
-                                        .focused($focusedField, equals: .oarSleevePitch)
+                                // Sleeve Pitch (Port & Starboard)
+                                VStack(spacing: 6) {
+                                    HStack {
+                                        Text("Sleeve Pitch".localized)
+                                            .foregroundColor(Theme.textSecondary)
+                                        Spacer()
+                                    }
+                                    HStack(spacing: 12) {
+                                        HStack {
+                                            Text("Port".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $oarSleevePitchPort, suffix: "°")
+                                                .focused($focusedField, equals: .oarSleevePitchPort)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        
+                                        HStack {
+                                            Text("Starboard".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $oarSleevePitchStarboard, suffix: "°")
+                                                .focused($focusedField, equals: .oarSleevePitchStarboard)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                    }
                                 }
                                 
-                                HStack {
-                                    Text("Grip Diameter".localized)
-                                        .foregroundColor(Theme.textSecondary)
-                                    Spacer()
-                                    NumericTextField(value: $oarGripDiameter, suffix: "mm")
-                                        .focused($focusedField, equals: .oarGripDiameter)
+                                // Grip Diameter (Port & Starboard)
+                                VStack(spacing: 6) {
+                                    HStack {
+                                        Text("Grip Diameter".localized)
+                                            .foregroundColor(Theme.textSecondary)
+                                        Spacer()
+                                    }
+                                    HStack(spacing: 12) {
+                                        HStack {
+                                            Text("Port".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $oarGripDiameterPort, suffix: "mm")
+                                                .focused($focusedField, equals: .oarGripDiameterPort)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        
+                                        HStack {
+                                            Text("Starboard".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $oarGripDiameterStarboard, suffix: "mm")
+                                                .focused($focusedField, equals: .oarGripDiameterStarboard)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                    }
                                 }
                             }
                             .padding()
@@ -295,22 +465,29 @@ struct RiggingEditorView: View {
                             
                             BoatRiggingDiagramView(
                                 span: boatSpan,
-                                workHeight: boatWorkHeight,
-                                pitch: boatPitch,
-                                lateralPitch: boatLateralPitch,
+                                workHeightPort: boatWorkHeightPort,
+                                workHeightStarboard: boatWorkHeightStarboard,
+                                pitchPort: boatPitchPort,
+                                pitchStarboard: boatPitchStarboard,
+                                lateralPitchPort: boatLateralPitchPort,
+                                lateralPitchStarboard: boatLateralPitchStarboard,
                                 footstretch: boatFootstretch,
                                 footplateAngle: boatFootplateAngle,
                                 footplateHeight: boatFootplateHeight,
-                                oarTotalLength: oarTotalLength,
-                                oarInboard: oarInboard,
-                                oarGripDiameter: oarGripDiameter,
+                                oarTotalLengthPort: oarTotalLengthPort,
+                                oarTotalLengthStarboard: oarTotalLengthStarboard,
+                                oarInboardPort: oarInboardPort,
+                                oarInboardStarboard: oarInboardStarboard,
+                                oarGripDiameterPort: oarGripDiameterPort,
+                                oarGripDiameterStarboard: oarGripDiameterStarboard,
                                 oarType: oarType,
                                 selectedField: activeBoatField,
+                                activeSide: activeSide,
                                 seatPosition: $boatSeatPosition,
                                 currentTab: $boatDiagramTab
                             )
                             
-                            VStack(spacing: 12) {
+                            VStack(spacing: 14) {
                                 HStack {
                                     Text(oarType == .scull ? "Span / Spread".localized + " (Pin-to-Pin)" : "Span / Spread".localized + " (Center-to-Pin)")
                                         .foregroundColor(Theme.textSecondary)
@@ -320,36 +497,120 @@ struct RiggingEditorView: View {
                                         .focused($focusedField, equals: .boatSpan)
                                 }
                                 
-                                HStack {
-                                    Text("Work Height".localized)
-                                        .foregroundColor(Theme.textSecondary)
-                                    Spacer()
-                                    NumericTextField(value: $boatWorkHeight, suffix: "cm")
-                                        .focused($focusedField, equals: .boatWorkHeight)
-                                }
-                                
-                                HStack {
-                                    Text("Pitch".localized)
-                                        .foregroundColor(Theme.textSecondary)
-                                    Spacer()
-                                    NumericTextField(value: $boatPitch, suffix: "°")
-                                        .focused($focusedField, equals: .boatPitch)
-                                }
-                                
-                                HStack {
-                                    Text("Lateral Pitch".localized)
-                                        .foregroundColor(Theme.textSecondary)
-                                    Spacer()
-                                    Picker("", selection: $boatLateralPitch) {
-                                        Text("4/4").tag("4/4")
-                                        Text("5/3").tag("5/3")
-                                        Text("6/2").tag("6/2")
-                                        Text("7/1").tag("7/1")
+                                // Work Height (Port & Starboard)
+                                VStack(spacing: 6) {
+                                    HStack {
+                                        Text("Work Height".localized)
+                                            .foregroundColor(Theme.textSecondary)
+                                        Spacer()
                                     }
-                                    .pickerStyle(MenuPickerStyle())
-                                    .tint(Theme.accent)
-                                    .frame(width: 110, alignment: .trailing)
-                                    .focused($focusedField, equals: .boatLateralPitch)
+                                    HStack(spacing: 12) {
+                                        HStack {
+                                            Text("Port".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $boatWorkHeightPort, suffix: "cm")
+                                                .focused($focusedField, equals: .boatWorkHeightPort)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        
+                                        HStack {
+                                            Text("Starboard".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $boatWorkHeightStarboard, suffix: "cm")
+                                                .focused($focusedField, equals: .boatWorkHeightStarboard)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                    }
+                                }
+                                
+                                // Pitch (Port & Starboard)
+                                VStack(spacing: 6) {
+                                    HStack {
+                                        Text("Pitch".localized)
+                                            .foregroundColor(Theme.textSecondary)
+                                        Spacer()
+                                    }
+                                    HStack(spacing: 12) {
+                                        HStack {
+                                            Text("Port".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $boatPitchPort, suffix: "°")
+                                                .focused($focusedField, equals: .boatPitchPort)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        
+                                        HStack {
+                                            Text("Starboard".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            NumericTextField(value: $boatPitchStarboard, suffix: "°")
+                                                .focused($focusedField, equals: .boatPitchStarboard)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                    }
+                                }
+                                
+                                // Lateral Pitch (Port & Starboard Picker)
+                                VStack(spacing: 6) {
+                                    HStack {
+                                        Text("Lateral Pitch".localized)
+                                            .foregroundColor(Theme.textSecondary)
+                                        Spacer()
+                                    }
+                                    HStack(spacing: 12) {
+                                        HStack {
+                                            Text("Port".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            Picker("", selection: $boatLateralPitchPort) {
+                                                Text("4/4").tag("4/4")
+                                                Text("5/3").tag("5/3")
+                                                Text("6/2").tag("6/2")
+                                                Text("7/1").tag("7/1")
+                                            }
+                                            .pickerStyle(MenuPickerStyle())
+                                            .tint(Theme.accent)
+                                            .focused($focusedField, equals: .boatLateralPitchPort)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        
+                                        HStack {
+                                            Text("Starboard".localized)
+                                                .font(.caption)
+                                                .foregroundColor(Theme.textSecondary)
+                                            Spacer()
+                                            Picker("", selection: $boatLateralPitchStarboard) {
+                                                Text("4/4").tag("4/4")
+                                                Text("5/3").tag("5/3")
+                                                Text("6/2").tag("6/2")
+                                                Text("7/1").tag("7/1")
+                                            }
+                                            .pickerStyle(MenuPickerStyle())
+                                            .tint(Theme.accent)
+                                            .focused($focusedField, equals: .boatLateralPitchStarboard)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                    }
                                 }
                                 
                                 HStack {
@@ -431,11 +692,11 @@ struct RiggingEditorView: View {
             if let val = newValue {
                 withAnimation(.easeInOut) {
                     switch val {
-                    case .boatSpan, .boatFootstretch, .oarGripDiameter, .oarTotalLength, .oarInboard, .boatSeatPosition:
+                    case .boatSpan, .boatFootstretch, .oarGripDiameterPort, .oarGripDiameterStarboard, .oarTotalLengthPort, .oarTotalLengthStarboard, .oarInboardPort, .oarInboardStarboard, .boatSeatPosition:
                         boatDiagramTab = 0 // Top View
                     case .boatFootplateAngle, .boatFootplateHeight:
                         boatDiagramTab = 1 // Diagonal View
-                    case .boatWorkHeight, .boatPitch, .boatLateralPitch:
+                    case .boatWorkHeightPort, .boatWorkHeightStarboard, .boatPitchPort, .boatPitchStarboard, .boatLateralPitchPort, .boatLateralPitchStarboard:
                         boatDiagramTab = 2 // Side View
                     default:
                         break
@@ -457,11 +718,11 @@ struct RiggingEditorView: View {
     private var activeOarField: OarField? {
         guard let focused = focusedField else { return nil }
         switch focused {
-        case .oarTotalLength: return .totalLength
-        case .oarInboard: return .inboard
+        case .oarTotalLengthPort, .oarTotalLengthStarboard: return .totalLength
+        case .oarInboardPort, .oarInboardStarboard: return .inboard
         case .oarBladeType: return .bladeType
-        case .oarSleevePitch: return .sleevePitch
-        case .oarGripDiameter: return .gripDiameter
+        case .oarSleevePitchPort, .oarSleevePitchStarboard: return .sleevePitch
+        case .oarGripDiameterPort, .oarGripDiameterStarboard: return .gripDiameter
         default: return nil
         }
     }
@@ -470,16 +731,16 @@ struct RiggingEditorView: View {
         guard let focused = focusedField else { return nil }
         switch focused {
         case .boatSpan: return .span
-        case .boatWorkHeight: return .workHeight
-        case .boatPitch: return .pitch
-        case .boatLateralPitch: return .lateralPitch
+        case .boatWorkHeightPort, .boatWorkHeightStarboard: return .workHeight
+        case .boatPitchPort, .boatPitchStarboard: return .pitch
+        case .boatLateralPitchPort, .boatLateralPitchStarboard: return .lateralPitch
         case .boatFootstretch: return .footstretch
         case .boatFootplateAngle: return .footplateAngle
         case .boatFootplateHeight: return .footplateHeight
         case .boatSeatPosition: return .seatPosition
-        case .oarTotalLength: return .oarLength
-        case .oarInboard: return .oarInboard
-        case .oarGripDiameter: return .oarGripDiameter
+        case .oarTotalLengthPort, .oarTotalLengthStarboard: return .oarLength
+        case .oarInboardPort, .oarInboardStarboard: return .oarInboard
+        case .oarGripDiameterPort, .oarGripDiameterStarboard: return .oarGripDiameter
         default: return nil
         }
     }
@@ -501,15 +762,22 @@ struct RiggingEditorView: View {
             date: Date(),
             boatType: boatType,
             oarType: oarType,
-            oarTotalLength: oarTotalLength,
-            oarInboard: oarInboard,
+            oarTotalLengthPort: oarTotalLengthPort,
+            oarTotalLengthStarboard: oarTotalLengthStarboard,
+            oarInboardPort: oarInboardPort,
+            oarInboardStarboard: oarInboardStarboard,
             oarBladeType: finalBlade,
-            oarSleevePitch: oarSleevePitch,
-            oarGripDiameter: oarGripDiameter,
+            oarSleevePitchPort: oarSleevePitchPort,
+            oarSleevePitchStarboard: oarSleevePitchStarboard,
+            oarGripDiameterPort: oarGripDiameterPort,
+            oarGripDiameterStarboard: oarGripDiameterStarboard,
             boatSpan: boatSpan,
-            boatWorkHeight: boatWorkHeight,
-            boatPitch: boatPitch,
-            boatLateralPitch: boatLateralPitch,
+            boatWorkHeightPort: boatWorkHeightPort,
+            boatWorkHeightStarboard: boatWorkHeightStarboard,
+            boatPitchPort: boatPitchPort,
+            boatPitchStarboard: boatPitchStarboard,
+            boatLateralPitchPort: boatLateralPitchPort,
+            boatLateralPitchStarboard: boatLateralPitchStarboard,
             boatFootstretch: boatFootstretch,
             boatFootplateAngle: boatFootplateAngle,
             boatFootplateHeight: max(0.0, min(25.0, boatFootplateHeight)),

@@ -42,6 +42,7 @@ class LocalizationManager: ObservableObject {
         "Language": [.japanese: "言語", .english: "Language"],
         "Theme": [.japanese: "テーマ設定", .english: "Theme"],
         "Voice Feedback": [.japanese: "音声フィードバック", .english: "Voice Feedback"],
+        "Sound Settings": [.japanese: "サウンド設定", .english: "Sound Settings"],
         "Sound Effects": [.japanese: "効果音", .english: "Sound Effects"],
         "Voice Guide": [.japanese: "音声ガイド", .english: "Voice Guide"],
         "Display": [.japanese: "表示設定", .english: "Display"],
@@ -505,6 +506,8 @@ class LocalizationManager: ObservableObject {
         "Delete Session Message": [.japanese: "このセッション内のすべての記録（%d件）を削除しますか？\n削除されたデータは復元できません。", .english: "Are you sure you want to delete all %d records in this session? This action cannot be undone."],
         
         // MARK: - Rigging & Oars
+        "Port": [.japanese: "バウサイド (Port)", .english: "Port (Bow)"],
+        "Starboard": [.japanese: "ストサイド (Stbd)", .english: "Starboard (Str)"],
         "Rigging & Oars": [.japanese: "艇・オール調整", .english: "Rigging & Oars"],
         "Single Scull Default": [.japanese: "シングルスカル初期設定", .english: "Single Scull Default"],
         "Oar Rigging": [.japanese: "オールの調整", .english: "Oar Rigging"],

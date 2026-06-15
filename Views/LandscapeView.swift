@@ -200,13 +200,15 @@ struct LandscapeView: View {
                             Button(action: {
                                 checkSOSAndShowOverlay()
                             }) {
+                                let isSOSConfigured = !settingsManager.settings.sosContactPhone.isEmpty && !settingsManager.settings.sosUserName.isEmpty
                                 Image(systemName: "sos")
                                     .font(.system(size: 20, weight: .bold))
                                     .foregroundColor(.white)
                                     .frame(width: 44, height: 44)
-                                    .background(Color.red)
+                                    .background(isSOSConfigured ? Color.red : Color.gray)
                                     .clipShape(Circle())
-                                    .shadow(radius: 5)
+                                    .shadow(radius: isSOSConfigured ? 5 : 0)
+                                    .opacity(isSOSConfigured ? 1.0 : 0.6)
                             }
                             
                             // 一時停止/再開ボタン
@@ -412,15 +414,16 @@ struct LandscapeView: View {
         } message: {
             Text("SOS Warning Message".localized)
         }
-        .alert("SOS Warning".localized, isPresented: $showingSOSButtonWarningAlert) {
-            Button("Set Contact".localized, role: .cancel) {
+        .alert(
+            LocalizationManager.shared.language == .japanese ? "緊急連絡先の未設定" : "Emergency Contact Not Set",
+            isPresented: $showingSOSButtonWarningAlert
+        ) {
+            Button(LocalizationManager.shared.language == .japanese ? "設定する" : "Set Contact", role: .none) {
                 app.navigateToSOSSettings()
             }
-            Button("Send Anyway".localized, role: .destructive) {
-                withAnimation { showSOSOverlay = true }
-            }
+            Button(LocalizationManager.shared.language == .japanese ? "キャンセル" : "Cancel", role: .cancel) {}
         } message: {
-            Text("SOS Button Warning Message".localized)
+            Text(LocalizationManager.shared.language == .japanese ? "緊急連絡先または使用者氏名が設定されていません。今すぐ入力しますか？" : "Emergency contact or user name is not configured. Would you like to enter it now?")
         }
     }
 

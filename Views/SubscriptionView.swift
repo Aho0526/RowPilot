@@ -215,6 +215,28 @@ struct SubscriptionView: View {
             }
             .padding(16)
 
+            // ペンディング（変更予定）バナー
+            if let pending = subManager.pendingPlan, let pendingDate = subManager.pendingPlanDate {
+                Divider().background(Color.white.opacity(0.1))
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("現在『\(plan.displayName)』プランに加入中".localized)
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.55))
+                        Text("\(pendingDate.formatted(.dateTime.year().month().day()))以降に、『\(pending.displayName)』プランに自動的に変更されます。".localized)
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.55))
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.orange.opacity(0.12))
+            }
+
             if let expDate = subManager.expiresAt {
                 Divider().background(Color.white.opacity(0.1))
 
@@ -248,7 +270,7 @@ struct SubscriptionView: View {
                 .padding(.vertical, 12)
             }
 
-            if subManager.currentPlan == .team || subManager.currentPlan == .max || subManager.currentPlan == .organization {
+            if subManager.currentPlan.hasTeamFeature {
                 Divider().background(Color.white.opacity(0.1))
                 NavigationLink(destination: TeamMaxManagerView()) {
                     HStack {
@@ -858,26 +880,23 @@ struct SubscriptionDetailView: View {
                             )
                         }
                     } else {
-                        // 商品IDはあるがproductsが空（Sandbox未設定など）
-                        Button(action: { purchase(product: nil) }) {
-                            HStack(spacing: 10) {
-                                Image(systemName: plan.icon)
-                                    .font(.headline)
-                                Text("\(plan.displayName) を購入")
-                                    .font(.headline)
-                                    .fontWeight(.bold)
+                        // 商品が未取得（Sandbox未設定など） → 再試行ボタンのみ表示
+                        Button(action: { Task { await subManager.loadProducts() } }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.clockwise")
+                                Text("価格情報を再取得")
+                                    .fontWeight(.semibold)
                             }
-                            .foregroundColor(.white)
+                            .foregroundColor(.white.opacity(0.7))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(
-                                LinearGradient(colors: plan.gradientColors,
-                                               startPoint: .leading, endPoint: .trailing)
-                            )
+                            .padding(.vertical, 14)
+                            .background(Color.white.opacity(0.06))
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .shadow(color: plan.accentColor.opacity(0.4), radius: 12, x: 0, y: 5)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                            )
                         }
-                        .id("purchase_button_fallback_\(plan.rawValue)")
                     }
                 }
             }
@@ -900,48 +919,64 @@ struct SubscriptionDetailView: View {
                         .stroke(Color.green.opacity(0.3), lineWidth: 1)
                 )
 
+                // 変更予定バナー（ペンディングがある場合のみ）
+                if let pending = subManager.pendingPlan, let pendingDate = subManager.pendingPlanDate {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.orange)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("プラン変更予定")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.orange)
+                            Text("\(pendingDate.formatted(.dateTime.year().month().day()))以降、『\(pending.displayName)』プランに自動的に変更されます。")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(Color.orange.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                    )
+                }
+
                 if plan != .free {
-                    if subManager.autoRenew {
-                        Button(action: {
-                            withAnimation {
-                                subManager.cancelSubscription()
-                            }
-                        }) {
+                    // Appleガイドライン3.1.1準拠:
+                    // AppStore.showManageSubscriptions(in:) でアプリ内にシステムのサブスク管理シートを表示
+                    // RowPilot のサブスクリプション画面が直接開かれ、そこでキャンセル操作ができる
+                    Button(action: {
+                        Task {
+                            await subManager.showManageSubscriptions()
+                        }
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "xmark.circle")
+                                .font(.subheadline)
                             Text("自動更新をキャンセル".localized)
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
-                                .foregroundColor(.red)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 13)
-                                .background(Color.red.opacity(0.08))
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(Color.red.opacity(0.25), lineWidth: 1)
-                                )
                         }
-                        Text("キャンセル後も有効期限まで利用できます。".localized)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.4))
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        VStack(spacing: 6) {
-                            Label("自動更新は停止されています".localized, systemImage: "arrow.counterclockwise.circle")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.orange)
-                            if let exp = subManager.expiresAt {
-                                Text("有効期限: \(exp.formatted(date: .abbreviated, time: .shortened)) に終了予定")
-                                    .font(.caption2)
-                                    .foregroundColor(.white.opacity(0.45))
-                            }
-                        }
+                        .foregroundColor(.red)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.orange.opacity(0.08))
+                        .padding(.vertical, 13)
+                        .background(Color.red.opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.red.opacity(0.25), lineWidth: 1)
+                        )
                     }
+                    Text("Apple の管理画面が開きます。キャンセル後も有効期限まで利用できます。".localized)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.4))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
                 }
             }
         }
