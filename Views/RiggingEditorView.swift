@@ -252,29 +252,8 @@ struct RiggingEditorView: View {
                                         Spacer()
                                     }
                                     HStack(spacing: 12) {
-                                        HStack {
-                                            Text("Port".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $oarTotalLengthPort, suffix: "cm")
-                                                .focused($focusedField, equals: .oarTotalLengthPort)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
-                                        
-                                        HStack {
-                                            Text("Starboard".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $oarTotalLengthStarboard, suffix: "cm")
-                                                .focused($focusedField, equals: .oarTotalLengthStarboard)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        SideNumericField(title: "Port".localized, value: $oarTotalLengthPort, suffix: "cm", focusedField: $focusedField, fieldType: .oarTotalLengthPort)
+                                        SideNumericField(title: "Starboard".localized, value: $oarTotalLengthStarboard, suffix: "cm", focusedField: $focusedField, fieldType: .oarTotalLengthStarboard)
                                     }
                                 }
                                 
@@ -286,29 +265,8 @@ struct RiggingEditorView: View {
                                         Spacer()
                                     }
                                     HStack(spacing: 12) {
-                                        HStack {
-                                            Text("Port".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $oarInboardPort, suffix: "cm")
-                                                .focused($focusedField, equals: .oarInboardPort)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
-                                        
-                                        HStack {
-                                            Text("Starboard".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $oarInboardStarboard, suffix: "cm")
-                                                .focused($focusedField, equals: .oarInboardStarboard)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        SideNumericField(title: "Port".localized, value: $oarInboardPort, suffix: "cm", focusedField: $focusedField, fieldType: .oarInboardPort)
+                                        SideNumericField(title: "Starboard".localized, value: $oarInboardStarboard, suffix: "cm", focusedField: $focusedField, fieldType: .oarInboardStarboard)
                                     }
                                 }
                                 
@@ -320,33 +278,8 @@ struct RiggingEditorView: View {
                                         Spacer()
                                     }
                                     HStack(spacing: 12) {
-                                        HStack {
-                                            Text("Port".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            Text(String(format: "%.1f cm", max(0, oarTotalLengthPort - oarInboardPort)))
-                                                .foregroundColor(Theme.textMain.opacity(0.8))
-                                                .fontWeight(.semibold)
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 6)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
-                                        
-                                        HStack {
-                                            Text("Starboard".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            Text(String(format: "%.1f cm", max(0, oarTotalLengthStarboard - oarInboardStarboard)))
-                                                .foregroundColor(Theme.textMain.opacity(0.8))
-                                                .fontWeight(.semibold)
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 6)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        SideTextDisplayField(title: "Port".localized, valueText: String(format: "%.1f cm", max(0, oarTotalLengthPort - oarInboardPort)))
+                                        SideTextDisplayField(title: "Starboard".localized, valueText: String(format: "%.1f cm", max(0, oarTotalLengthStarboard - oarInboardStarboard)))
                                     }
                                 }
                                 
@@ -391,29 +324,8 @@ struct RiggingEditorView: View {
                                         Spacer()
                                     }
                                     HStack(spacing: 12) {
-                                        HStack {
-                                            Text("Port".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $oarSleevePitchPort, suffix: "°")
-                                                .focused($focusedField, equals: .oarSleevePitchPort)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
-                                        
-                                        HStack {
-                                            Text("Starboard".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $oarSleevePitchStarboard, suffix: "°")
-                                                .focused($focusedField, equals: .oarSleevePitchStarboard)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        SideNumericField(title: "Port".localized, value: $oarSleevePitchPort, suffix: "°", focusedField: $focusedField, fieldType: .oarSleevePitchPort)
+                                        SideNumericField(title: "Starboard".localized, value: $oarSleevePitchStarboard, suffix: "°", focusedField: $focusedField, fieldType: .oarSleevePitchStarboard)
                                     }
                                 }
                                 
@@ -425,29 +337,8 @@ struct RiggingEditorView: View {
                                         Spacer()
                                     }
                                     HStack(spacing: 12) {
-                                        HStack {
-                                            Text("Port".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $oarGripDiameterPort, suffix: "mm")
-                                                .focused($focusedField, equals: .oarGripDiameterPort)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
-                                        
-                                        HStack {
-                                            Text("Starboard".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $oarGripDiameterStarboard, suffix: "mm")
-                                                .focused($focusedField, equals: .oarGripDiameterStarboard)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        SideNumericField(title: "Port".localized, value: $oarGripDiameterPort, suffix: "mm", focusedField: $focusedField, fieldType: .oarGripDiameterPort)
+                                        SideNumericField(title: "Starboard".localized, value: $oarGripDiameterStarboard, suffix: "mm", focusedField: $focusedField, fieldType: .oarGripDiameterStarboard)
                                     }
                                 }
                             }
@@ -505,29 +396,8 @@ struct RiggingEditorView: View {
                                         Spacer()
                                     }
                                     HStack(spacing: 12) {
-                                        HStack {
-                                            Text("Port".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $boatWorkHeightPort, suffix: "cm")
-                                                .focused($focusedField, equals: .boatWorkHeightPort)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
-                                        
-                                        HStack {
-                                            Text("Starboard".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $boatWorkHeightStarboard, suffix: "cm")
-                                                .focused($focusedField, equals: .boatWorkHeightStarboard)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        SideNumericField(title: "Port".localized, value: $boatWorkHeightPort, suffix: "cm", focusedField: $focusedField, fieldType: .boatWorkHeightPort)
+                                        SideNumericField(title: "Starboard".localized, value: $boatWorkHeightStarboard, suffix: "cm", focusedField: $focusedField, fieldType: .boatWorkHeightStarboard)
                                     }
                                 }
                                 
@@ -539,29 +409,8 @@ struct RiggingEditorView: View {
                                         Spacer()
                                     }
                                     HStack(spacing: 12) {
-                                        HStack {
-                                            Text("Port".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $boatPitchPort, suffix: "°")
-                                                .focused($focusedField, equals: .boatPitchPort)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
-                                        
-                                        HStack {
-                                            Text("Starboard".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            NumericTextField(value: $boatPitchStarboard, suffix: "°")
-                                                .focused($focusedField, equals: .boatPitchStarboard)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        SideNumericField(title: "Port".localized, value: $boatPitchPort, suffix: "°", focusedField: $focusedField, fieldType: .boatPitchPort)
+                                        SideNumericField(title: "Starboard".localized, value: $boatPitchStarboard, suffix: "°", focusedField: $focusedField, fieldType: .boatPitchStarboard)
                                     }
                                 }
                                 
@@ -573,43 +422,8 @@ struct RiggingEditorView: View {
                                         Spacer()
                                     }
                                     HStack(spacing: 12) {
-                                        HStack {
-                                            Text("Port".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            Picker("", selection: $boatLateralPitchPort) {
-                                                Text("4/4").tag("4/4")
-                                                Text("5/3").tag("5/3")
-                                                Text("6/2").tag("6/2")
-                                                Text("7/1").tag("7/1")
-                                            }
-                                            .pickerStyle(MenuPickerStyle())
-                                            .tint(Theme.accent)
-                                            .focused($focusedField, equals: .boatLateralPitchPort)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
-                                        
-                                        HStack {
-                                            Text("Starboard".localized)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                            Spacer()
-                                            Picker("", selection: $boatLateralPitchStarboard) {
-                                                Text("4/4").tag("4/4")
-                                                Text("5/3").tag("5/3")
-                                                Text("6/2").tag("6/2")
-                                                Text("7/1").tag("7/1")
-                                            }
-                                            .pickerStyle(MenuPickerStyle())
-                                            .tint(Theme.accent)
-                                            .focused($focusedField, equals: .boatLateralPitchStarboard)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.white.opacity(0.04).cornerRadius(8))
+                                        SidePickerField(title: "Port".localized, selection: $boatLateralPitchPort, focusedField: $focusedField, fieldType: .boatLateralPitchPort, options: ["4/4", "5/3", "6/2", "7/1"])
+                                        SidePickerField(title: "Starboard".localized, selection: $boatLateralPitchStarboard, focusedField: $focusedField, fieldType: .boatLateralPitchStarboard, options: ["4/4", "5/3", "6/2", "7/1"])
                                     }
                                 }
                                 
@@ -805,17 +619,14 @@ struct NumericTextField: View {
     
     var body: some View {
         HStack(spacing: 4) {
+            Spacer()
             TextField("", text: $textString)
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
                 .font(.body)
                 .fontWeight(.bold)
                 .foregroundColor(Theme.textMain)
-                .frame(width: 70)
-                .padding(.vertical, 4)
-                .padding(.horizontal, 8)
-                .background(Color.white.opacity(0.1))
-                .cornerRadius(6)
+                .fixedSize(horizontal: true, vertical: false)
                 .focused($isFocused)
                 .onChange(of: textString) { _, newValue in
                     let sanitized = newValue.replacingOccurrences(of: ",", with: ".")
@@ -848,7 +659,15 @@ struct NumericTextField: View {
                 .foregroundColor(Theme.textSecondary)
                 .frame(width: 30, alignment: .leading)
         }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
         .frame(width: 110, alignment: .trailing)
+        .background(Color.white.opacity(0.1))
+        .cornerRadius(6)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            isFocused = true
+        }
     }
     
     private func formatDouble(_ val: Double) -> String {
@@ -859,6 +678,152 @@ struct NumericTextField: View {
         return f.string(from: NSNumber(value: val)) ?? String(format: "%.1f", val)
     }
 }
+
+// MARK: - Side Components
+
+struct SideNumericField: View {
+    let title: String
+    @Binding var value: Double
+    let suffix: String
+    var focusedField: FocusState<RiggingEditorView.Field?>.Binding
+    let fieldType: RiggingEditorView.Field
+    
+    @State private var textString: String = ""
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            
+            HStack(spacing: 4) {
+                TextField("", text: $textString)
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.leading)
+                    .font(.body)
+                    .fontWeight(.bold)
+                    .foregroundColor(Theme.textMain)
+                    .focused(focusedField, equals: fieldType)
+                    .onChange(of: textString) { _, newValue in
+                        let sanitized = newValue.replacingOccurrences(of: ",", with: ".")
+                        if let parsed = Double(sanitized) {
+                            value = parsed
+                        }
+                    }
+                    .onChange(of: value) { _, newValue in
+                        let currentParsed = Double(textString.replacingOccurrences(of: ",", with: ".")) ?? -999999.9
+                        if abs(currentParsed - newValue) > 0.0001 {
+                            textString = formatDouble(newValue)
+                        }
+                    }
+                    .onChange(of: focusedField.wrappedValue) { _, focused in
+                        if focused != fieldType {
+                            textString = formatDouble(value)
+                        }
+                    }
+                    .onAppear {
+                        textString = formatDouble(value)
+                    }
+                    .onSubmit {
+                        textString = formatDouble(value)
+                    }
+                
+                Text(suffix)
+                    .font(.footnote)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .background(Color.white.opacity(0.1))
+            .cornerRadius(6)
+            .onTapGesture {
+                focusedField.wrappedValue = fieldType
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.04).cornerRadius(8))
+    }
+    
+    private func formatDouble(_ val: Double) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = 1
+        return f.string(from: NSNumber(value: val)) ?? String(format: "%.1f", val)
+    }
+}
+
+struct SideTextDisplayField: View {
+    let title: String
+    let valueText: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            
+            HStack {
+                Text(valueText)
+                    .font(.body)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Theme.textMain.opacity(0.8))
+                Spacer()
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.04).cornerRadius(8))
+    }
+}
+
+struct SidePickerField: View {
+    let title: String
+    @Binding var selection: String
+    var focusedField: FocusState<RiggingEditorView.Field?>.Binding
+    let fieldType: RiggingEditorView.Field
+    let options: [String]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            
+            HStack {
+                Picker("", selection: $selection) {
+                    ForEach(options, id: \.self) { opt in
+                        Text(opt).tag(opt)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .tint(Theme.accent)
+                .focused(focusedField, equals: fieldType)
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(Color.white.opacity(0.1))
+            .cornerRadius(6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.04).cornerRadius(8))
+    }
+}
+
 #Preview {
     NavigationStack {
         RiggingEditorView()

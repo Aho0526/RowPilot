@@ -159,6 +159,7 @@ struct TideContent: View {
                             Text("(\(dayFormatter.string(from: data.date)))")
                                 .font(.system(size: 20, weight: .semibold, design: .rounded))
                                 .foregroundColor(Theme.textSecondary)
+                                .contentTransition(.numericText())
                         }
                         
                         Text(data.tideType)
@@ -221,6 +222,7 @@ struct TideContent: View {
                     Text("(\(dayFormatter.string(from: data.date)))")
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
                         .foregroundColor(Theme.textSecondary)
+                        .contentTransition(.numericText())
                     
                     Text(data.tideType)
                         .font(.title3)
@@ -238,11 +240,13 @@ struct TideContent: View {
                     Text("(\(dayFormatter.string(from: tideManager.currentDate)))")
                         .font(.headline)
                         .foregroundColor(Theme.textSecondary)
+                        .contentTransition(.numericText())
                     Spacer()
                 }
             }
         }
         .padding()
+        .animation(.easeInOut(duration: 0.3), value: tideManager.currentDate)
     }
     
     private func chartTabView(isLandscape: Bool) -> some View {

@@ -11,7 +11,7 @@ struct PortraitRootView: View {
             HomeView()
                 .tabItem {
                     Image(systemName: "house")
-                    Text("Home")
+                    Text("Home".localized)
                 }
                 .tag(0)
 
@@ -19,7 +19,7 @@ struct PortraitRootView: View {
             TideView()
                 .tabItem {
                     Image(systemName: "water.waves")
-                    Text("Tide")
+                    Text("Tide".localized)
                 }
                 .tag(1)
             
@@ -35,7 +35,7 @@ struct PortraitRootView: View {
             PracticeView()
                 .tabItem {
                     Image(systemName: "figure.rower")
-                    Text("Practice")
+                    Text("Practice".localized)
                 }
                 .tag(3)
 
@@ -43,7 +43,7 @@ struct PortraitRootView: View {
             SettingView()
                 .tabItem {
                     Image(systemName: "gearshape")
-                    Text("Settings")
+                    Text("Settings".localized)
                 }
                 .tag(4)
         }

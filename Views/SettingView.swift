@@ -321,58 +321,60 @@ struct SettingView: View {
                 }
             }
             
-            // チームに参加（選手向け・全プランで表示）
-            SettingsSection(title: "チームに参加".localized, icon: "person.badge.plus") {
-                if ckTeam.isTeamMember {
-                    // 参加中の表示
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("チーム参加中")
-                                .foregroundColor(.green)
-                                .fontWeight(.semibold)
-                            if let membership = ckTeam.myMembership {
-                                Text("参加日: \(membership.joinedAt.formatted(date: .abbreviated, time: .omitted))")
-                                    .font(.caption)
-                                    .foregroundColor(Theme.textSecondary)
-                            }
-                        }
-                        Spacer()
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                    }
-                    
-                    Divider().background(Theme.textSecondary.opacity(0.3))
-                    
-                    // 脱退ボタン
-                    Button(action: {
-                        if let m = ckTeam.myMembership {
-                            ckTeam.leaveTeam(membershipID: m.id) { success, error in
-                                // フィードバックは不要（状態が更新される）
-                            }
-                        }
-                    }) {
-                        HStack {
-                            Text("チームを脱退する")
-                                .foregroundColor(.red)
-                            Spacer()
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .foregroundColor(.red)
-                        }
-                    }
-                } else {
-                    Button(action: { showingTeamCodeInput = true }) {
+            // チームに参加（選手向け）
+            if !currentPlan.hasTeamFeature {
+                SettingsSection(title: "チームに参加".localized, icon: "person.badge.plus") {
+                    if ckTeam.isTeamMember {
+                        // 参加中の表示
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("チームに参加")
-                                    .foregroundColor(Theme.textMain)
-                                Text("顧問から招待コードをもらって参加")
+                                Text("チーム参加中")
+                                    .foregroundColor(.green)
+                                    .fontWeight(.semibold)
+                                if let membership = ckTeam.myMembership {
+                                    Text("参加日: \(membership.joinedAt.formatted(date: .abbreviated, time: .omitted))")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.textSecondary)
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                        }
+                        
+                        Divider().background(Theme.textSecondary.opacity(0.3))
+                        
+                        // 脱退ボタン
+                        Button(action: {
+                            if let m = ckTeam.myMembership {
+                                ckTeam.leaveTeam(membershipID: m.id) { success, error in
+                                    // フィードバックは不要（状態が更新される）
+                                }
+                            }
+                        }) {
+                            HStack {
+                                Text("チームを脱退する")
+                                    .foregroundColor(.red)
+                                Spacer()
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    } else {
+                        Button(action: { showingTeamCodeInput = true }) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("チームに参加")
+                                        .foregroundColor(Theme.textMain)
+                                    Text("顧問から招待コードをもらって参加")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.textSecondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
                                     .font(.caption)
                                     .foregroundColor(Theme.textSecondary)
                             }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(Theme.textSecondary)
                         }
                     }
                 }
@@ -514,21 +516,11 @@ struct SettingView: View {
              
              // コンタクト (Contact)
              SettingsSection(title: "Contact".localized, icon: "envelope.fill") {
-                 Button(action: {
-                     let email = "rowpilot.jp@gmail.com"
-                     let subject = "RowPilotに関するお問い合わせ".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                     let body = "RowPilotについて、以下の内容でお問い合わせします。\n\n・お問い合わせ内容:\n".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                     if let url = URL(string: "mailto:\(email)?subject=\(subject)&body=\(body)") {
-                         UIApplication.shared.open(url)
-                     }
-                 }) {
+                 NavigationLink(destination: InquiryView()) {
                      HStack {
                          Text("Contact Us".localized)
                              .foregroundColor(Theme.textMain)
                          Spacer()
-                         Text("rowpilot.jp@gmail.com")
-                             .font(.caption)
-                             .foregroundColor(Theme.textSecondary)
                          Image(systemName: "chevron.right")
                              .font(.caption)
                              .foregroundColor(Theme.textSecondary)
@@ -585,7 +577,7 @@ struct SettingView: View {
                         .underline()
                 }
                 Text("Test Flight v1.0(Build 5)")
-                Text("Build from June 14")
+                Text("Build from June 15")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

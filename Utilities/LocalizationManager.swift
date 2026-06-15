@@ -23,7 +23,7 @@ class LocalizationManager: ObservableObject {
         "Home": [.japanese: "ホーム", .english: "Home"],
         "Tide": [.japanese: "潮位", .english: "Tide"],
         "Rowing": [.japanese: "乗艇", .english: "Rowing"],
-        "Log": [.japanese: "記録", .english: "Log"],
+        "Practice": [.japanese: "練習", .english: "Practice"],
         "Settings": [.japanese: "設定", .english: "Settings"],
         
         // Home View
@@ -377,7 +377,7 @@ class LocalizationManager: ObservableObject {
         "Manager Mode": [.japanese: "マネージャーモード", .english: "Manager Mode"],
         "Manager Mode Desc": [.japanese: "複数PM5を接続してワークアウトを一括設定", .english: "Sync workout setup for multiple PM5s"],
         "Research": [.japanese: "リサーチ", .english: "Research"],
-        "Practice(Dev)": [.japanese: "練習(開発中)", .english: "Practice(Dev)"],
+        "Practice(Dev)": [.japanese: "練習", .english: "Practice"],
         
         // MARK: - Workout Setup
         "Other Workouts (Workout List)": [.japanese: "その他のワークアウト（ワークアウト一覧へ）", .english: "Other Workouts (Go to Workout List)"],
