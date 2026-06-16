@@ -6,6 +6,7 @@ struct TeamDashboardView: View {
     @ObservedObject var subManager = SubscriptionManager.shared
 
     @State private var showingCreateTeam = false
+    @State private var showingResetTeamCodeConfirm = false
     @State private var newTeamName = ""
     @State private var showingAlert = false
     @State private var alertTitle = ""
@@ -69,6 +70,23 @@ struct TeamDashboardView: View {
             Button("キャンセル", role: .cancel) { newTeamName = "" }
         } message: {
             Text("新しいチームを作成します。チーム名を入力してください。")
+        }
+        // チーム招待コードリセット確認
+        .alert("招待コードのリセット", isPresented: $showingResetTeamCodeConfirm) {
+            Button("リセット".localized, role: .destructive) {
+                if let team = ckTeam.myTeam {
+                    ckTeam.resetInviteCode(teamID: team.id) { success, error in
+                        alertTitle = success ? "リセット完了" : "エラー"
+                        alertMessage = success
+                            ? "新しい招待コードが発行されました。\n既存のメンバーは削除されません。"
+                            : (error ?? "リセットに失敗しました。")
+                        showingAlert = true
+                    }
+                }
+            }
+            Button("キャンセル".localized, role: .cancel) {}
+        } message: {
+            Text("招待コードをリセットしますか？\nすでに参加中のメンバーは削除されませんが、旧コードは使えなくなります。\n\n※ リセットは5分に1回のみ可能です。".localized)
         }
         // 承認確認
         .alert("チーム参加の承認", isPresented: Binding(
@@ -318,6 +336,41 @@ struct TeamDashboardView: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.orange.opacity(0.8))
             }
+
+            // リセットボタン
+            HStack {
+                let minutes = team.lastInviteCodeResetAt.map { Calendar.current.dateComponents([.minute], from: $0, to: Date()).minute ?? 0 } ?? 5
+                let canReset = minutes >= 5
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(canReset ? "コードをリセット可能" : "リセットまであと\(max(0, 5 - minutes))分")
+                        .font(.caption)
+                        .foregroundColor(canReset ? .green : .white.opacity(0.4))
+                    Text("5分に1回のみ • メンバーは削除されません".localized)
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.35))
+                }
+                
+                Spacer()
+                
+                Button(action: { showingResetTeamCodeConfirm = true }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("リセット".localized)
+                    }
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(canReset ? Color.green.opacity(0.2) : Color.white.opacity(0.05))
+                    .foregroundColor(canReset ? .green : .white.opacity(0.3))
+                    .cornerRadius(8)
+                }
+                .disabled(!canReset)
+            }
+            .padding()
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(10)
         }
         .padding()
         .glassCardStyle(glowColor: .green, opacity: 0.08, cornerRadius: 16)

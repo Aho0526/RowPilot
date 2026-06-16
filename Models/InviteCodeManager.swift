@@ -28,7 +28,7 @@ class InviteCodeManager: ObservableObject {
 
     private var database: CKDatabase? {
         guard SubscriptionManager.shared.useCloudKit else { return nil }
-        return CKContainer.default().privateCloudDatabase
+        return CKContainer.default().publicCloudDatabase
     }
 
     // MARK: - Init
@@ -107,15 +107,15 @@ class InviteCodeManager: ObservableObject {
 
     // MARK: - Reset
 
-    /// コードをリセット（1週間に1回制限）
+    /// コードをリセット（5分に1回制限）
     /// リセット時は SubscriptionManager の sharedMembers も全削除
     func resetCode(completion: @escaping (Bool, String?) -> Void) {
-        // 1週間制限チェック
+        // 5分間制限チェック
         if let lastReset = lastResetDate {
-            let daysSinceReset = Calendar.current.dateComponents([.day], from: lastReset, to: Date()).day ?? 0
-            if daysSinceReset < 7 {
-                let remaining = 7 - daysSinceReset
-                completion(false, "コードのリセットは1週間に1回のみ可能です。あと\(remaining)日後にリセットできます。")
+            let minutesSinceReset = Calendar.current.dateComponents([.minute], from: lastReset, to: Date()).minute ?? 0
+            if minutesSinceReset < 5 {
+                let remaining = 5 - minutesSinceReset
+                completion(false, "コードのリセットは5分に1回のみ可能です。あと\(remaining)分後にリセットできます。")
                 return
             }
         }
@@ -140,7 +140,7 @@ class InviteCodeManager: ObservableObject {
 
     // MARK: - CloudKit Sync
 
-    /// CloudKit（privateDB）にコードをアップロード
+    /// CloudKit（publicDB）にコードをアップロード
     private func uploadToCloudKit(code: String) {
         guard let db = database,
               let ownerID = UserDefaults.standard.string(forKey: "RowPilot_LocalUserRecordId") else { return }
@@ -225,13 +225,13 @@ class InviteCodeManager: ObservableObject {
 
     var canReset: Bool {
         guard let lastReset = lastResetDate else { return true }
-        let days = Calendar.current.dateComponents([.day], from: lastReset, to: Date()).day ?? 0
-        return days >= 7
+        let minutes = Calendar.current.dateComponents([.minute], from: lastReset, to: Date()).minute ?? 0
+        return minutes >= 5
     }
 
-    var daysUntilReset: Int {
+    var minutesUntilReset: Int {
         guard let lastReset = lastResetDate else { return 0 }
-        let days = Calendar.current.dateComponents([.day], from: lastReset, to: Date()).day ?? 0
-        return max(0, 7 - days)
+        let minutes = Calendar.current.dateComponents([.minute], from: lastReset, to: Date()).minute ?? 0
+        return max(0, 5 - minutes)
     }
 }

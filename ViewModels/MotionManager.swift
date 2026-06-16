@@ -59,10 +59,8 @@ class MotionManager: ObservableObject {
     private var troughTimestamp: Date = Date() // 谷の最小値が現れた時刻
     private var strokePolarity: Double = 0.0  // ストローク（キャッチ）時の加速度極性（+1.0 または -1.0）
 
-    // MARK: - 設定キャッシュ（50Hz更新でのディスクI/O回避）
-    private var cachedThreshold: Double {
-        return SettingsManager.shared.settings.accelerationThreshold
-    }
+    // MARK: - 固定のキャッチ感度閾値
+    private let fixedThreshold: Double = 0.06
 
     @Published var spm: Int = 0
     @Published var strokeCount: Int = 0
@@ -78,10 +76,34 @@ class MotionManager: ObservableObject {
         // 起動時に極性を初期化
         strokePolarity = 0.0
 
-        motionManager.accelerometerUpdateInterval = updateInterval
-        motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, error in
-            guard let self = self, let data = data else { return }
-            self.processAccelerometerData(data.acceleration.y)
+        // 動的軸選択用の変数
+        var varianceX = 0.0
+        var varianceY = 0.0
+        var varianceZ = 0.0
+        let alpha = 0.01 // 50Hzで約2秒の時定数
+
+        motionManager.deviceMotionUpdateInterval = updateInterval
+        motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, error in
+            guard let self = self, let motion = motion else { return }
+            
+            // 各軸の振幅（絶対値）の指数移動平均を計算
+            varianceX = varianceX * (1 - alpha) + abs(motion.userAcceleration.x) * alpha
+            varianceY = varianceY * (1 - alpha) + abs(motion.userAcceleration.y) * alpha
+            varianceZ = varianceZ * (1 - alpha) + abs(motion.userAcceleration.z) * alpha
+            
+            // 最も動きが大きい（振幅が大きい）軸を進行方向として動的に選択
+            let maxVar = max(varianceX, max(varianceY, varianceZ))
+            let activeAcceleration: Double
+            if maxVar == varianceX {
+                activeAcceleration = motion.userAcceleration.x
+            } else if maxVar == varianceY {
+                activeAcceleration = motion.userAcceleration.y
+            } else {
+                activeAcceleration = motion.userAcceleration.z
+            }
+            
+            // スマホがどの向きに固定されても、一番大きく揺れている軸の加速度を使用
+            self.processAccelerometerData(activeAcceleration)
         }
     }
 
@@ -95,8 +117,8 @@ class MotionManager: ObservableObject {
         filteredPrev = filteredCur
         filteredCur = filtered
 
-        // キャッチ感度閾値: ユーザー設定値（デフォルト0.5G）
-        let threshold = cachedThreshold
+        // キャッチ感度閾値: 固定値 (0.05G)
+        let threshold = fixedThreshold
 
         // 初回の閾値超過時に、キャッチの加速度極性を自動決定
         if strokePolarity == 0.0 {
@@ -239,7 +261,7 @@ class MotionManager: ObservableObject {
     // MARK: - Public API
 
     func stopMonitoring() {
-        motionManager.stopAccelerometerUpdates()
+        motionManager.stopDeviceMotionUpdates()
     }
 
     func reset() {

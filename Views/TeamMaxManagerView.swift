@@ -54,7 +54,7 @@ struct TeamMaxManagerView: View {
             }
             Button("キャンセル".localized, role: .cancel) {}
         } message: {
-            Text("招待コードをリセットすると、現在共有中の全メンバーが削除され、共有が停止されます。\nこの操作は取り消せません。\n\n※ リセットは1週間に1回のみ可能です。".localized)
+            Text("招待コードをリセットすると、現在共有中の全メンバーが削除され、共有が停止されます。\nこの操作は取り消せません。\n\n※ リセットは5分に1回のみ可能です。".localized)
         }
         // 承認確認
         .alert("共有申請の承認", isPresented: Binding(
@@ -197,10 +197,10 @@ struct TeamMaxManagerView: View {
             // リセットボタン
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(codeManager.canReset ? "コードをリセット可能" : "リセットまであと\(codeManager.daysUntilReset)日")
+                    Text(codeManager.canReset ? "コードをリセット可能" : "リセットまであと\(codeManager.minutesUntilReset)分")
                         .font(.caption)
                         .foregroundColor(codeManager.canReset ? Theme.accent : .white.opacity(0.4))
-                    Text("リセット時は全メンバーが削除されます • 1週間に1回のみ".localized)
+                    Text("リセット時は全メンバーが削除されます • 5分に1回のみ".localized)
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.35))
                 }
@@ -438,7 +438,7 @@ struct TeamMaxManagerView: View {
 
                 HelpQAItem(
                     question: "招待コードは何回使えますか？",
-                    answer: "招待コードは何人でも使用できます（共有枠の上限まで）。ただし、コードが流出した場合はリセット（週1回）することで新しいコードに変更できます。リセット時は全共有メンバーが削除されます。"
+                    answer: "招待コードは何人でも使用できます（共有枠の上限まで）。ただし、コードが流出した場合はリセット（5分に1回）することで新しいコードに変更できます。リセット時は全共有メンバーが削除されます。"
                 )
 
                 HelpQAItem(

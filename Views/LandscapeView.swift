@@ -322,28 +322,7 @@ struct LandscapeView: View {
                                 .background(Color.white.opacity(0.2))
                                 .padding(.horizontal)
                             
-                            // Motion Sensitivity Settings
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Motion Sensitivity".localized)
-                                        .font(.caption)
-                                        .foregroundColor(Theme.textSecondary)
-                                    Spacer()
-                                    Text(String(format: "%.2f G", settingsManager.settings.accelerationThreshold))
-                                        .font(.caption)
-                                        .bold()
-                                        .foregroundColor(Theme.accent)
-                                }
-                                
-                                Slider(value: Binding(
-                                    get: { min(settingsManager.settings.accelerationThreshold, 0.5) },
-                                    set: { newValue in
-                                        settingsManager.settings.accelerationThreshold = newValue
-                                    }
-                                ), in: 0.01...0.5, step: 0.01)
-                                .tint(Theme.accent)
-                            }
-                            .padding(.horizontal)
+
                             
                             Button(action: {
                                 withAnimation { showingRowModeSettings = false }

@@ -16,7 +16,6 @@ struct UserSettings: Codable {
     // 計測設定
     var autoStartOnMotion: Bool
     var minSPMThreshold: Int // SPM計測の最小閾値
-    var accelerationThreshold: Double // モーション感度 (G) default: 0.5
     var gpsAccuracy: GPSAccuracyLevel
     
     // データ同期
@@ -70,7 +69,6 @@ struct UserSettings: Codable {
         showBatteryStatus: Bool = true,
         autoStartOnMotion: Bool = false,
         minSPMThreshold: Int = 10,
-        accelerationThreshold: Double = 0.5,
         gpsAccuracy: GPSAccuracyLevel = .best,
         iCloudSyncEnabled: Bool = true,
         distanceUnit: DistanceUnit = .meters,
@@ -97,7 +95,6 @@ struct UserSettings: Codable {
         self.showBatteryStatus = showBatteryStatus
         self.autoStartOnMotion = autoStartOnMotion
         self.minSPMThreshold = minSPMThreshold
-        self.accelerationThreshold = accelerationThreshold
         self.gpsAccuracy = gpsAccuracy
         self.iCloudSyncEnabled = iCloudSyncEnabled
         self.distanceUnit = distanceUnit
@@ -246,10 +243,6 @@ class SettingsManager: ObservableObject {
     
     init() {
         var loadedSettings = UserSettings.load()
-        if loadedSettings.accelerationThreshold > 0.5 {
-            loadedSettings.accelerationThreshold = 0.5
-            loadedSettings.save()
-        }
         self.settings = loadedSettings
         // 起動時に保存された言語でLocalizationManagerを初期化
         LocalizationManager.shared.setLanguage(self.settings.language)

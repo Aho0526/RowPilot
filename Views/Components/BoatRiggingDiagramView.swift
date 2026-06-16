@@ -280,31 +280,49 @@ struct BoatRiggingDiagramView: View {
                 .position(x: centerlineX, y: shoeDrawY)
                 .shadow(color: selectedField == .footplateAngle ? Theme.accent.opacity(0.3) : Color.clear, radius: 4)
                 
-                // Riggers
-                // Right Rigger
-                let riggerBowAnchorY = shoeDrawY - shoeLen / 2 - 8
-                let riggerSeatAnchorY = pinY + 14 // slightly towards seat
-                Path { path in
-                    // Seat side stay
-                    path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerSeatAnchorY))
-                    path.addLine(to: CGPoint(x: pinRightX, y: pinY))
-                    // Stretcher side stay: diagonal (slightly in front of the shoes)
-                    path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerBowAnchorY))
-                    path.addLine(to: CGPoint(x: pinRightX, y: pinY))
-                }
-                .stroke(selectedField == .span ? Theme.accent : Color.white.opacity(0.35), lineWidth: 2)
+                // Riggers (Bow-Mounted Wing Rigger)
+                let thinStayAnchorY = shoeDrawY - shoeLen / 2 - 5 // Thin stay near tip of shoes (Stroke side)
+                let thickWingAnchorY = pinY + 20 // Thick wing anchored towards seat (Bow side)
                 
-                // Left Rigger (Only for Scull)
+                let wingColor = selectedField == .span ? Theme.accent : Color(hex: "D0D0D0")
+                let stayColor = selectedField == .span ? Theme.accent : Color.white.opacity(0.35)
+                
                 if isScull {
+                    // Thin Front Stays
                     Path { path in
-                        // Seat side stay
-                        path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: riggerSeatAnchorY))
+                        path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: thinStayAnchorY))
                         path.addLine(to: CGPoint(x: pinLeftX, y: pinY))
-                        // Stretcher side stay: diagonal (slightly in front of the shoes)
-                        path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: riggerBowAnchorY))
-                        path.addLine(to: CGPoint(x: pinLeftX, y: pinY))
+                        
+                        path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: thinStayAnchorY))
+                        path.addLine(to: CGPoint(x: pinRightX, y: pinY))
                     }
-                    .stroke(selectedField == .span ? Theme.accent : Color.white.opacity(0.35), lineWidth: 2)
+                    .stroke(stayColor, lineWidth: 2)
+                    
+                    // Main Thick Wing Tube
+                    Path { path in
+                        path.move(to: CGPoint(x: pinLeftX, y: pinY))
+                        path.addQuadCurve(to: CGPoint(x: centerlineX - hullHalfWidth, y: thickWingAnchorY), control: CGPoint(x: pinLeftX + 30, y: thickWingAnchorY))
+                        path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: thickWingAnchorY))
+                        path.addQuadCurve(to: CGPoint(x: pinRightX, y: pinY), control: CGPoint(x: pinRightX - 30, y: thickWingAnchorY))
+                    }
+                    .stroke(wingColor, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
+                } else {
+                    // Sweep Right Rigger
+                    Path { path in
+                        path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: thinStayAnchorY))
+                        path.addLine(to: CGPoint(x: pinRightX, y: pinY))
+                    }
+                    .stroke(stayColor, lineWidth: 2)
+                    
+                    Path { path in
+                        path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: thickWingAnchorY))
+                        path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: thickWingAnchorY))
+                        path.addQuadCurve(to: CGPoint(x: pinRightX, y: pinY), control: CGPoint(x: pinRightX - 30, y: thickWingAnchorY))
+                    }
+                    .stroke(wingColor, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+
+                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
                 }
                 
                 // Pins
@@ -980,25 +998,39 @@ struct BoatRiggingDiagramView: View {
                 
                 // 3D Riggers (Only shown if focused setting doesn't hide them)
                 if showRiggers {
-                    let riggerSeatAnchorZ3D = z3d_pin - 14.0 // slightly towards seat
-                    Path { path in
-                        // Seat side stay (Right = Starboard)
-                        drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: riggerSeatAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin), &path)
-                        // Stretcher side stay: diagonal (slightly in front of the shoes)
-                        drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: riggerBowAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin), &path)
-                    }
-                    .stroke(LinearGradient(colors: [Theme.accent, Theme.secondaryAccent.opacity(0.5)], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                    .shadow(radius: 2)
+                    let thinStayAnchorZ3D = z3d_foot + 19.5 * cosA + 5.0 // Near tip of shoes (Stroke side)
+                    let thickWingAnchorZ3D = z3d_pin - 15.0 // Towards seat (Bow side)
                     
                     if isScull {
+                        // Thin Front Stays
                         Path { path in
-                            // Seat side stay (Left = Port)
-                            drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: riggerSeatAnchorZ3D), Point3D(x: -halfSpanVal, y: pinHeight3dPort, z: z3d_pin), &path)
-                            // Stretcher side stay: diagonal (slightly in front of the shoes)
-                            drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: riggerBowAnchorZ3D), Point3D(x: -halfSpanVal, y: pinHeight3dPort, z: z3d_pin), &path)
+                            drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: -halfSpanVal, y: pinHeight3dPort, z: z3d_pin), &path)
+                            drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin), &path)
                         }
-                        .stroke(LinearGradient(colors: [Theme.accent, Theme.secondaryAccent.opacity(0.5)], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                        .shadow(radius: 2)
+                        .stroke(Color.gray.opacity(0.7), lineWidth: 2)
+                        
+                        // Main Thick Wing Tube
+                        Path { path in
+                            // Left side
+                            drawClippedLine(Point3D(x: -halfSpanVal, y: pinHeight3dPort, z: z3d_pin), Point3D(x: -hullHalfWidthVal - 5, y: 12, z: thickWingAnchorZ3D), &path)
+                            // Cross boat
+                            drawClippedLine(Point3D(x: -hullHalfWidthVal - 5, y: 12, z: thickWingAnchorZ3D), Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), &path)
+                            // Right side
+                            drawClippedLine(Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                        }
+                        .stroke(LinearGradient(colors: [Color(hex: "E0E0E0"), Color(hex: "AAAAAA")], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                    } else {
+                        // Sweep Right Rigger
+                        Path { path in
+                            drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                        }
+                        .stroke(Color.gray.opacity(0.7), lineWidth: 2)
+                        
+                        Path { path in
+                            drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thickWingAnchorZ3D), Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), &path)
+                            drawClippedLine(Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                        }
+                        .stroke(LinearGradient(colors: [Color(hex: "E0E0E0"), Color(hex: "AAAAAA")], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                     }
                     
                     Path { path in

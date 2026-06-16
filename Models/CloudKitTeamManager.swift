@@ -11,6 +11,7 @@ struct CKTeam: Identifiable, Codable, Equatable {
     var inviteCode: String  // Teamに属するinviteCode（管理者全員が同じコードを共有）
     var ownerID: String     // 作成者のuserRecordID
     var createdAt: Date
+    var lastInviteCodeResetAt: Date? // 追加: リセット日時
 
     static func == (lhs: CKTeam, rhs: CKTeam) -> Bool {
         lhs.id == rhs.id
@@ -910,6 +911,16 @@ class CloudKitTeamManager: ObservableObject {
     // MARK: - 招待コードリセット
 
     func resetInviteCode(teamID: String, completion: @escaping (Bool, String?) -> Void) {
+        // 5分制限チェック (テスト用)
+        if let team = myTeam, let lastReset = team.lastInviteCodeResetAt {
+            let minutesSinceReset = Calendar.current.dateComponents([.minute], from: lastReset, to: Date()).minute ?? 0
+            if minutesSinceReset < 5 {
+                let remaining = 5 - minutesSinceReset
+                completion(false, "コードのリセットは5分に1回のみ可能です。あと\(remaining)分後にリセットできます。")
+                return
+            }
+        }
+
         let recordID = CKRecord.ID(recordName: "Team_\(teamID)")
 
         sharedDB.fetch(withRecordID: recordID) { [weak self] record, error in
@@ -920,13 +931,17 @@ class CloudKitTeamManager: ObservableObject {
                 return
             }
             let newCode = self.generateInviteCode()
+            let now = Date()
             record["inviteCode"] = newCode
+            record["lastInviteCodeResetAt"] = now as CKRecordValue
+            
             self.sharedDB.save(record) { _, saveError in
                 DispatchQueue.main.async {
                     if let saveError = saveError {
                         completion(false, "コードのリセットに失敗しました: \(saveError.localizedDescription)")
                     } else {
                         self.myTeam?.inviteCode = newCode
+                        self.myTeam?.lastInviteCodeResetAt = now
                         self.saveLocalCache()
                         completion(true, nil)
                     }
@@ -955,6 +970,9 @@ class CloudKitTeamManager: ObservableObject {
         record["inviteCode"]  = team.inviteCode
         record["ownerID"]     = team.ownerID
         record["createdAt"]   = team.createdAt as CKRecordValue
+        if let resetAt = team.lastInviteCodeResetAt {
+            record["lastInviteCodeResetAt"] = resetAt as CKRecordValue
+        }
         return record
     }
 
@@ -964,8 +982,11 @@ class CloudKitTeamManager: ObservableObject {
               let inviteCode = record["inviteCode"] as? String,
               let ownerID   = record["ownerID"] as? String,
               let createdAt = record["createdAt"] as? Date else { return nil }
+        
+        let lastInviteCodeResetAt = record["lastInviteCodeResetAt"] as? Date
+        
         return CKTeam(id: teamID, teamName: teamName, inviteCode: inviteCode,
-                      ownerID: ownerID, createdAt: createdAt)
+                      ownerID: ownerID, createdAt: createdAt, lastInviteCodeResetAt: lastInviteCodeResetAt)
     }
 
     private func membershipToCKRecord(_ m: CKMembership) -> CKRecord {
