@@ -209,6 +209,13 @@ class TeamManager: ObservableObject {
 
         isLoading = true
 
+        // TeamInviteCodeManager依存を削除（Cloudflare移行中）
+        // TeamInviteCodeManager.shared.findTeamOwner(forCode: code) { [weak self] ownerID in
+        DispatchQueue.main.async {
+            self.isLoading = false
+            completion(false, "現在Cloudflare移行中のため、チーム参加機能は一時的に利用できません。")
+        }
+        /*
         TeamInviteCodeManager.shared.findTeamOwner(forCode: code) { [weak self] ownerID in
             guard let self = self else { return }
 
@@ -245,6 +252,7 @@ class TeamManager: ObservableObject {
                 }
             }
         }
+        */ // end of TeamInviteCodeManager disabled block
     }
 
     private func saveJoinRequest(_ request: TeamJoinRequest, completion: @escaping (Bool, String?) -> Void) {

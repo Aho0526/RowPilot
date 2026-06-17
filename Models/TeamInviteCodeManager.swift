@@ -1,3 +1,5 @@
+// CloudKit依存 - Cloudflare移行中のため無効化
+#if false
 import Foundation
 import CloudKit
 
@@ -36,15 +38,8 @@ class TeamInviteCodeManager: ObservableObject {
     // MARK: - Load / Save
 
     func loadFromLocal() {
-        let icloudStore = NSUbiquitousKeyValueStore.default
-        icloudStore.synchronize()
-
-        let storedCode = icloudStore.string(forKey: iCloudCodeKey)
-            ?? UserDefaults.standard.string(forKey: localCodeKey)
-            ?? ""
-
-        let storedResetDate = icloudStore.object(forKey: iCloudResetKey) as? Date
-            ?? UserDefaults.standard.object(forKey: lastResetDateKey) as? Date
+        let storedCode = UserDefaults.standard.string(forKey: localCodeKey) ?? ""
+        let storedResetDate = UserDefaults.standard.object(forKey: lastResetDateKey) as? Date
 
         self.teamInviteCode = storedCode
         self.lastResetDate = storedResetDate
@@ -57,15 +52,6 @@ class TeamInviteCodeManager: ObservableObject {
         } else {
             UserDefaults.standard.removeObject(forKey: lastResetDateKey)
         }
-
-        let icloudStore = NSUbiquitousKeyValueStore.default
-        icloudStore.set(code, forKey: iCloudCodeKey)
-        if let date = resetDate {
-            icloudStore.set(date, forKey: iCloudResetKey)
-        } else {
-            icloudStore.removeObject(forKey: iCloudResetKey)
-        }
-        icloudStore.synchronize()
     }
 
     // MARK: - Generate
@@ -218,3 +204,4 @@ class TeamInviteCodeManager: ObservableObject {
         return max(0, 7 - days)
     }
 }
+#endif // CloudKit依存 - Cloudflare移行中のため無効化

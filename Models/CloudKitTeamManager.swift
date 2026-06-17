@@ -1,3 +1,5 @@
+// CloudKit依存 - Cloudflare移行中のため無効化
+#if false
 import Foundation
 import CloudKit
 import Combine
@@ -324,6 +326,9 @@ class CloudKitTeamManager: ObservableObject {
     // MARK: - チーム作成（Team/MAX/Org プランユーザー）
 
     func createTeam(teamName: String, completion: @escaping (Bool, String?) -> Void) {
+        completion(false, "現在Cloudflare移行中のため使用できません")
+        return
+        
         let myID = SubscriptionManager.shared.myUserRecordId
         guard !myID.isEmpty else {
             completion(false, "ユーザーIDが取得できません。")
@@ -376,6 +381,9 @@ class CloudKitTeamManager: ObservableObject {
 
     /// 招待コードからチームを検索してJoinRequestを作成
     func sendJoinRequest(inviteCode: String, requesterName: String, completion: @escaping (Bool, String?) -> Void) {
+        completion(false, "現在Cloudflare移行中のため使用できません")
+        return
+        
         guard !requesterName.trimmingCharacters(in: .whitespaces).isEmpty else {
             completion(false, "表示名が設定されていません。設定画面から「共有時の名前」を入力してください。")
             return
@@ -464,6 +472,8 @@ class CloudKitTeamManager: ObservableObject {
     // MARK: - 承認待ちリクエスト取得（管理者側）
 
     func fetchPendingJoinRequests(teamID: String) {
+        return
+        
         guard !teamID.isEmpty else { return }
         isLoading = true
 
@@ -498,6 +508,9 @@ class CloudKitTeamManager: ObservableObject {
     // MARK: - 参加申請承認（管理者側）
 
     func approveJoinRequest(_ request: CKJoinRequest, completion: @escaping (Bool, String?) -> Void) {
+        completion(false, "現在Cloudflare移行中のため使用できません")
+        return
+        
         guard let team = myTeam else {
             completion(false, "チーム情報が見つかりません。")
             return
@@ -551,6 +564,9 @@ class CloudKitTeamManager: ObservableObject {
     // MARK: - 参加申請拒否（管理者側）
 
     func rejectJoinRequest(_ request: CKJoinRequest, completion: @escaping (Bool, String?) -> Void) {
+        completion(false, "現在Cloudflare移行中のため使用できません")
+        return
+        
         updateJoinRequestStatus(request.id, to: .rejected)
         DispatchQueue.main.async {
             self.pendingJoinRequests.removeAll { $0.id == request.id }
@@ -563,6 +579,9 @@ class CloudKitTeamManager: ObservableObject {
 
     /// 選手自身によるチーム脱退（即削除せずstatus=left）
     func leaveTeam(membershipID: String, completion: @escaping (Bool, String?) -> Void) {
+        completion(false, "現在Cloudflare移行中のため使用できません")
+        return
+        
         let recordID = CKRecord.ID(recordName: membershipID)
         sharedDB.fetch(withRecordID: recordID) { [weak self] record, error in
             guard let self = self else { return }
@@ -595,6 +614,9 @@ class CloudKitTeamManager: ObservableObject {
 
     /// 管理者によるメンバー削除（即削除せずstatus=removed）
     func removeMember(_ membership: CKMembership, completion: @escaping (Bool, String?) -> Void) {
+        completion(false, "現在Cloudflare移行中のため使用できません")
+        return
+        
         let recordID = CKRecord.ID(recordName: membership.id)
         sharedDB.fetch(withRecordID: recordID) { [weak self] record, error in
             guard let self = self else { return }
@@ -631,6 +653,9 @@ class CloudKitTeamManager: ObservableObject {
 
     /// Membership + 関連WorkoutSummary/Detailを完全削除
     func permanentlyDeleteMember(_ membership: CKMembership, completion: @escaping (Bool) -> Void) {
+        completion(false)
+        return
+        
         let memberRecordID = CKRecord.ID(recordName: membership.id)
 
         // Membership削除
@@ -679,6 +704,8 @@ class CloudKitTeamManager: ObservableObject {
     // MARK: - メンバー一覧取得（管理者側）
 
     func fetchMemberships(teamID: String) {
+        return
+        
         guard !teamID.isEmpty else { return }
         isLoading = true
 
@@ -713,6 +740,8 @@ class CloudKitTeamManager: ObservableObject {
     // MARK: - ワークアウトサマリー取得（管理者側・通信量削減優先）
 
     func fetchWorkoutSummaries(teamID: String) {
+        return
+        
         guard !teamID.isEmpty else { return }
 
         let predicate = NSPredicate(format: "teamID == %@", teamID)
@@ -743,6 +772,9 @@ class CloudKitTeamManager: ObservableObject {
     // MARK: - ワークアウト詳細取得（タップ時・遅延ロード）
 
     func fetchWorkoutDetail(workoutID: String, teamID: String, completion: @escaping (CKTeamWorkoutDetail?) -> Void) {
+        completion(nil)
+        return
+        
         let predicate = NSPredicate(format: "workoutID == %@ AND teamID == %@", workoutID, teamID)
         let query = CKQuery(recordType: detailRecordType, predicate: predicate)
 
@@ -768,6 +800,8 @@ class CloudKitTeamManager: ObservableObject {
     // MARK: - ワークアウトをShared DBにアップロード（選手側・記録保存後）
 
     func uploadWorkoutToTeam(record: RowingRecord) {
+        return
+        
         guard isTeamMember,
               let membership = myMembership,
               membership.status == .active else { return }
@@ -1141,3 +1175,4 @@ class CloudKitTeamManager: ObservableObject {
         }
     }
 }
+#endif // CloudKit依存 - Cloudflare移行中のため無効化

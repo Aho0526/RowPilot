@@ -3,7 +3,8 @@ import SwiftUI
 /// TeamおよびMAXプランユーザー向けのManagerPlan共有管理ビュー（招待コード方式）
 struct TeamMaxManagerView: View {
     @ObservedObject var subManager = SubscriptionManager.shared
-    @ObservedObject var codeManager = InviteCodeManager.shared
+    // InviteCodeManager依存を削除（Cloudflare移行中）
+    // @ObservedObject var codeManager = InviteCodeManager.shared
     @ObservedObject var requestManager = ShareRequestManager.shared
 
     @AppStorage("userSubscriptionPlan") private var currentPlanRaw: String = "free"
@@ -38,19 +39,16 @@ struct TeamMaxManagerView: View {
         .navigationTitle("Manager Sharing".localized)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            codeManager.ensureCodeExists()
+            // codeManager.ensureCodeExists() // InviteCodeManager無効化
             requestManager.fetchPendingRequests(ownerID: subManager.myUserRecordId)
         }
         // リセット確認
         .alert("招待コードのリセット", isPresented: $showingResetConfirm) {
             Button("リセット".localized, role: .destructive) {
-                codeManager.resetCode { success, error in
-                    alertTitle = success ? "リセット完了" : "エラー"
-                    alertMessage = success
-                        ? "新しい招待コードが発行されました。\n共有中のメンバーは全員削除され、共有が停止されました。"
-                        : (error ?? "リセットに失敗しました。")
-                    showingAlert = true
-                }
+                // InviteCodeManager無効化中
+                alertTitle = "情報"
+                alertMessage = "Cloudflare移行中のため、リセット機能は現在利用できません。"
+                showingAlert = true
             }
             Button("キャンセル".localized, role: .cancel) {}
         } message: {
@@ -165,11 +163,11 @@ struct TeamMaxManagerView: View {
             // コード表示
             VStack(spacing: 8) {
                 HStack {
-                    Text(codeManager.inviteCode.isEmpty ? "------" : codeManager.inviteCode)
-                        .font(.system(.title, design: .monospaced))
+                    // InviteCodeManager無効化中：招待コードは現在取得不可
+                    Text("（Cloudflare移行中のため無効）")
+                        .font(.system(.title3, design: .monospaced))
                         .fontWeight(.bold)
-                        .foregroundColor(codeManager.inviteCode.isEmpty ? .white.opacity(0.3) : .white)
-                        .tracking(4)
+                        .foregroundColor(.white.opacity(0.3))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
 
@@ -197,9 +195,10 @@ struct TeamMaxManagerView: View {
             // リセットボタン
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(codeManager.canReset ? "コードをリセット可能" : "リセットまであと\(codeManager.minutesUntilReset)分")
+                    // InviteCodeManager無効化中
+                    Text("Cloudflare移行中のため無効")
                         .font(.caption)
-                        .foregroundColor(codeManager.canReset ? Theme.accent : .white.opacity(0.4))
+                        .foregroundColor(.white.opacity(0.3))
                     Text("リセット時は全メンバーが削除されます • 5分に1回のみ".localized)
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.35))
@@ -216,11 +215,12 @@ struct TeamMaxManagerView: View {
                     .fontWeight(.semibold)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(codeManager.canReset ? Color.red.opacity(0.2) : Color.white.opacity(0.05))
-                    .foregroundColor(codeManager.canReset ? .red : .white.opacity(0.3))
+                    .background(Color.white.opacity(0.05))
+                    .foregroundColor(.white.opacity(0.3))
                     .cornerRadius(8)
                 }
-                .disabled(!codeManager.canReset)
+                .disabled(true) // InviteCodeManager無効化中
+
             }
             .padding()
             .background(Color.white.opacity(0.04))
@@ -462,9 +462,9 @@ struct TeamMaxManagerView: View {
     // MARK: - Actions
 
     private func copyCode() {
-        UIPasteboard.general.string = codeManager.inviteCode
-        alertTitle = "コピー完了"
-        alertMessage = "招待コードをクリップボードにコピーしました。"
+        // InviteCodeManager無効化中
+        alertTitle = "情報"
+        alertMessage = "Cloudflare移行中のため、招待コードは現在取得できません。"
         showingAlert = true
     }
 

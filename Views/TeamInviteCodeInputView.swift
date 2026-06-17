@@ -3,8 +3,9 @@ import SwiftUI
 /// メンバー側：チーム招待コードを入力してチーム参加を申請するView
 struct TeamInviteCodeInputView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var ckTeam = CloudKitTeamManager.shared
     @ObservedObject private var settingsManager = SettingsManager.shared
+    @StateObject private var viewModel = CloudflareTeamViewModel()
+    @ObservedObject private var subManager = SubscriptionManager.shared
 
     @State private var showingResult = false
     @State private var resultMessage = ""
@@ -56,21 +57,7 @@ struct TeamInviteCodeInputView: View {
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
 
-                            // すでにチーム参加中の場合は注意表示
-                            if ckTeam.isTeamMember {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.orange)
-                                    Text("現在すでにチームに参加しています。\n脱退してから別のチームに参加できます。")
-                                        .font(.caption)
-                                        .foregroundColor(.orange)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                .padding()
-                                .background(Color.orange.opacity(0.08))
-                                .cornerRadius(12)
-                                .padding(.horizontal)
-                            }
+                            // CloudKitTeamManager依存を削除（チーム参加日時は現在取得不可）
                         }
 
                         // 共有名の入力・確認
@@ -141,7 +128,7 @@ struct TeamInviteCodeInputView: View {
                         // 申請ボタン
                         Button(action: submitRequest) {
                             HStack(spacing: 10) {
-                                if ckTeam.isLoading {
+                                if false { // ckTeam.isLoading - CloudKitTeamManager無効化
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 } else {
@@ -161,7 +148,7 @@ struct TeamInviteCodeInputView: View {
                             .cornerRadius(14)
                             .shadow(color: isFormValid ? teamColor.opacity(0.4) : .clear, radius: 8)
                         }
-                        .disabled(!isFormValid || ckTeam.isLoading || ckTeam.isTeamMember)
+                        .disabled(!isFormValid || false /*ckTeam.isLoading || ckTeam.isTeamMember*/)
                         .padding(.horizontal)
 
                         // 参加の流れ説明
@@ -282,17 +269,34 @@ struct TeamInviteCodeInputView: View {
     }
 
     private func submitRequest() {
-        let name = settingsManager.settings.sharingName.trimmingCharacters(in: .whitespaces)
-
-        ckTeam.sendJoinRequest(
-            inviteCode: fullCode,
-            requesterName: name
-        ) { success, error in
-            resultSuccess = success
-            resultMessage = success
-                ? "「\(name)」としてチーム参加を申請しました。\n顧問が承認するとチームに追加されます。"
-                : (error ?? "申請に失敗しました。")
-            showingResult = true
+        Task {
+            await viewModel.fetchTeams()
+            if let team = viewModel.teams.first(where: { $0.invite_code == fullCode }) {
+                let success = await viewModel.createMember(
+                    userID: subManager.myUserRecordId,
+                    displayName: settingsManager.settings.sharingName,
+                    teamID: team.id,
+                    role: "athlete",
+                    entitlement: subManager.currentPlan.rawValue
+                )
+                
+                await MainActor.run {
+                    if success {
+                        resultSuccess = true
+                        resultMessage = "チーム「\(team.name)」への参加が完了しました！"
+                    } else {
+                        resultSuccess = false
+                        resultMessage = viewModel.errorMessage ?? "参加に失敗しました"
+                    }
+                    showingResult = true
+                }
+            } else {
+                await MainActor.run {
+                    resultSuccess = false
+                    resultMessage = "招待コードが正しくありません。確認してもう一度お試しください。"
+                    showingResult = true
+                }
+            }
         }
     }
 }

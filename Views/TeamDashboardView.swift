@@ -1,3 +1,5 @@
+// CloudKit依存 - Cloudflare移行中のため無効化
+#if false
 import SwiftUI
 
 /// 管理者（顧問）用のチームダッシュボード（CloudKit Shared Database版）
@@ -1009,3 +1011,4 @@ struct TeamTagFlowLayout: View {
         TeamDashboardView()
     }
 }
+#endif // CloudKit依存 - Cloudflare移行中のため無効化

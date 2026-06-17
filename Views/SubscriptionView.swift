@@ -290,11 +290,11 @@ struct SubscriptionView: View {
                 }
 
                 Divider().background(Color.white.opacity(0.1))
-                NavigationLink(destination: TeamDashboardView()) {
+                NavigationLink(destination: CloudflareTeamListView()) {
                     HStack {
                         Image(systemName: "person.3.fill")
                             .foregroundColor(.green)
-                        Text("メンバーを管理".localized)
+                        Text("メンバーを管理（D1）".localized)
                             .fontWeight(.bold)
                             .foregroundColor(.green)
                         Spacer()

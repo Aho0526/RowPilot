@@ -1,9 +1,7 @@
 import Foundation
-import CloudKit
+// CloudKit依存を削除済み（Cloudflare移行中）
 
-/// メンバー側：練習記録をCloudKit Shared Databaseにアップロードするクラス
-/// 個人データの正本はPrivate Database（ICloudSyncManager経由）に保存済み
-/// Team所属中のみ、Shared DBにSummary+Detailをコピーする
+/// メンバー側：練習記録のアップロードは現在無効化（Cloudflare移行中）
 class TeamRecordUploader {
     static let shared = TeamRecordUploader()
 
@@ -11,27 +9,19 @@ class TeamRecordUploader {
 
     // MARK: - チーム参加確認
 
-    /// チームメンバーとして所属しているか
+    /// チームメンバーとして所属しているか（現在は常にfalse）
     var isTeamMember: Bool {
-        CloudKitTeamManager.shared.isTeamMember
+        // CloudKitTeamManager依存を削除 → 常にfalseを返す
+        return false
     }
 
     // MARK: - ワークアウトのアップロード
 
-    /// 記録保存後に呼び出す。チーム所属中であれば Shared DB にサマリー＋詳細をコピー
+    /// 記録保存後に呼び出す。現在はCloudflare移行中のため無効化
     func uploadIfNeeded(record: RowingRecord) {
         guard isTeamMember else {
-            print("TeamRecordUploader: Not a team member, skip upload.")
+            print("TeamRecordUploader: Not a team member (CloudKit disabled), skip upload.")
             return
         }
-
-        let myName = SettingsManager.shared.settings.sharingName
-        guard !myName.trimmingCharacters(in: .whitespaces).isEmpty else {
-            print("TeamRecordUploader: Sharing name is empty, skip upload.")
-            return
-        }
-
-        print("TeamRecordUploader: Uploading workout \(record.id) to Shared DB...")
-        CloudKitTeamManager.shared.uploadWorkoutToTeam(record: record)
     }
 }

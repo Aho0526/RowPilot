@@ -1,3 +1,5 @@
+// CloudKit依存 - Cloudflare移行中のため無効化
+#if false
 import Foundation
 import CloudKit
 import Combine
@@ -39,24 +41,16 @@ class InviteCodeManager: ObservableObject {
 
     // MARK: - Load / Save
 
-    /// ローカル（UserDefaults + iCloudKVS）からコードを読み込む
+    /// ローカルからコードを読み込む
     func loadFromLocal() {
-        // NSUbiquitousKeyValueStoreから読み込み（iCloud KVS = iCloudアカウントに紐付く）
-        let icloudStore = NSUbiquitousKeyValueStore.default
-        icloudStore.synchronize()
-
-        let storedCode = icloudStore.string(forKey: iCloudCodeKey)
-            ?? UserDefaults.standard.string(forKey: localCodeKey)
-            ?? ""
-
-        let storedResetDate = icloudStore.object(forKey: iCloudResetKey) as? Date
-            ?? UserDefaults.standard.object(forKey: lastResetDateKey) as? Date
+        let storedCode = UserDefaults.standard.string(forKey: localCodeKey) ?? ""
+        let storedResetDate = UserDefaults.standard.object(forKey: lastResetDateKey) as? Date
 
         self.inviteCode = storedCode
         self.lastResetDate = storedResetDate
     }
 
-    /// コードをローカル＆iCloud KVSに保存
+    /// コードをローカルに保存
     private func saveToLocal(code: String, resetDate: Date?) {
         UserDefaults.standard.set(code, forKey: localCodeKey)
         if let date = resetDate {
@@ -64,15 +58,6 @@ class InviteCodeManager: ObservableObject {
         } else {
             UserDefaults.standard.removeObject(forKey: lastResetDateKey)
         }
-
-        let icloudStore = NSUbiquitousKeyValueStore.default
-        icloudStore.set(code, forKey: iCloudCodeKey)
-        if let date = resetDate {
-            icloudStore.set(date, forKey: iCloudResetKey)
-        } else {
-            icloudStore.removeObject(forKey: iCloudResetKey)
-        }
-        icloudStore.synchronize()
     }
 
     // MARK: - Generate
@@ -235,3 +220,4 @@ class InviteCodeManager: ObservableObject {
         return max(0, 5 - minutes)
     }
 }
+#endif // CloudKit依存 - Cloudflare移行中のため無効化

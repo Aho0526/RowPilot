@@ -12,7 +12,8 @@ struct SettingView: View {
     @State private var targetDistanceInput = ""
     @State private var showingInviteCodeInput = false
     @State private var showingTeamCodeInput = false
-    @ObservedObject private var ckTeam = CloudKitTeamManager.shared
+    // CloudKitTeamManager依存を削除（Cloudflare移行中）
+    // @ObservedObject private var ckTeam = CloudKitTeamManager.shared
     @State private var showingICloudDeleteAlert = false
     @State private var showingICloudSyncAllAlert = false
     @ObservedObject private var iCloudSync = ICloudSyncManager.shared
@@ -290,29 +291,16 @@ struct SettingView: View {
             if currentPlan.hasTeamFeature {
                 // チーム管理（Team/MAX以上：顧問・管理者向け）
                 SettingsSection(title: "チーム管理".localized, icon: "person.3.fill") {
-                    NavigationLink(destination: TeamDashboardView()) {
+                    NavigationLink(destination: CloudflareTeamListView()) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("チームダッシュボード")
                                     .foregroundColor(Theme.textMain)
-                                let activeCount = ckTeam.memberships.filter { $0.isActive }.count
-                                Text(ckTeam.myTeam != nil
-                                     ? "\(activeCount)名のメンバーを管理中"
-                                     : "チームを作成してメンバーを管理")
+                                Text("Cloudflare D1 チーム管理")
                                     .font(.caption)
                                     .foregroundColor(Theme.textSecondary)
                             }
                             Spacer()
-                            if ckTeam.pendingJoinRequests.count > 0 {
-                                Text("\(ckTeam.pendingJoinRequests.count)")
-                                    .font(.caption2)
-                                    .fontWeight(.bold)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.orange.opacity(0.8))
-                                    .foregroundColor(.white)
-                                    .clipShape(Capsule())
-                            }
                             Image(systemName: "chevron.right")
                                 .font(.caption)
                                 .foregroundColor(Theme.textSecondary)
@@ -324,57 +312,21 @@ struct SettingView: View {
             // チームに参加（選手向け）
             if !currentPlan.hasTeamFeature {
                 SettingsSection(title: "チームに参加".localized, icon: "person.badge.plus") {
-                    if ckTeam.isTeamMember {
-                        // 参加中の表示
+                    // CloudKitTeamManager依存を削除（Cloudflare移行中）
+                    // チーム参加機能は現在無効化中
+                    Button(action: { showingTeamCodeInput = true }) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("チーム参加中")
-                                    .foregroundColor(.green)
-                                    .fontWeight(.semibold)
-                                if let membership = ckTeam.myMembership {
-                                    Text("参加日: \(membership.joinedAt.formatted(date: .abbreviated, time: .omitted))")
-                                        .font(.caption)
-                                        .foregroundColor(Theme.textSecondary)
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                        }
-                        
-                        Divider().background(Theme.textSecondary.opacity(0.3))
-                        
-                        // 脱退ボタン
-                        Button(action: {
-                            if let m = ckTeam.myMembership {
-                                ckTeam.leaveTeam(membershipID: m.id) { success, error in
-                                    // フィードバックは不要（状態が更新される）
-                                }
-                            }
-                        }) {
-                            HStack {
-                                Text("チームを脱退する")
-                                    .foregroundColor(.red)
-                                Spacer()
-                                Image(systemName: "rectangle.portrait.and.arrow.right")
-                                    .foregroundColor(.red)
-                            }
-                        }
-                    } else {
-                        Button(action: { showingTeamCodeInput = true }) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("チームに参加")
-                                        .foregroundColor(Theme.textMain)
-                                    Text("顧問から招待コードをもらって参加")
-                                        .font(.caption)
-                                        .foregroundColor(Theme.textSecondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
+                                Text("チームに参加")
+                                    .foregroundColor(Theme.textMain)
+                                Text("顧問から招待コードをもらって参加")
                                     .font(.caption)
                                     .foregroundColor(Theme.textSecondary)
                             }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
                         }
                     }
                 }
@@ -576,8 +528,8 @@ struct SettingView: View {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("Test Flight v1.0(Build 6)")
-                Text("Build from June 16")
+                Text("Test Flight v1.0(Build 7)")
+                Text("Build from June 17")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

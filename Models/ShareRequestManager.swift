@@ -82,42 +82,11 @@ class ShareRequestManager: ObservableObject {
 
         isLoading = true
 
-        // コードからオーナーを逆引き
-        InviteCodeManager.shared.findOwnerID(forCode: code) { [weak self] ownerID in
-            guard let self = self else { return }
-
-            guard let ownerID = ownerID else {
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    completion(false, "招待コードが見つかりません。コードを確認して再入力してください。")
-                }
-                return
-            }
-
-            guard ownerID != requestorID else {
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    completion(false, "自分自身のコードは使用できません。")
-                }
-                return
-            }
-
-            let request = ShareRequest(
-                id: UUID().uuidString,
-                requestorID: requestorID,
-                requestorName: requestorName.trimmingCharacters(in: .whitespaces),
-                ownerID: ownerID,
-                inviteCode: code,
-                status: .pending,
-                createdAt: Date()
-            )
-
-            self.saveRequest(request) { success, error in
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    completion(success, error)
-                }
-            }
+        // CloudKit/InviteCodeManager依存を削除（Cloudflare移行中）
+        // コードからオーナーを逆引きする機能は一時無効化
+        DispatchQueue.main.async {
+            self.isLoading = false
+            completion(false, "現在Cloudflare移行中のため、Manager Plan共有機能は一時的に利用できません。")
         }
     }
 

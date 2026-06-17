@@ -918,8 +918,8 @@ struct TeamManagementModule: View {
                 }
                 .buttonStyle(.plain)
 
-                // メンバーを管理 (TeamDashboardView)
-                NavigationLink(destination: TeamDashboardView()) {
+                // メンバーを管理 (CloudflareTeamListView - CloudKit版から移行)
+                NavigationLink(destination: CloudflareTeamListView()) {
                     HStack(spacing: 14) {
                         ZStack {
                             Circle()
