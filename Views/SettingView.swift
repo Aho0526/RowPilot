@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingView: View {
     @EnvironmentObject var app: AppViewModel
+    @Environment(\.scenePhase) var scenePhase
     @ObservedObject private var settingsManager = SettingsManager.shared
     @ObservedObject private var themeManager = ThemeManager.shared
     @ObservedObject private var localizationManager = LocalizationManager.shared
@@ -17,6 +18,17 @@ struct SettingView: View {
     @State private var showingICloudDeleteAlert = false
     @State private var showingICloudSyncAllAlert = false
     @ObservedObject private var iCloudSync = ICloudSyncManager.shared
+    
+    @StateObject private var teamViewModel = CloudflareTeamViewModel()
+    @State private var showingProfileSaveResult = false
+    @State private var profileSaveMessage = ""
+    @AppStorage("isCloudflareProfileRegistered") private var isProfileRegistered = false
+    
+    @State private var showingApprovalAlert = false
+    @State private var showingPendingAlert = false
+    @AppStorage("lastKnownTeamRole") private var lastKnownTeamRole: String = ""
+    @State private var profileSyncTask: Task<Void, Never>? = nil
+    @State private var approvalTimer: Timer? = nil
     
     var body: some View {
         NavigationStack(path: $app.settingsNavigationPath) {
@@ -83,7 +95,112 @@ struct SettingView: View {
             .sheet(isPresented: $showingTeamCodeInput) {
                 TeamInviteCodeInputView()
             }
+            .alert(localizationManager.language == .japanese ? "プロフィール保存" : "Profile Save", isPresented: $showingProfileSaveResult) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(profileSaveMessage)
+            }
+            .alert(localizationManager.language == .japanese ? "参加承認" : "Join Approved", isPresented: $showingApprovalAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(localizationManager.language == .japanese ? "チームへの参加が承認されました！" : "Your request to join the team has been approved!")
+            }
+            .alert(localizationManager.language == .japanese ? "承認待ち" : "Pending Approval", isPresented: $showingPendingAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(localizationManager.language == .japanese ? "まだ申請が通っていません。管理者の承認をお待ちください。" : "Your request is still pending. Please wait for the admin's approval.")
+            }
         }
+        .task {
+            await teamViewModel.fetchMyTeam()
+            checkTeamApprovalStatus()
+            if teamViewModel.myRole == "pending" {
+                startApprovalPolling()
+            }
+        }
+        .onDisappear {
+            stopApprovalPolling()
+        }
+        .onChange(of: teamViewModel.myRole) { _, newRole in
+            if newRole == "pending" {
+                startApprovalPolling()
+            } else {
+                stopApprovalPolling()
+            }
+        }
+        .onChange(of: showingTeamCodeInput) { _, newValue in
+            if !newValue {
+                Task {
+                    await teamViewModel.fetchMyTeam()
+                    checkTeamApprovalStatus()
+                }
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                Task {
+                    await teamViewModel.fetchMyTeam()
+                    checkTeamApprovalStatus()
+                }
+            }
+        }
+        .onChange(of: settingsManager.settings.sharingName) { _, newName in
+            profileSyncTask?.cancel()
+            profileSyncTask = Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if Task.isCancelled { return }
+                
+                let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else {
+                    await MainActor.run {
+                        isProfileRegistered = false
+                    }
+                    return
+                }
+                
+                let success = await teamViewModel.createUser(
+                    userID: SubscriptionManager.shared.myUserRecordId,
+                    displayName: trimmed,
+                    email: nil,
+                    isGhost: 0,
+                    entitlement: SubscriptionManager.shared.currentPlan.rawValue
+                )
+                
+                await MainActor.run {
+                    if success {
+                        isProfileRegistered = true
+                    }
+                }
+            }
+        }
+    }
+    
+    private func checkTeamApprovalStatus() {
+        if let role = teamViewModel.myRole {
+            if lastKnownTeamRole == "pending" && (role == "athlete" || role == "manager" || role == "admin") {
+                showingApprovalAlert = true
+            }
+            lastKnownTeamRole = role
+        } else {
+            lastKnownTeamRole = ""
+        }
+    }
+    
+    private func startApprovalPolling() {
+        approvalTimer?.invalidate()
+        approvalTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            Task {
+                await teamViewModel.fetchMyTeam()
+                await MainActor.run {
+                    checkTeamApprovalStatus()
+                }
+            }
+        }
+    }
+    
+    private func stopApprovalPolling() {
+        approvalTimer?.invalidate()
+        approvalTimer = nil
     }
     
     private var settingsContent: some View {
@@ -173,14 +290,35 @@ struct SettingView: View {
                 }
             }
             
-            // 共有時の名前
-            SettingsSection(title: "Sharing Name".localized, icon: "person.crop.circle.fill") {
-                VStack(alignment: .leading, spacing: 8) {
-                    TextField(localizationManager.language == .japanese ? "表示名を入力" : "Enter display name", text: $settingsManager.settings.sharingName)
-                        .textFieldStyle(.plain)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .foregroundColor(Theme.textMain)
+            // ユーザープロフィール
+            SettingsSection(title: localizationManager.language == .japanese ? "ユーザープロフィール" : "User Profile", icon: "person.crop.circle.fill") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(localizationManager.language == .japanese ? "表示名" : "Display Name")
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                    
+                    HStack {
+                        TextField(localizationManager.language == .japanese ? "表示名を入力" : "Enter display name", text: $settingsManager.settings.sharingName)
+                            .textFieldStyle(.plain)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .foregroundColor(Theme.textMain)
+                        
+                        Spacer()
+                        
+                        if teamViewModel.isLoading {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: Theme.accent))
+                        } else if isProfileRegistered && !settingsManager.settings.sharingName.trimmingCharacters(in: .whitespaces).isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text(localizationManager.language == .japanese ? "同期完了" : "Synced")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            }
+                        }
+                    }
                     
                     Divider()
                         .background(Theme.textSecondary.opacity(0.3))
@@ -267,7 +405,7 @@ struct SettingView: View {
             }
             
             // Manager Plan 共有申請（Team/MAX未加入ユーザー向け）
-            if !currentPlan.hasManagerMode {
+            if !currentPlan.hasManagerMode && (teamViewModel.myTeam == nil || teamViewModel.myRole == "pending") {
                 SettingsSection(title: "Manager Plan共有".localized, icon: "person.badge.key.fill") {
                     Button(action: { showingInviteCodeInput = true }) {
                         HStack {
@@ -289,51 +427,18 @@ struct SettingView: View {
             
             // ─── チーム機能セクション ───
             if currentPlan.hasTeamFeature {
-                // チーム管理（Team/MAX以上：顧問・管理者向け）
                 SettingsSection(title: "チーム管理".localized, icon: "person.3.fill") {
-                    NavigationLink(destination: CloudflareTeamListView()) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("チームダッシュボード")
-                                    .foregroundColor(Theme.textMain)
-                                Text("Cloudflare D1 チーム管理")
-                                    .font(.caption)
-                                    .foregroundColor(Theme.textSecondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(Theme.textSecondary)
-                        }
-                    }
+                    SettingsToggleRow(
+                        title: "チームへ自動で記録をアップロードする",
+                        isOn: $settingsManager.settings.autoUploadToTeam
+                    )
+                    Text("オンにすると、ワークアウト保存時に所属しているチームに自動で記録が共有されます。".localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
                 }
             }
             
-            // チームに参加（選手向け）
-            if !currentPlan.hasTeamFeature {
-                SettingsSection(title: "チームに参加".localized, icon: "person.badge.plus") {
-                    // CloudKitTeamManager依存を削除（Cloudflare移行中）
-                    // チーム参加機能は現在無効化中
-                    Button(action: { showingTeamCodeInput = true }) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("チームに参加")
-                                    .foregroundColor(Theme.textMain)
-                                Text("顧問から招待コードをもらって参加")
-                                    .font(.caption)
-                                    .foregroundColor(Theme.textSecondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundColor(Theme.textSecondary)
-                        }
-                    }
-                }
-            }
-            
-            
-            
+
             // 共有設定
             SettingsSection(title: "Sharing".localized, icon: "square.and.arrow.up") {
                 // マネージャーモード保存後の共有提案
@@ -528,8 +633,8 @@ struct SettingView: View {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("Test Flight v1.0(Build 7)")
-                Text("Build from June 17")
+                Text("Test Flight v1.0(Build 15)")
+                Text("Build from June 19")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

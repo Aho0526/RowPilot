@@ -814,7 +814,9 @@ struct ThemeButtonStyle: ButtonStyle {
 
 // MARK: - Join Team Module (Free & Pro Users)
 struct JoinTeamModule: View {
+    @StateObject private var teamViewModel = CloudflareTeamViewModel()
     @State private var showingTeamJoinInput = false
+    @State private var showingPendingAlert = false
 
     var body: some View {
         RPModuleCard(
@@ -822,50 +824,133 @@ struct JoinTeamModule: View {
             icon: "person.3.fill",
             accentColor: .green
         ) {
-            Button(action: { showingTeamJoinInput = true }) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [.green, .cyan],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 44, height: 44)
-                        Image(systemName: "person.3.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
+            if let team = teamViewModel.myTeam {
+                if teamViewModel.myRole == "pending" {
+                    Button(action: { showingPendingAlert = true }) {
+                        HStack(spacing: 14) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.orange.opacity(0.15))
+                                    .frame(width: 44, height: 44)
+                                Image(systemName: "clock.badge.exclamationmark")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.orange)
+                            }
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("承認待ち".localized)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Theme.textMain)
+                                HStack(spacing: 4) {
+                                    Text("\(team.name)への参加を申請中")
+                                        .font(.caption)
+                                        .foregroundColor(.orange)
+                                }
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        .padding(14)
+                        .background(Color.orange.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+                        )
                     }
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("チームに参加する".localized)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(Theme.textMain)
-                        Text("顧問から共有された招待コードを入力してチームに参加します。".localized)
-                            .font(.caption)
-                            .foregroundColor(Theme.textSecondary)
-                            .lineLimit(2)
+                    .buttonStyle(.plain)
+                    .alert("承認待ち", isPresented: $showingPendingAlert) {
+                        Button("OK", role: .cancel) {}
+                    } message: {
+                        Text("\(team.name)への参加を申請中です。顧問の承認をお待ちください。")
                     }
+                } else {
+                    NavigationLink(destination: CloudflareTeamListView()) {
+                        HStack(spacing: 14) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.green.opacity(0.15))
+                                    .frame(width: 44, height: 44)
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.green)
+                            }
 
-                    Spacer()
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("チームを見る".localized)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Theme.textMain)
+                                Text(team.name)
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            }
 
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(Theme.textSecondary)
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        .padding(14)
+                        .background(Color.green.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.green.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .padding(14)
-                .background(Color.green.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.green.opacity(0.25), lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-            .sheet(isPresented: $showingTeamJoinInput) {
-                TeamInviteCodeInputView()
+            } else {
+                Button(action: { showingTeamJoinInput = true }) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.green, .cyan],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "person.3.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("チームに参加する".localized)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(Theme.textMain)
+                            Text("顧問から共有された招待コードを入力してチームに参加します。".localized)
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                                .lineLimit(2)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .padding(14)
+                    .background(Color.green.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.green.opacity(0.25), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showingTeamJoinInput) {
+                    TeamInviteCodeInputView()
+                }
             }
         }
     }
@@ -873,6 +958,10 @@ struct JoinTeamModule: View {
 
 // MARK: - Team Management Module (Team & MAX Users)
 struct TeamManagementModule: View {
+    @StateObject private var teamViewModel = CloudflareTeamViewModel()
+    @State private var showingTeamJoinInput = false
+    @State private var showingPendingAlert = false
+
     var body: some View {
         RPModuleCard(
             title: "Team Management".localized,
@@ -918,43 +1007,172 @@ struct TeamManagementModule: View {
                 }
                 .buttonStyle(.plain)
 
-                // メンバーを管理 (CloudflareTeamListView - CloudKit版から移行)
-                NavigationLink(destination: CloudflareTeamListView()) {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.green.opacity(0.15))
-                                .frame(width: 44, height: 44)
-                            Image(systemName: "person.3.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.green)
+                if let team = teamViewModel.myTeam {
+                    if teamViewModel.myRole == "pending" {
+                        Button(action: { showingPendingAlert = true }) {
+                            HStack(spacing: 14) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.orange.opacity(0.15))
+                                        .frame(width: 44, height: 44)
+                                    Image(systemName: "clock.badge.exclamationmark")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.orange)
+                                }
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("承認待ち".localized)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(Theme.textMain)
+                                    Text("\(team.name)への参加を申請中")
+                                        .font(.caption)
+                                        .foregroundColor(.orange)
+                                        .lineLimit(1)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            .padding(14)
+                            .background(Color.orange.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+                            )
                         }
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("メンバーを管理".localized)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundColor(Theme.textMain)
-                            Text("チームへの参加申請を管理し、練習記録を確認します。".localized)
-                                .font(.caption)
-                                .foregroundColor(Theme.textSecondary)
-                                .lineLimit(1)
+                        .buttonStyle(.plain)
+                        .alert("承認待ち", isPresented: $showingPendingAlert) {
+                            Button("OK", role: .cancel) {}
+                        } message: {
+                            Text("\(team.name)への参加を申請中です。顧問の承認をお待ちください。")
                         }
+                    } else {
+                        NavigationLink(destination: CloudflareTeamListView()) {
+                            HStack(spacing: 14) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.green.opacity(0.15))
+                                        .frame(width: 44, height: 44)
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.green)
+                                }
 
-                        Spacer()
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("チームを見る".localized)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(Theme.textMain)
+                                    Text(team.name)
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                        .lineLimit(1)
+                                }
 
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(Theme.textSecondary)
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            .padding(14)
+                            .background(Color.green.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Color.green.opacity(0.25), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .padding(14)
-                    .background(Color.green.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.green.opacity(0.25), lineWidth: 1)
-                    )
+                } else {
+                    // チームがない場合
+                    NavigationLink(destination: CloudflareTeamListView()) {
+                        HStack(spacing: 14) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.green.opacity(0.15))
+                                    .frame(width: 44, height: 44)
+                                Image(systemName: "person.3.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.green)
+                            }
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("チーム管理".localized)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Theme.textMain)
+                                Text("Cloudflare D1 チーム管理".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        .padding(14)
+                        .background(Color.green.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.green.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: { showingTeamJoinInput = true }) {
+                        HStack(spacing: 14) {
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [.orange, .yellow],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 44, height: 44)
+                                Image(systemName: "person.badge.plus")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("チームに参加する")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Theme.textMain)
+                                Text("招待コードを入力してチームに参加申請します。".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        .padding(14)
+                        .background(Color.orange.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .sheet(isPresented: $showingTeamJoinInput) {
+                        TeamInviteCodeInputView()
+                    }
                 }
-                .buttonStyle(.plain)
             }
         }
     }

@@ -60,6 +60,9 @@ struct UserSettings: Codable {
     // 目標設定
     var monthlyTargetDistance: Double // メートル単位
     
+    // チーム設定
+    var autoUploadToTeam: Bool
+    
     init(
         soundEnabled: Bool = false,
         voiceFeedbackEnabled: Bool = false,
@@ -85,7 +88,8 @@ struct UserSettings: Codable {
         autoShareAfterManagerSave: Bool = false,
         importBehavior: ImportBehavior = .askEachTime,
         monthlyTargetDistance: Double = 50000.0,
-        sharingName: String = ""
+        sharingName: String = "",
+        autoUploadToTeam: Bool = true
     ) {
         self.soundEnabled = soundEnabled
         self.voiceFeedbackEnabled = voiceFeedbackEnabled
@@ -112,6 +116,7 @@ struct UserSettings: Codable {
         self.importBehavior = importBehavior
         self.monthlyTargetDistance = monthlyTargetDistance
         self.sharingName = sharingName
+        self.autoUploadToTeam = autoUploadToTeam
     }
 }
 

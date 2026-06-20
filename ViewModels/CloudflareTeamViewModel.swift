@@ -5,6 +5,7 @@ import Combine
 class CloudflareTeamViewModel: ObservableObject {
     @Published var teams: [Team] = []
     @Published var members: [CloudflareUser] = []
+    @Published var teamWorkouts: [CloudflareWorkoutRecord] = []
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
     
@@ -12,10 +13,8 @@ class CloudflareTeamViewModel: ObservableObject {
         print("▶ init Cloudflare VM")
     }
     
-    var myTeam: Team? {
-        let myId = SubscriptionManager.shared.myUserRecordId
-        return teams.first { $0.owner_id == myId }
-    }
+    @Published var myTeam: Team? = nil
+    @Published var myRole: String? = nil
     
     func fetchTeams() async {
         print("▶ fetchTeams ENTER")
@@ -70,6 +69,37 @@ class CloudflareTeamViewModel: ObservableObject {
         isLoading = false
     }
     
+    func fetchMyTeam() async {
+        let userID = SubscriptionManager.shared.myUserRecordId
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/users/\(userID)/team"
+        guard let url = URL(string: urlString) else { return }
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                // 返り値が null (所属チームなし) の場合を考慮
+                let responseString = String(data: data, encoding: .utf8) ?? ""
+                if responseString == "null" {
+                    self.myTeam = nil
+                    self.myRole = nil
+                    return
+                }
+                
+                let decodedTeam = try JSONDecoder().decode(Team.self, from: data)
+                self.myTeam = decodedTeam
+                self.myRole = decodedTeam.my_role
+                print("▶ fetchMyTeam Success: \(decodedTeam.name), role: \(self.myRole ?? "unknown")")
+            } else {
+                self.myTeam = nil
+                self.myRole = nil
+            }
+        } catch {
+            print("Fetch My Team Error:", error)
+            self.myTeam = nil
+            self.myRole = nil
+        }
+    }
+    
     func deleteTeam(teamID: String) async {
         isLoading = true
         errorMessage = nil
@@ -104,6 +134,44 @@ class CloudflareTeamViewModel: ObservableObject {
         }
     }
     
+    func updateTeamName(teamID: String, newName: String) async -> Bool {
+        isLoading = true
+        errorMessage = nil
+        
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)"
+        guard let url = URL(string: urlString) else {
+            errorMessage = "Invalid URL"
+            isLoading = false
+            return false
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body = ["name": newName]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                await fetchMyTeam()
+                isLoading = false
+                return true
+            } else {
+                let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
+                errorMessage = "Update Team Name Error: \(errStr)"
+                isLoading = false
+                return false
+            }
+        } catch {
+            self.errorMessage = error.localizedDescription
+            isLoading = false
+            return false
+        }
+    }
+    
     func createTeam(name: String) async {
         isLoading = true
         errorMessage = nil
@@ -119,34 +187,39 @@ class CloudflareTeamViewModel: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        // チーム作成用の各種パラメータを生成
-        let teamID = "team_" + UUID().uuidString.prefix(8).lowercased()
-        
-        // 6桁の招待コード（英大文字 + 数字）をランダム生成
-        let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        let inviteCode = String((0..<6).map { _ in alphabet.randomElement()! })
-        
         let ownerID = SubscriptionManager.shared.myUserRecordId
-        let createdAt = Int(Date().timeIntervalSince1970)
-        let plan = "team" // デフォルトプラン
+        let plan = SubscriptionManager.shared.currentPlan.rawValue
         
         let body: [String: Any] = [
-            "id": teamID,
             "name": name,
             "plan": plan,
-            "invite_code": inviteCode,
-            "owner_id": ownerID,
-            "created_at": createdAt
+            "owner_id": ownerID
         ]
         
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+            let jsonData = try JSONSerialization.data(withJSONObject: body, options: .prettyPrinted)
+            request.httpBody = jsonData
+            
+            print("=== createTeam Request ===")
+            print("URL: \(urlString)")
+            print("Method: \(request.httpMethod ?? "UNKNOWN")")
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                print("Body:\n\(jsonString)")
+            }
+            print("==========================")
             
             let (data, response) = try await URLSession.shared.data(for: request)
-            print("▶ createTeam raw response:", String(data: data, encoding: .utf8) ?? "")
+            
+            print("=== createTeam Response ===")
+            if let httpResponse = response as? HTTPURLResponse {
+                print("Status: \(httpResponse.statusCode)")
+            }
+            let responseString = String(data: data, encoding: .utf8) ?? ""
+            print("Response Body:\n\(responseString)")
+            print("===========================")
             
             if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
-                errorMessage = "HTTP Error: \(httpResponse.statusCode)"
+                errorMessage = "HTTP Error: \(httpResponse.statusCode)\n\(responseString)"
                 isLoading = false
                 return
             }
@@ -162,7 +235,7 @@ class CloudflareTeamViewModel: ObservableObject {
     // MARK: - Users Management
     
     func fetchMembers(teamID: String) async {
-        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/users?team_id=\(teamID)"
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/members"
         guard let url = URL(string: urlString) else { return }
         
         do {
@@ -176,8 +249,64 @@ class CloudflareTeamViewModel: ObservableObject {
         }
     }
     
-    func createMember(userID: String, displayName: String, teamID: String, role: String, entitlement: String) async -> Bool {
-        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/users/create"
+    func createUser(userID: String, displayName: String, email: String?, isGhost: Int, entitlement: String) async -> Bool {
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/users"
+        guard let url = URL(string: urlString) else {
+            self.errorMessage = "Invalid URL"
+            return false
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        var body: [String: Any] = [
+            "id": userID,
+            "display_name": displayName,
+            "is_ghost": isGhost,
+            "entitlement": entitlement,
+            "created_at": Int(Date().timeIntervalSince1970)
+        ]
+        if let email = email {
+            body["email"] = email
+        }
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: body, options: .prettyPrinted)
+            request.httpBody = jsonData
+            
+            print("=== createUser Request ===")
+            print("Method: \(request.httpMethod ?? "UNKNOWN")")
+            print("Sending userID: \(userID)")
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                print("Body:\n\(jsonString)")
+            }
+            print("==========================")
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            let responseString = String(data: data, encoding: .utf8) ?? ""
+            print("=== createUser Response ===")
+            if let httpResponse = response as? HTTPURLResponse {
+                print("Status: \(httpResponse.statusCode)")
+            }
+            print("Response Body:\n\(responseString)")
+            print("===========================")
+            
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                return true
+            } else {
+                self.errorMessage = "Create User Error: \(responseString)"
+                return false
+            }
+        } catch {
+            self.errorMessage = error.localizedDescription
+            return false
+        }
+    }
+    
+    func joinTeam(inviteCode: String, userID: String) async -> Bool {
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/join"
         guard let url = URL(string: urlString) else {
             self.errorMessage = "Invalid URL"
             return false
@@ -188,12 +317,8 @@ class CloudflareTeamViewModel: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let body: [String: Any] = [
-            "id": userID,
-            "display_name": displayName,
-            "team_id": teamID,
-            "role": role,
-            "entitlement": entitlement,
-            "created_at": Int(Date().timeIntervalSince1970)
+            "invite_code": inviteCode,
+            "user_id": userID
         ]
         
         do {
@@ -201,11 +326,15 @@ class CloudflareTeamViewModel: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
-                await fetchMembers(teamID: teamID)
+                // ★ fetchMyTeam()を先に呼び、myTeam/myRoleを正しく更新する
+                await fetchMyTeam()
+                if let team = self.myTeam {
+                    await fetchMembers(teamID: team.id)
+                }
                 return true
             } else {
                 let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
-                self.errorMessage = "Create User Error: \(errStr)"
+                self.errorMessage = "Join Team Error: \(errStr)"
                 return false
             }
         } catch {
@@ -214,8 +343,17 @@ class CloudflareTeamViewModel: ObservableObject {
         }
     }
     
+    /// チームの最新状態をポーリング（承認待ちユーザーが承認されたかを確認するために使用）
+    func refreshMyTeamStatus() async {
+        await fetchMyTeam()
+        if let team = self.myTeam, myRole != "pending" {
+            await fetchMembers(teamID: team.id)
+            await fetchTeamWorkouts(teamID: team.id)
+        }
+    }
+    
     func deleteMember(userID: String, teamID: String) async -> Bool {
-        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/users?id=\(userID)"
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/members/\(userID)"
         guard let url = URL(string: urlString) else {
             self.errorMessage = "Invalid URL"
             return false
@@ -241,7 +379,7 @@ class CloudflareTeamViewModel: ObservableObject {
     }
     
     func updateMemberRole(userID: String, role: String, teamID: String) async -> Bool {
-        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/users/role"
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/members/\(userID)/role"
         guard let url = URL(string: urlString) else {
             self.errorMessage = "Invalid URL"
             return false
@@ -252,7 +390,6 @@ class CloudflareTeamViewModel: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let body: [String: Any] = [
-            "id": userID,
             "role": role
         ]
         
@@ -269,6 +406,56 @@ class CloudflareTeamViewModel: ObservableObject {
             }
         } catch {
             self.errorMessage = error.localizedDescription
+            return false
+        }
+    }
+    
+    // MARK: - Workouts
+    
+    func fetchTeamWorkouts(teamID: String) async {
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/workouts"
+        guard let url = URL(string: urlString) else { return }
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                let decoded = try JSONDecoder().decode([CloudflareWorkoutRecord].self, from: data)
+                self.teamWorkouts = decoded
+                print("▶ fetchTeamWorkouts Success: loaded \(decoded.count) workouts")
+            } else {
+                print("▶ fetchTeamWorkouts Error: HTTP Status mismatch")
+            }
+        } catch {
+            print("Fetch Workouts Error:", error)
+        }
+    }
+    
+    func saveWorkout(_ record: CloudflareWorkoutRecord) async -> Bool {
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/workouts"
+        guard let url = URL(string: urlString) else {
+            self.errorMessage = "Invalid URL"
+            return false
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        do {
+            request.httpBody = try JSONEncoder().encode(record)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                print("▶ saveWorkout Success")
+                return true
+            } else {
+                let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
+                self.errorMessage = "Save Workout Error: \(errStr)"
+                print("▶ saveWorkout Error: \(errStr)")
+                return false
+            }
+        } catch {
+            self.errorMessage = error.localizedDescription
+            print("▶ saveWorkout Error: \(error)")
             return false
         }
     }

@@ -272,6 +272,14 @@ struct RecordDetailView: View {
                             Image(systemName: "questionmark.circle")
                                 .foregroundColor(Theme.accent)
                         }
+                        
+                        if currentPlan.hasTeamFeature || !app.pm5Manager.connectedDevices.isEmpty {
+                            Button {
+                                TeamRecordUploader.shared.uploadManual(record: record)
+                            } label: {
+                                Label("チームへアップロード".localized, systemImage: "person.3.fill")
+                            }
+                        }
                     }
                     
                     // 編集/保存ボタン

@@ -6,5 +6,6 @@ struct Team: Codable, Identifiable {
     let plan: String
     let invite_code: String
     let owner_id: String
-    let created_at: Int
+    let created_at: String
+    var my_role: String? // Added to support GET /users/:id/team response
 }

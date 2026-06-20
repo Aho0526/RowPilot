@@ -10,9 +10,8 @@ struct TeamInviteCodeInputView: View {
     @State private var showingResult = false
     @State private var resultMessage = ""
     @State private var resultSuccess = false
-    @State private var codeParts: [String] = ["", ""]
-
-    @FocusState private var focusedField: Int?
+    @State private var inviteCode: String = ""
+    @FocusState private var isCodeFocused: Bool
 
     private let teamColor = Color(hex: "10B981")
     private let teamGradient = LinearGradient(colors: [Color(hex: "10B981"), Color(hex: "065F46")], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -105,16 +104,7 @@ struct TeamInviteCodeInputView: View {
                                 .foregroundColor(.white.opacity(0.5))
                                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                            HStack(spacing: 12) {
-                                codeTextField(index: 0, placeholder: "XXXX")
-
-                                Text("-")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white.opacity(0.4))
-
-                                codeTextField(index: 1, placeholder: "XXXX")
-                            }
+                            codeTextField(placeholder: "XXXXXXXX")
 
                             Text("顧問から共有された8文字のチーム招待コード".localized)
                                 .font(.caption2)
@@ -209,8 +199,8 @@ struct TeamInviteCodeInputView: View {
 
     // MARK: - Subviews
 
-    private func codeTextField(index: Int, placeholder: String) -> some View {
-        TextField(placeholder, text: $codeParts[index])
+    private func codeTextField(placeholder: String) -> some View {
+        TextField(placeholder, text: $inviteCode)
             .textFieldStyle(.plain)
             .font(.system(.title2, design: .monospaced))
             .fontWeight(.bold)
@@ -225,16 +215,13 @@ struct TeamInviteCodeInputView: View {
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(focusedField == index ? teamColor.opacity(0.6) : Color.white.opacity(0.1), lineWidth: 1)
+                    .stroke(isCodeFocused ? teamColor.opacity(0.6) : Color.white.opacity(0.1), lineWidth: 1)
             )
-            .focused($focusedField, equals: index)
-            .onChange(of: codeParts[index]) { _, newValue in
-                let filtered = String(newValue.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(4))
-                if codeParts[index] != filtered {
-                    codeParts[index] = filtered
-                }
-                if index == 0 && filtered.count == 4 {
-                    focusedField = 1
+            .focused($isCodeFocused)
+            .onChange(of: inviteCode) { _, newValue in
+                let filtered = String(newValue.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(8))
+                if inviteCode != filtered {
+                    inviteCode = filtered
                 }
             }
     }
@@ -259,43 +246,28 @@ struct TeamInviteCodeInputView: View {
 
     // MARK: - Logic
 
-    private var fullCode: String {
-        "\(codeParts[0])-\(codeParts[1])"
-    }
-
     private var isFormValid: Bool {
-        codeParts[0].count == 4 && codeParts[1].count == 4
+        inviteCode.count == 8
             && !settingsManager.settings.sharingName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private func submitRequest() {
         Task {
-            await viewModel.fetchTeams()
-            if let team = viewModel.teams.first(where: { $0.invite_code == fullCode }) {
-                let success = await viewModel.createMember(
-                    userID: subManager.myUserRecordId,
-                    displayName: settingsManager.settings.sharingName,
-                    teamID: team.id,
-                    role: "athlete",
-                    entitlement: subManager.currentPlan.rawValue
-                )
-                
-                await MainActor.run {
-                    if success {
-                        resultSuccess = true
-                        resultMessage = "チーム「\(team.name)」への参加が完了しました！"
-                    } else {
-                        resultSuccess = false
-                        resultMessage = viewModel.errorMessage ?? "参加に失敗しました"
-                    }
-                    showingResult = true
-                }
-            } else {
-                await MainActor.run {
+            let success = await viewModel.joinTeam(
+                inviteCode: inviteCode,
+                userID: subManager.myUserRecordId
+            )
+            
+            await MainActor.run {
+                if success {
+                    resultSuccess = true
+                    let teamName = viewModel.myTeam?.name ?? "チーム"
+                    resultMessage = "\(teamName)への参加が完了しました！"
+                } else {
                     resultSuccess = false
-                    resultMessage = "招待コードが正しくありません。確認してもう一度お試しください。"
-                    showingResult = true
+                    resultMessage = viewModel.errorMessage ?? "参加に失敗しました"
                 }
+                showingResult = true
             }
         }
     }
