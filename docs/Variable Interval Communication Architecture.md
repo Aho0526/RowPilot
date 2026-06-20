@@ -103,10 +103,41 @@ Commits the list to the PM5 screen.
 #### 7.1 Unconfirmed Behaviors
 - **Max Limit**: ErgData supports up to 50 intervals. We need to verify if RowPilot's multi-frame strategy holds up to the 50-interval limit or if there is a secondary buffer limit at 20-30 intervals.
 - **Inter-frame Gap**: While not strictly required by Bluetooth, a 20-50ms gap between append frames improves reliability on older PM5 hardware.
+<br>
+
+## Confirmed - June 20
+
+Transmission Method Overview:
+
+Initialization Frame (1st Frame):
+Only at the beginning of the frame that sets the first interval (i == 0) should the command (0x01 0x01 0x08) specifying the workout type as “Variable Interval” be included.
+
+Intermediate Addition Frames (2nd Frame and Beyond):
+Each block that constructs an interval (buildVariableIntervalBlock) includes the interval number (0x18), the exercise type, the exercise intensity, and the rest time (0x04). At the end of each interval, be sure to include the command 0x14 0x01 0x01 (Configure Workout) to commit the interval to the PM5.
+
+Confirmation/End Frame (Final Frame):
+Only at the end of the frame that transmits the final interval should you include the command 0x13 0x02 0x01 0x01 (Set Screen State / Display Workout) to confirm the settings and switch the PM5 screen to the workout screen.
+
+Summary
+For example, when setting and transmitting a total of five variable intervals, the processing flow is as follows.
+
+```Creating CSAFE frames (up to 3):
+Frame 1: Interval 1 (including initialization) + Interval 2
+Frame 2: Interval 3 + Interval 4
+Frame 3: Interval 5 (including confirmation)
+Transmission Control (sendCSAFEChunkedSequence):
+Divide Frame 1 into 20-byte chunks (sendCSAFEChunked) and transmit them at 100 ms intervals.
+Once Frame 1 has been fully transmitted, insert a 100 ms delay.
+Similarly, split Frame 2 into 20-byte chunks and transmit them at 100 ms intervals.
+Once Frame 2 has been fully transmitted, insert a 100 ms delay.
+Similarly, split Frame 3 into 20-byte chunks and transmit them at 100 ms intervals.
+```
+
+---
 
 ### 7.2 Safety / Error Handling
-If any append frame fails, the entire transaction should be aborted with a RESET_DRIVE or TERMINATE command to prevent a "zombie" builder state in the PM5.
+If transmission of any of the additional frames fails, you must use the TERMINATE command to cancel the entire transaction in order to prevent an error message from appearing on the PM5.
 
-<hr>Version: 1.0<br>
+<hr>Version: 1.1<br>
 Author: Kaito Nakahira / Antigravity AI<br>
-Date: 2026-05-16
+Date: 2026-06-20
