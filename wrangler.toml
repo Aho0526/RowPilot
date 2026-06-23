@@ -1,0 +1,8 @@
+name = "rowpilot-api"
+main = "worker.js"
+compatibility_date = "2026-06-21"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rowpilot-prod"
+database_id = "355cb1b4-a9ec-404a-9bb3-db0237bb579b"

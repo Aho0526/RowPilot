@@ -812,11 +812,23 @@ struct ThemeButtonStyle: ButtonStyle {
     }
 }
 
+// MARK: - 承認結果の一時状態
+private enum ApprovalResult {
+    case none
+    case approved(teamName: String)
+    case rejected(teamName: String)
+}
+
 // MARK: - Join Team Module (Free & Pro Users)
 struct JoinTeamModule: View {
     @StateObject private var teamViewModel = CloudflareTeamViewModel()
     @State private var showingTeamJoinInput = false
     @State private var showingPendingAlert = false
+    @State private var pollingTask: Task<Void, Never>? = nil
+    /// 承認/拒否の一度きり通知状態
+    @State private var approvalResult: ApprovalResult = .none
+    /// ポーリング前に「pending」だったかを記録
+    @State private var wasPollingPending = false
 
     var body: some View {
         RPModuleCard(
@@ -824,73 +836,191 @@ struct JoinTeamModule: View {
             icon: "person.3.fill",
             accentColor: .green
         ) {
-            if let team = teamViewModel.myTeam {
-                if teamViewModel.myRole == "pending" {
-                    Button(action: { showingPendingAlert = true }) {
-                        HStack(spacing: 14) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.orange.opacity(0.15))
-                                    .frame(width: 44, height: 44)
-                                Image(systemName: "clock.badge.exclamationmark")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.orange)
-                            }
+            switch approvalResult {
 
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("承認待ち".localized)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundColor(Theme.textMain)
-                                HStack(spacing: 4) {
-                                    Text("\(team.name)への参加を申請中")
-                                        .font(.caption)
-                                        .foregroundColor(.orange)
-                                }
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
+            // ────── 承認通知（一度きり）──────
+            case .approved(let teamName):
+                Button(action: { approvalResult = .none }) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.green.opacity(0.15))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "clock.badge.checkmark")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(.green)
+                                .symbolEffect(.bounce, options: .nonRepeating)
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("参加が承認されました！")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.green)
+                            Text("\(teamName)のメンバーになりました")
+                                .font(.caption)
                                 .foregroundColor(Theme.textSecondary)
                         }
-                        .padding(14)
-                        .background(Color.orange.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.orange.opacity(0.25), lineWidth: 1)
-                        )
+                        Spacer()
+                        Text("タップして続ける")
+                            .font(.caption2)
+                            .foregroundColor(Theme.textSecondary)
                     }
-                    .buttonStyle(.plain)
-                    .alert("承認待ち", isPresented: $showingPendingAlert) {
-                        Button("OK", role: .cancel) {}
-                    } message: {
-                        Text("\(team.name)への参加を申請中です。顧問の承認をお待ちください。")
+                    .padding(14)
+                    .background(Color.green.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.green.opacity(0.35), lineWidth: 1.5)
+                    )
+                }
+                .buttonStyle(.plain)
+
+            // ────── 拒否通知（一度きり）──────
+            case .rejected(let teamName):
+                Button(action: { approvalResult = .none }) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.red.opacity(0.15))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "clock.badge.xmark")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(.red)
+                                .symbolEffect(.bounce, options: .nonRepeating)
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("参加が拒否されました")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.red)
+                            Text("\(teamName)への申請は却下されました")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                        Spacer()
+                        Text("タップして戻る")
+                            .font(.caption2)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .padding(14)
+                    .background(Color.red.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.red.opacity(0.25), lineWidth: 1.5)
+                    )
+                }
+                .buttonStyle(.plain)
+
+            // ────── 通常状態 ──────
+            case .none:
+                if let team = teamViewModel.myTeam {
+                    if teamViewModel.myRole == "pending" {
+                        // 承認待ち状態 - グレーの clock.fill、他の申請はブロック
+                        Button(action: { showingPendingAlert = true }) {
+                            HStack(spacing: 14) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.15))
+                                        .frame(width: 44, height: 44)
+                                    Image(systemName: "clock.fill")
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundColor(Color.gray.opacity(0.7))
+                                }
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("結果を待機中")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(Theme.textMain)
+                                    Text("\(team.name)への参加を申請中…")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.textSecondary)
+                                }
+                                Spacer()
+                                Image(systemName: "ellipsis")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Theme.textSecondary.opacity(0.5))
+                            }
+                            .padding(14)
+                            .background(Color.gray.opacity(0.06))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .alert("承認待ち", isPresented: $showingPendingAlert) {
+                            Button("OK", role: .cancel) {}
+                        } message: {
+                            Text("\(team.name)への参加を申請中です。顧問の承認が出るまでお待ちください。承認または拒否されると状態が変わります。")
+                        }
+                    } else {
+                        // 承認済み通常表示 - person.3.fill + チームを見る
+                        NavigationLink(destination: CloudflareTeamListView()) {
+                            HStack(spacing: 14) {
+                                ZStack {
+                                    Circle()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [.green, .cyan],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .frame(width: 44, height: 44)
+                                    Image(systemName: "person.3.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.white)
+                                }
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("チームを見る".localized)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(Theme.textMain)
+                                    Text(team.name)
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            .padding(14)
+                            .background(Color.green.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Color.green.opacity(0.25), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                 } else {
-                    NavigationLink(destination: CloudflareTeamListView()) {
+                    // 未申請 - 招待コード入力ボタン
+                    Button(action: { showingTeamJoinInput = true }) {
                         HStack(spacing: 14) {
                             ZStack {
                                 Circle()
-                                    .fill(Color.green.opacity(0.15))
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [.green, .cyan],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
                                     .frame(width: 44, height: 44)
-                                Image(systemName: "checkmark.circle.fill")
+                                Image(systemName: "person.3.fill")
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.green)
+                                    .foregroundColor(.white)
                             }
-
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("チームを見る".localized)
+                                Text("チームに参加する".localized)
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundColor(Theme.textMain)
-                                Text(team.name)
+                                Text("顧問から共有された招待コードを入力してチームに参加します。".localized)
                                     .font(.caption)
-                                    .foregroundColor(.green)
+                                    .foregroundColor(Theme.textSecondary)
+                                    .lineLimit(2)
                             }
-
                             Spacer()
-
                             Image(systemName: "chevron.right")
                                 .font(.caption.weight(.bold))
                                 .foregroundColor(Theme.textSecondary)
@@ -904,55 +1034,83 @@ struct JoinTeamModule: View {
                         )
                     }
                     .buttonStyle(.plain)
-                }
-            } else {
-                Button(action: { showingTeamJoinInput = true }) {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [.green, .cyan],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 44, height: 44)
-                            Image(systemName: "person.3.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
-                        }
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("チームに参加する".localized)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundColor(Theme.textMain)
-                            Text("顧問から共有された招待コードを入力してチームに参加します。".localized)
-                                .font(.caption)
-                                .foregroundColor(Theme.textSecondary)
-                                .lineLimit(2)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(Theme.textSecondary)
+                    .sheet(isPresented: $showingTeamJoinInput) {
+                        TeamInviteCodeInputView()
                     }
-                    .padding(14)
-                    .background(Color.green.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.green.opacity(0.25), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .sheet(isPresented: $showingTeamJoinInput) {
-                    TeamInviteCodeInputView()
                 }
             }
         }
+        .task {
+            await teamViewModel.fetchMyTeam()
+            if teamViewModel.myRole == "pending" {
+                wasPollingPending = true
+            }
+            startPollingIfNeeded()
+        }
+        .onChange(of: showingTeamJoinInput) { _, isShowing in
+            if !isShowing {
+                Task {
+                    await teamViewModel.fetchMyTeam()
+                    if teamViewModel.myRole == "pending" {
+                        wasPollingPending = true
+                    }
+                    startPollingIfNeeded()
+                }
+            }
+        }
+        .onChange(of: teamViewModel.myRole) { oldRole, newRole in
+            // pending から変化した場合のみ通知を表示
+            if (oldRole == "pending" || wasPollingPending) && newRole != "pending" {
+                wasPollingPending = false
+                stopPolling()
+                if let team = teamViewModel.myTeam {
+                    // nil でないなら承認済み
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                        approvalResult = .approved(teamName: team.name)
+                    }
+                }
+                // myTeam が nil になるケースは onChange(of: teamViewModel.myTeam) で処理
+            } else if newRole == "pending" {
+                wasPollingPending = true
+                startPollingIfNeeded()
+            }
+        }
+        .onChange(of: teamViewModel.myTeam) { oldTeam, newTeam in
+            // pending 中に myTeam が nil になる = 拒否 or 追放
+            if wasPollingPending && newTeam == nil {
+                wasPollingPending = false
+                stopPolling()
+                let name = oldTeam?.name ?? "チーム"
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                    approvalResult = .rejected(teamName: name)
+                }
+            }
+        }
+        .onDisappear {
+            stopPolling()
+        }
+    }
+
+    /// 承認待ち中のみポーリングを開始
+    private func startPollingIfNeeded() {
+        guard teamViewModel.myRole == "pending" else { return }
+        guard pollingTask == nil else { return }
+        pollingTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5秒ごと
+                if Task.isCancelled { break }
+                await teamViewModel.fetchMyTeam()
+                // 承認済み or チームなし（拒否）になったらポーリング停止
+                if teamViewModel.myRole != "pending" {
+                    break
+                }
+            }
+        }
+    }
+
+    private func stopPolling() {
+        pollingTask?.cancel()
+        pollingTask = nil
     }
 }
 

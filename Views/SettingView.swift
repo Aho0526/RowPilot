@@ -12,7 +12,6 @@ struct SettingView: View {
     @State private var showingTargetEditAlert = false
     @State private var targetDistanceInput = ""
     @State private var showingInviteCodeInput = false
-    @State private var showingTeamCodeInput = false
     // CloudKitTeamManager依存を削除（Cloudflare移行中）
     // @ObservedObject private var ckTeam = CloudKitTeamManager.shared
     @State private var showingICloudDeleteAlert = false
@@ -92,9 +91,7 @@ struct SettingView: View {
             .sheet(isPresented: $showingInviteCodeInput) {
                 InviteCodeInputView()
             }
-            .sheet(isPresented: $showingTeamCodeInput) {
-                TeamInviteCodeInputView()
-            }
+
             .alert(localizationManager.language == .japanese ? "プロフィール保存" : "Profile Save", isPresented: $showingProfileSaveResult) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -128,14 +125,7 @@ struct SettingView: View {
                 stopApprovalPolling()
             }
         }
-        .onChange(of: showingTeamCodeInput) { _, newValue in
-            if !newValue {
-                Task {
-                    await teamViewModel.fetchMyTeam()
-                    checkTeamApprovalStatus()
-                }
-            }
-        }
+
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task {
@@ -633,8 +623,8 @@ struct SettingView: View {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("Test Flight v1.0(Build 15)")
-                Text("Build from June 19")
+                Text("Test Flight v1.0(Build 18)")
+                Text("Build from June 21")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

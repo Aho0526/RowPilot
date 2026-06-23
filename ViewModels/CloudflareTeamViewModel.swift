@@ -120,8 +120,8 @@ class CloudflareTeamViewModel: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
-                let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
-                errorMessage = "Delete Error \(httpResponse.statusCode): \(errStr)"
+                let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
+                errorMessage = "Delete Error (\(httpResponse.statusCode)): \(errStr)"
                 isLoading = false
                 return
             }
@@ -160,7 +160,7 @@ class CloudflareTeamViewModel: ObservableObject {
                 isLoading = false
                 return true
             } else {
-                let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
+                let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
                 errorMessage = "Update Team Name Error: \(errStr)"
                 isLoading = false
                 return false
@@ -219,7 +219,8 @@ class CloudflareTeamViewModel: ObservableObject {
             print("===========================")
             
             if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
-                errorMessage = "HTTP Error: \(httpResponse.statusCode)\n\(responseString)"
+                let errStr = cleanErrorMessage(from: data, fallback: responseString)
+                errorMessage = "HTTP Error: \(httpResponse.statusCode)\n\(errStr)"
                 isLoading = false
                 return
             }
@@ -296,7 +297,8 @@ class CloudflareTeamViewModel: ObservableObject {
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 return true
             } else {
-                self.errorMessage = "Create User Error: \(responseString)"
+                let errStr = cleanErrorMessage(from: data, fallback: responseString)
+                self.errorMessage = "Create User Error: \(errStr)"
                 return false
             }
         } catch {
@@ -333,7 +335,7 @@ class CloudflareTeamViewModel: ObservableObject {
                 }
                 return true
             } else {
-                let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
+                let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
                 self.errorMessage = "Join Team Error: \(errStr)"
                 return false
             }
@@ -368,7 +370,7 @@ class CloudflareTeamViewModel: ObservableObject {
                 await fetchMembers(teamID: teamID)
                 return true
             } else {
-                let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
+                let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
                 self.errorMessage = "Delete Member Error: \(errStr)"
                 return false
             }
@@ -400,7 +402,7 @@ class CloudflareTeamViewModel: ObservableObject {
                 await fetchMembers(teamID: teamID)
                 return true
             } else {
-                let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
+                let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
                 self.errorMessage = "Update Role Error: \(errStr)"
                 return false
             }
@@ -448,7 +450,7 @@ class CloudflareTeamViewModel: ObservableObject {
                 print("▶ saveWorkout Success")
                 return true
             } else {
-                let errStr = String(data: data, encoding: .utf8) ?? "Unknown"
+                let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
                 self.errorMessage = "Save Workout Error: \(errStr)"
                 print("▶ saveWorkout Error: \(errStr)")
                 return false
@@ -458,5 +460,18 @@ class CloudflareTeamViewModel: ObservableObject {
             print("▶ saveWorkout Error: \(error)")
             return false
         }
+    }
+    
+    private func cleanErrorMessage(from data: Data, fallback: String) -> String {
+        guard let errStr = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return fallback
+        }
+        if errStr.lowercased().contains("<!doctype html") || errStr.lowercased().contains("<html") {
+            return "不明なエラーが発生しました。しばらく経ってから再度お試しください。"
+        }
+        if errStr.count > 300 {
+            return "不明なエラーが発生しました。(エラーコードまたはメッセージが長すぎます)"
+        }
+        return errStr
     }
 }

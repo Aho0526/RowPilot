@@ -67,7 +67,20 @@ struct CloudflareTeamListView: View {
                             }
                             
                             Button(action: { showMembersSheet = true }) {
-                                Image(systemName: "person.2.fill").foregroundColor(Theme.secondaryAccent)
+                                ZStack(alignment: .topTrailing) {
+                                    Image(systemName: "person.2.fill").foregroundColor(Theme.secondaryAccent)
+                                    let pendingCount = viewModel.members.filter { $0.role == "pending" }.count
+                                    if pendingCount > 0 {
+                                        Text("\(pendingCount)")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(Color.red)
+                                            .clipShape(Capsule())
+                                            .offset(x: 8, y: -6)
+                                    }
+                                }
                             }
                         }
                         Button(action: { Task { await viewModel.refreshMyTeamStatus() } }) {
@@ -138,8 +151,11 @@ struct CloudflareTeamListView: View {
                         Theme.background.ignoresSafeArea()
                         ScrollView {
                             if let team = viewModel.myTeam {
-                                activeMembersList(team: team)
-                                    .padding()
+                                VStack(spacing: 20) {
+                                    pendingSection(team: team)
+                                    activeMembersList(team: team)
+                                }
+                                .padding()
                             }
                         }
                     }
@@ -448,7 +464,6 @@ struct CloudflareTeamListView: View {
     private func myTeamDashboard(team: Team) -> some View {
         VStack(spacing: 24) {
             teamSummaryCard(team: team)
-            pendingSection(team: team)
             recordFeedSection
             if viewModel.myRole == "owner" {
                 disbandButton(team: team)
@@ -757,21 +772,106 @@ struct CloudflareTeamListView: View {
     // MARK: - Record Feed
     
     private var recordFeedSection: some View {
-        Button(action: { showFullRecordsList = true }) {
+        VStack(alignment: .leading, spacing: 12) {
+            // ヘッダー
             HStack {
                 Image(systemName: "list.clipboard.fill").foregroundColor(Theme.accent)
-                Text("トレーニング記録").font(.headline).foregroundColor(.white)
+                Text("トレーニング記録")
+                    .font(.headline).foregroundColor(.white)
                 Spacer()
-                Image(systemName: "chevron.right").font(.subheadline).foregroundColor(.white.opacity(0.4))
+                if viewModel.teamWorkouts.count > 20 {
+                    NavigationLink(destination:
+                        ZStack {
+                            Theme.background.ignoresSafeArea()
+                            TeamWorkoutRecordListView(workouts: viewModel.teamWorkouts)
+                        }
+                        .navigationTitle("すべての記録")
+                        .navigationBarTitleDisplayMode(.inline)
+                    ) {
+                        HStack(spacing: 4) {
+                            Text("すべて見る")
+                                .font(.caption).foregroundColor(Theme.accent)
+                            Image(systemName: "chevron.right")
+                                .font(.caption2).foregroundColor(Theme.accent)
+                        }
+                    }
+                }
             }
-            .padding()
-            .glassCardStyle(glowColor: Theme.accent, opacity: 0.05, cornerRadius: 16)
-        }
-        .fullScreenCover(isPresented: $showFullRecordsList) {
-            NavigationStack {
-                TeamWorkoutRecordListView(workouts: viewModel.teamWorkouts)
+
+            // 最新20件を展開表示
+            if viewModel.teamWorkouts.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 36))
+                        .foregroundColor(.white.opacity(0.2))
+                    Text("まだトレーニング記録がありません")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+            } else {
+                let recentWorkouts = Array(viewModel.teamWorkouts.prefix(20))
+                VStack(spacing: 0) {
+                    ForEach(recentWorkouts) { record in
+                        NavigationLink(destination: TeamWorkoutRecordDetailView(record: record)) {
+                            inlineWorkoutRow(record: record)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        if record.id != recentWorkouts.last?.id {
+                            Divider().background(Color.white.opacity(0.08)).padding(.horizontal, 12)
+                        }
+                    }
+                }
+                .background(Color.white.opacity(0.03))
+                .cornerRadius(14)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                )
             }
         }
+        .padding()
+        .glassCardStyle(glowColor: Theme.accent, opacity: 0.06, cornerRadius: 20)
+    }
+
+    private func inlineWorkoutRow(record: CloudflareWorkoutRecord) -> some View {
+        HStack(spacing: 12) {
+            // アバター（選手名頭文字）
+            ZStack {
+                Circle()
+                    .fill(Theme.accent.opacity(0.12))
+                    .frame(width: 38, height: 38)
+                Text(String((record.athlete_name ?? "?").prefix(1)))
+                    .font(.subheadline).fontWeight(.bold)
+                    .foregroundColor(Theme.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(record.athlete_name ?? "不明")
+                        .font(.subheadline).fontWeight(.semibold).foregroundColor(.white)
+                    Spacer()
+                    if let date = record.recordedDate {
+                        Text(date, style: .date)
+                            .font(.caption2).foregroundColor(.white.opacity(0.4))
+                    }
+                }
+                HStack(spacing: 10) {
+                    Label(record.formattedDistance, systemImage: "ruler")
+                    Label(record.formattedDurationShort, systemImage: "clock")
+                    Label(record.formattedSplit, systemImage: "speedometer")
+                }
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.55))
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.3))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
     
     // MARK: - Helpers
