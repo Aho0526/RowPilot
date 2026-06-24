@@ -105,7 +105,7 @@ Commits the list to the PM5 screen.
 - **Inter-frame Gap**: While not strictly required by Bluetooth, a 20-50ms gap between append frames improves reliability on older PM5 hardware.
 <br>
 
-## Confirmed - June 20
+## Confirmed　 7.1 - June 20
 
 Transmission Method Overview:
 
@@ -140,4 +140,4 @@ If transmission of any of the additional frames fails, you must use the TERMINAT
 
 <hr>Version: 1.1<br>
 Author: Kaito Nakahira / Antigravity AI<br>
-Date: 2026-06-20
+Date: 2026-06-24
