@@ -1175,4 +1175,4 @@ class CloudKitTeamManager: ObservableObject {
         }
     }
 }
-#endif // CloudKit依存 - Cloudflare移行中のため無効化
+#endif // false
