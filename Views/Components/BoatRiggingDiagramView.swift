@@ -60,6 +60,7 @@ struct BoatRiggingDiagramView: View {
     let oarGripDiameterPort: Double
     let oarGripDiameterStarboard: Double
     let oarType: OarType
+    let riggerType: String  // "wing" or "straight"
     let selectedField: BoatRiggingField?
     let activeSide: RiggingSide
     @Binding var seatPosition: Double
@@ -98,53 +99,81 @@ struct BoatRiggingDiagramView: View {
     
     @AppStorage("showAllRiggingValuesWhenIdle") private var showAllRiggingValuesWhenIdle: Bool = true
     @AppStorage("footstretchMeasurementMethod") private var footstretchMeasurementMethod: String = "fromHeel"
+    @AppStorage("riggerDebugOverlay") private var riggerDebugOverlay: Bool = false
+    
+    // リガー位置調整値 (ユーザーの最終調整値に基づき、デフォルト値を固定化 - AppStorageで永続)
+    @AppStorage("riggerPinYOffset_v4") private var riggerPinYOffset: Double = 13.3      // top-view ピンYオフセット(pt)
+    @AppStorage("riggerBowOffset_v4") private var riggerBowOffset: Double = 77.7        // ボウ側アンカー（ピンからの相対）
+    @AppStorage("riggerStrokeOffset_v4") private var riggerStrokeOffset: Double = -48.3 // ストローク側アンカー（ピンからの相対）
+    @AppStorage("riggerPinZOffset") private var riggerPinZOffset: Double = 0.0      // 3DピンZオフセット
+    @AppStorage("riggerXScaleFactor_v2") private var riggerXScaleFactor: Double = 0.78  // ピン近づき度 (0.4 - 1.2)
+    
+    // 調整モード状態
+    @State private var isRiggerAdjustMode: Bool = false
+    @State private var adjustTarget: AdjustTarget = .pin  // どの点を操作中か
+    @State private var dragStartPinYOffset: Double = 13.3
+    @State private var dragStartBowOffset: Double = 77.7
+    @State private var dragStartStrokeOffset: Double = -48.3
+    @State private var dragStartXScale: Double = 0.78
+    
+    enum AdjustTarget { case pin, bow, stroke }
     
     var body: some View {
         VStack(spacing: 14) {
             // View Selector Tab (Futuristic Glass Capsule Style)
-            HStack(spacing: 4) {
-                ForEach(0..<3) { tabIndex in
-                    let isSelected = currentTab == tabIndex
-                    let tabTitle: String = {
-                        switch tabIndex {
-                        case 0: return "Top View".localized
-                        case 1: return "Diagonal View".localized
-                        default: return "Side View".localized
-                        }
-                    }()
-                    
-                    Button(action: {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            currentTab = tabIndex
-                        }
-                    }) {
-                        Text(tabTitle)
-                            .font(.caption2)
-                            .fontWeight(isSelected ? .bold : .semibold)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                ZStack {
-                                    if isSelected {
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(Theme.primaryGradient)
-                                            .shadow(color: Theme.accent.opacity(0.4), radius: 4, x: 0, y: 0)
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    ForEach(0..<3) { tabIndex in
+                        let isSelected = currentTab == tabIndex
+                        let tabTitle: String = {
+                            switch tabIndex {
+                            case 0: return "Top View".localized
+                            case 1: return "Diagonal View".localized
+                            default: return "Side View".localized
+                            }
+                        }()
+                        
+                        Button(action: {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                currentTab = tabIndex
+                            }
+                        }) {
+                            Text(tabTitle)
+                                .font(.caption2)
+                                .fontWeight(isSelected ? .bold : .semibold)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity)
+                                .background(
+                                    ZStack {
+                                        if isSelected {
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(Theme.primaryGradient)
+                                                .shadow(color: Theme.accent.opacity(0.4), radius: 4, x: 0, y: 0)
+                                        }
                                     }
-                                }
-                            )
-                            .foregroundColor(isSelected ? .black : Theme.textSecondary)
-                            .cornerRadius(8)
+                                )
+                                .foregroundColor(isSelected ? .black : Theme.textSecondary)
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .buttonStyle(PlainButtonStyle())
                 }
+                .padding(4)
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                
+                // デバッグトグルボタン
+                Button(action: { riggerDebugOverlay.toggle() }) {
+                    Image(systemName: "ant.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(riggerDebugOverlay ? .red : Theme.textSecondary.opacity(0.5))
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .padding(4)
-            .background(Color.white.opacity(0.04))
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
             .padding(.top, 4)
             
             // Diagram Area
@@ -188,12 +217,14 @@ struct BoatRiggingDiagramView: View {
             let h = geo.size.height
             
             let centerlineX = w * 0.5
-            let pinY = h * 0.42
+            let pinY = h * 0.42               // 固定基準（シート・シューズの基準点）
+            let riggerPinY = pinY + CGFloat(riggerPinYOffset) // リガー描画専用のY座標
             let scale: CGFloat = 1.3
+            let scaleX: CGFloat = scale * CGFloat(riggerXScaleFactor) // ピンを艇体に近づけるX軸のスケール（ユーザー調整可能）
             
             let isScull = oarType == .scull
             let halfSpanVal = isScull ? (span / 2.0) : span
-            let halfSpanPts = CGFloat(halfSpanVal) * scale
+            let halfSpanPts = CGFloat(halfSpanVal) * scaleX
             
             let pinRightX = centerlineX + halfSpanPts
             let pinLeftX = centerlineX - halfSpanPts
@@ -280,64 +311,298 @@ struct BoatRiggingDiagramView: View {
                 .position(x: centerlineX, y: shoeDrawY)
                 .shadow(color: selectedField == .footplateAngle ? Theme.accent.opacity(0.3) : Color.clear, radius: 4)
                 
-                // Riggers (Bow-Mounted Wing Rigger)
-                let thinStayAnchorY = shoeDrawY - shoeLen / 2 - 5 // Thin stay near tip of shoes (Stroke side)
-                let thickWingAnchorY = pinY + 20 // Thick wing anchored towards seat (Bow side)
+                // Riggers (Top View)
+                let riggerBowAnchorY = riggerPinY + CGFloat(riggerBowOffset)
+                let riggerStrokeAnchorY = riggerPinY + CGFloat(riggerStrokeOffset)
                 
                 let wingColor = selectedField == .span ? Theme.accent : Color(hex: "D0D0D0")
-                let stayColor = selectedField == .span ? Theme.accent : Color.white.opacity(0.35)
+                let stayColor = selectedField == .span ? Theme.accent : Color.white.opacity(0.4)
+                let isWing = riggerType == "wing"
                 
                 if isScull {
-                    // Thin Front Stays
-                    Path { path in
-                        path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: thinStayAnchorY))
-                        path.addLine(to: CGPoint(x: pinLeftX, y: pinY))
+                    if isWing {
+                        // ウィングリガー: ピンから船体ボウ側に山型に捧るアーム + ストローク側ブレース
+                        // ストローク側ブレース (細い線)
+                        Path { path in
+                            path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: riggerStrokeAnchorY))
+                            path.addLine(to: CGPoint(x: pinLeftX, y: pinY))
+                            path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerStrokeAnchorY))
+                            path.addLine(to: CGPoint(x: pinRightX, y: pinY))
+                        }
+                        .stroke(stayColor, lineWidth: 1.8)
                         
-                        path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: thinStayAnchorY))
-                        path.addLine(to: CGPoint(x: pinRightX, y: pinY))
+                        // メインアーム (太い線 - ピンからボウ側ガンネルへ)
+                        Path { path in
+                            path.move(to: CGPoint(x: pinLeftX, y: pinY))
+                            path.addQuadCurve(
+                                to: CGPoint(x: centerlineX - hullHalfWidth, y: riggerBowAnchorY),
+                                control: CGPoint(x: pinLeftX + 25, y: riggerBowAnchorY)
+                            )
+                            path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerBowAnchorY))
+                            path.addQuadCurve(
+                                to: CGPoint(x: pinRightX, y: pinY),
+                                control: CGPoint(x: pinRightX - 25, y: riggerBowAnchorY)
+                            )
+                        }
+                        .stroke(wingColor, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
+                    } else {
+                        // ストレートリガー: V字型ステー形状（ピンから前後2本のアーム）
+                        Path { path in
+                            // 左側
+                            path.move(to: CGPoint(x: pinLeftX, y: pinY))
+                            path.addLine(to: CGPoint(x: centerlineX - hullHalfWidth, y: riggerStrokeAnchorY))
+                            path.move(to: CGPoint(x: pinLeftX, y: pinY))
+                            path.addLine(to: CGPoint(x: centerlineX - hullHalfWidth, y: riggerBowAnchorY))
+                            // 右側
+                            path.move(to: CGPoint(x: pinRightX, y: pinY))
+                            path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerStrokeAnchorY))
+                            path.move(to: CGPoint(x: pinRightX, y: pinY))
+                            path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerBowAnchorY))
+                        }
+                        .stroke(wingColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
                     }
-                    .stroke(stayColor, lineWidth: 2)
-                    
-                    // Main Thick Wing Tube
-                    Path { path in
-                        path.move(to: CGPoint(x: pinLeftX, y: pinY))
-                        path.addQuadCurve(to: CGPoint(x: centerlineX - hullHalfWidth, y: thickWingAnchorY), control: CGPoint(x: pinLeftX + 30, y: thickWingAnchorY))
-                        path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: thickWingAnchorY))
-                        path.addQuadCurve(to: CGPoint(x: pinRightX, y: pinY), control: CGPoint(x: pinRightX - 30, y: thickWingAnchorY))
-                    }
-                    .stroke(wingColor, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
-                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
                 } else {
-                    // Sweep Right Rigger
-                    Path { path in
-                        path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: thinStayAnchorY))
-                        path.addLine(to: CGPoint(x: pinRightX, y: pinY))
+                    // スウィープ: 右側のみ
+                    if isWing {
+                        Path { path in
+                            path.move(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerStrokeAnchorY))
+                            path.addLine(to: CGPoint(x: pinRightX, y: pinY))
+                        }
+                        .stroke(stayColor, lineWidth: 1.8)
+                        
+                        Path { path in
+                            path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: riggerBowAnchorY))
+                            path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerBowAnchorY))
+                            path.addQuadCurve(
+                                to: CGPoint(x: pinRightX, y: pinY),
+                                control: CGPoint(x: pinRightX - 25, y: riggerBowAnchorY)
+                            )
+                        }
+                        .stroke(wingColor, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
+                    } else {
+                        // スウィープ + ストレート: V字型ステー
+                        Path { path in
+                            path.move(to: CGPoint(x: pinRightX, y: pinY))
+                            path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerStrokeAnchorY))
+                            path.move(to: CGPoint(x: pinRightX, y: pinY))
+                            path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: riggerBowAnchorY))
+                        }
+                        .stroke(wingColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
                     }
-                    .stroke(stayColor, lineWidth: 2)
-                    
-                    Path { path in
-                        path.move(to: CGPoint(x: centerlineX - hullHalfWidth, y: thickWingAnchorY))
-                        path.addLine(to: CGPoint(x: centerlineX + hullHalfWidth, y: thickWingAnchorY))
-                        path.addQuadCurve(to: CGPoint(x: pinRightX, y: pinY), control: CGPoint(x: pinRightX - 30, y: thickWingAnchorY))
-                    }
-                    .stroke(wingColor, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
-
-                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
                 }
                 
-                // Pins
+                // MARK: - デバッグオーバーレイ (Top View)
+                if riggerDebugOverlay {
+                    let debugLines: [(CGFloat, String, Color)] = [
+                        (riggerPinY,          "pinYOfs=\(String(format:"%.1f",riggerPinYOffset))",  Color.yellow),
+                        (riggerBowAnchorY,    "bowOfs=\(String(format:"%.1f",riggerBowOffset))",   Color.cyan),
+                        (riggerStrokeAnchorY, "strkOfs=\(String(format:"%.1f",riggerStrokeOffset))", Color.orange),
+                        (feetY,               "feetY=\(String(format:"%.0f",feetY))",             Color.green),
+                        (seatY,               "seatY=\(String(format:"%.0f",seatY))",             Color.purple),
+                    ]
+                    ForEach(Array(debugLines.enumerated()), id: \.offset) { idx, item in
+                        let (yVal, label, col) = item
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: yVal))
+                            path.addLine(to: CGPoint(x: w, y: yVal))
+                        }
+                        .stroke(col.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        Text(label)
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundColor(col)
+                            .padding(.horizontal, 3)
+                            .background(Color.black.opacity(0.7).cornerRadius(3))
+                            .position(x: 55, y: yVal - 7)
+                    }
+                    Text("h=\(String(format:"%.0f",h)) riggerPinY/h=\(String(format:"%.2f",riggerPinY/h)) xScale=\(String(format:"%.2f",riggerXScaleFactor))")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 4)
+                        .background(Color.black.opacity(0.8).cornerRadius(3))
+                        .position(x: w * 0.5, y: h - 8)
+                }
+                
+                // MARK: - リガー調整モード UI
+                if isRiggerAdjustMode {
+                    // 調整モード指示バナー
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.and.down")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(LocalizationManager.shared.language == .japanese ? "リガー調整モード" : "Rigger Adjust")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.yellow.cornerRadius(6))
+                    .position(x: w * 0.5, y: 14)
+                    
+                    // リセットボタン
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            riggerPinYOffset = 13.3
+                            riggerBowOffset = 77.7
+                            riggerStrokeOffset = -48.3
+                            riggerXScaleFactor = 0.78
+                        }
+                    }) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(5)
+                            .background(Color.red.opacity(0.8).cornerRadius(5))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .position(x: w - 22, y: 14)
+                    
+                    // 完了ボタン
+                    Button(action: { withAnimation(.spring()) { isRiggerAdjustMode = false } }) {
+                        Text(LocalizationManager.shared.language == .japanese ? "完了" : "Done")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Theme.accent.cornerRadius(6))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .position(x: w - 22, y: 34)
+                    
+                    // ピン操作ハンドル (大きな黄色円)
+                    Circle()
+                        .fill(Color.yellow.opacity(0.35))
+                        .frame(width: 28, height: 28)
+                        .overlay(Circle().stroke(Color.yellow, lineWidth: 2))
+                        .overlay(
+                            Image(systemName: "arrow.up.and.down")
+                                .font(.system(size: 9, weight: .black))
+                                .foregroundColor(.yellow)
+                        )
+                        .position(x: pinRightX + 18, y: riggerPinY)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { val in
+                                    riggerPinYOffset = dragStartPinYOffset + Double(val.translation.height)
+                                }
+                                .onEnded { _ in
+                                    dragStartPinYOffset = riggerPinYOffset
+                                }
+                        )
+                        .simultaneousGesture(
+                            TapGesture().onEnded { dragStartPinYOffset = riggerPinYOffset }
+                        )
+                    
+                    // ボウ側アンカーハンドル
+                    Circle()
+                        .fill(Color.cyan.opacity(0.4))
+                        .frame(width: 22, height: 22)
+                        .overlay(Circle().stroke(Color.cyan, lineWidth: 1.5))
+                        .overlay(
+                            Image(systemName: "arrow.up.and.down")
+                                .font(.system(size: 8, weight: .black))
+                                .foregroundColor(.cyan)
+                        )
+                        .position(x: centerlineX + hullHalfWidth + 18, y: riggerBowAnchorY)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { val in
+                                    riggerBowOffset = dragStartBowOffset + Double(val.translation.height)
+                                }
+                                .onEnded { _ in
+                                    dragStartBowOffset = riggerBowOffset
+                                }
+                        )
+                    
+                    // ストローク側アンカーハンドル
+                    Circle()
+                        .fill(Color.orange.opacity(0.4))
+                        .frame(width: 22, height: 22)
+                        .overlay(Circle().stroke(Color.orange, lineWidth: 1.5))
+                        .overlay(
+                            Image(systemName: "arrow.up.and.down")
+                                .font(.system(size: 8, weight: .black))
+                                .foregroundColor(.orange)
+                        )
+                        .position(x: centerlineX + hullHalfWidth + 18, y: riggerStrokeAnchorY)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { val in
+                                    riggerStrokeOffset = dragStartStrokeOffset + Double(val.translation.height)
+                                }
+                                .onEnded { _ in
+                                    dragStartStrokeOffset = riggerStrokeOffset
+                                }
+                        )
+                    
+                    // スパン幅（左右近づき度）調整ハンドル (紫色)
+                    Circle()
+                        .fill(Color.purple.opacity(0.4))
+                        .frame(width: 22, height: 22)
+                        .overlay(Circle().stroke(Color.purple, lineWidth: 1.5))
+                        .overlay(
+                            Image(systemName: "arrow.left.and.right")
+                                .font(.system(size: 8, weight: .black))
+                                .foregroundColor(.purple)
+                        )
+                        .position(x: pinRightX, y: riggerPinY - 18)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { val in
+                                    let deltaX = Double(val.translation.width)
+                                    let divisor = Double(halfSpanVal) > 0 ? (Double(halfSpanVal) * 1.3) : 100.0
+                                    let newScale = dragStartXScale + deltaX / divisor
+                                    riggerXScaleFactor = max(0.4, min(1.3, newScale))
+                                }
+                                .onEnded { _ in
+                                    dragStartXScale = riggerXScaleFactor
+                                }
+                        )
+                        .simultaneousGesture(
+                            TapGesture().onEnded { dragStartXScale = riggerXScaleFactor }
+                        )
+                    
+                    // 操作説明ラベル
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 3) {
+                            Circle().fill(Color.yellow).frame(width: 6, height: 6)
+                            Text(LocalizationManager.shared.language == .japanese ? "ピン：上下ドラッグ" : "Pin: drag up/down")
+                        }
+                        HStack(spacing: 3) {
+                            Circle().fill(Color.cyan).frame(width: 6, height: 6)
+                            Text(LocalizationManager.shared.language == .japanese ? "ボウアーム" : "Bow arm")
+                        }
+                        HStack(spacing: 3) {
+                            Circle().fill(Color.orange).frame(width: 6, height: 6)
+                            Text(LocalizationManager.shared.language == .japanese ? "ストロークアーム" : "Stroke arm")
+                        }
+                        HStack(spacing: 3) {
+                            Circle().fill(Color.purple).frame(width: 6, height: 6)
+                            Text(LocalizationManager.shared.language == .japanese ? "左右幅：左右ドラッグ" : "Width: drag left/right")
+                        }
+                    }
+                    .font(.system(size: 7, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(5)
+                    .background(Color.black.opacity(0.75).cornerRadius(6))
+                    .position(x: 48, y: h - 31)
+                }
+                
+                // Pins (リガー位置に従って絵画)
                 Circle()
                     .fill(Color.black)
                     .frame(width: 6, height: 6)
                     .overlay(Circle().stroke(selectedField == .span || selectedField == .footstretch ? Theme.accent : Color.gray, lineWidth: 1.5))
-                    .position(x: pinRightX, y: pinY)
+                    .position(x: pinRightX, y: riggerPinY)
                 
                 if isScull {
                     Circle()
                         .fill(Color.black)
                         .frame(width: 6, height: 6)
                         .overlay(Circle().stroke(selectedField == .span || selectedField == .footstretch ? Theme.accent : Color.gray, lineWidth: 1.5))
-                        .position(x: pinLeftX, y: pinY)
+                        .position(x: pinLeftX, y: riggerPinY)
                 }
                 
                 // MARK: - Dimension Lines (Top View)
@@ -347,7 +612,7 @@ struct BoatRiggingDiagramView: View {
                         DimensionLine(
                             startX: pinLeftX,
                             endX: pinRightX,
-                            y: pinY - 18,
+                            y: riggerPinY - 18,
                             label: String(format: "Span".localized + ": %.1f cm", span),
                             isActive: isSpanActive,
                             arrowUp: true
@@ -356,7 +621,7 @@ struct BoatRiggingDiagramView: View {
                         DimensionLine(
                             startX: centerlineX,
                             endX: pinRightX,
-                            y: pinY - 18,
+                            y: riggerPinY - 18,
                             label: String(format: "Spread".localized + ": %.1f cm", span),
                             isActive: isSpanActive,
                             arrowUp: true
@@ -368,7 +633,7 @@ struct BoatRiggingDiagramView: View {
                     let isFSActive = selectedField == .footstretch
                     let fsColor = isFSActive ? Theme.accent : Color.gray.opacity(0.5)
                     
-                    // Pin-to-pin line (horizontal axis)
+                    // Pin-to-pin line (horizontal axis - 固定基準点pinYを使用)
                     Path { path in
                         path.move(to: CGPoint(x: pinLeftX, y: pinY))
                         path.addLine(to: CGPoint(x: pinRightX, y: pinY))
@@ -384,11 +649,8 @@ struct BoatRiggingDiagramView: View {
                     
                     // Vertical lines extending from shoes straight up to the pin line
                     Path { path in
-                        // Left shoe reference point
                         path.move(to: CGPoint(x: centerlineX - 8, y: feetY))
                         path.addLine(to: CGPoint(x: centerlineX - 8, y: pinY))
-                        
-                        // Right shoe reference point
                         path.move(to: CGPoint(x: centerlineX + 8, y: feetY))
                         path.addLine(to: CGPoint(x: centerlineX + 8, y: pinY))
                     }
@@ -455,6 +717,18 @@ struct BoatRiggingDiagramView: View {
                     )
                 }
             }
+            .contentShape(Rectangle())
+            .gesture(
+                LongPressGesture(minimumDuration: 0.5)
+                    .onEnded { _ in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            isRiggerAdjustMode.toggle()
+                            dragStartPinYOffset = riggerPinYOffset
+                            dragStartBowOffset = riggerBowOffset
+                            dragStartStrokeOffset = riggerStrokeOffset
+                        }
+                    }
+            )
         }
     }
     
@@ -467,10 +741,13 @@ struct BoatRiggingDiagramView: View {
             
             let isScull = oarType == .scull
             let halfSpanVal = isScull ? (span / 2.0) : span
+            let halfSpan3D = halfSpanVal * CGFloat(riggerXScaleFactor) // ピンを近づける（ユーザー調整可能）
             
             let heelsY3d = -CGFloat(max(0.0, min(25.0, footplateHeight)))
             let z3d_foot = 20.0 + CGFloat(footstretch)
-            let z3d_pin: CGFloat = 40.0
+            // TopビューのriggerPinYOffset（pt）をスケール1.3で割りで3D空間のcmに変換
+            // TopビューのY+方向（スターン側）→ 3DのZ+方向（スターン側）と同方向
+            let z3d_pin: CGFloat = 40.0 + CGFloat(riggerPinYOffset) / 1.3
             let pinHeight3dPort = CGFloat(workHeightPort)
             let pinHeight3dStarboard = CGFloat(workHeightStarboard)
             
@@ -611,7 +888,6 @@ struct BoatRiggingDiagramView: View {
             
             let cosA = cos(angleRad)
             let sinA = sin(angleRad)
-            let riggerBowAnchorZ3D = z3d_foot + 19.5 * cosA + 6.0
             
             // Helper to get Point3D on the shoe surface relative to footplate surface
             let getShoePoint = { (shoeCenterX: CGFloat, u: CGFloat, v: CGFloat, height: CGFloat) -> Point3D in
@@ -998,67 +1274,119 @@ struct BoatRiggingDiagramView: View {
                 
                 // 3D Riggers (Only shown if focused setting doesn't hide them)
                 if showRiggers {
-                    let thinStayAnchorZ3D = z3d_foot + 19.5 * cosA + 5.0 // Near tip of shoes (Stroke side)
-                    let thickWingAnchorZ3D = z3d_pin - 15.0 // Towards seat (Bow side)
-                    
+                    let isWing3D = riggerType == "wing"
                     if isScull {
-                        // Thin Front Stays
-                        Path { path in
-                            drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: -halfSpanVal, y: pinHeight3dPort, z: z3d_pin), &path)
-                            drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                        if isWing3D {
+                            // ウィングリガー: ストローク側ブレース + ボウ側メインアーム
+                            let thinStayAnchorZ3D = z3d_pin + 14.0  // ピンよりストローク側
+                            let thickWingAnchorZ3D = z3d_pin - 20.0 // ピンよりボウ側
+                            // ストローク側ブレース (細い線)
+                            Path { path in
+                                drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: -halfSpan3D, y: pinHeight3dPort, z: z3d_pin), &path)
+                                drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                            }
+                            .stroke(Color.gray.opacity(0.7), lineWidth: 1.8)
+                            
+                            // メインアーム (太い線)
+                            Path { path in
+                                drawClippedLine(Point3D(x: -halfSpan3D, y: pinHeight3dPort, z: z3d_pin), Point3D(x: -hullHalfWidthVal - 5, y: 12, z: thickWingAnchorZ3D), &path)
+                                drawClippedLine(Point3D(x: -hullHalfWidthVal - 5, y: 12, z: thickWingAnchorZ3D), Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), &path)
+                                drawClippedLine(Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                            }
+                            .stroke(LinearGradient(colors: [Color(hex: "E0E0E0"), Color(hex: "AAAAAA")], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                        } else {
+                            // ストレートリガー: V字ステー形状
+                            let thinStayZ3D = z3d_pin + 14.0
+                            let thickWingZ3D = z3d_pin - 20.0
+                            Path { path in
+                                drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thinStayZ3D), Point3D(x: -halfSpan3D, y: pinHeight3dPort, z: z3d_pin), &path)
+                                drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thickWingZ3D), Point3D(x: -halfSpan3D, y: pinHeight3dPort, z: z3d_pin), &path)
+                                drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thinStayZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                                drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thickWingZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                            }
+                            .stroke(LinearGradient(colors: [Color(hex: "E0E0E0"), Color(hex: "AAAAAA")], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                         }
-                        .stroke(Color.gray.opacity(0.7), lineWidth: 2)
-                        
-                        // Main Thick Wing Tube
-                        Path { path in
-                            // Left side
-                            drawClippedLine(Point3D(x: -halfSpanVal, y: pinHeight3dPort, z: z3d_pin), Point3D(x: -hullHalfWidthVal - 5, y: 12, z: thickWingAnchorZ3D), &path)
-                            // Cross boat
-                            drawClippedLine(Point3D(x: -hullHalfWidthVal - 5, y: 12, z: thickWingAnchorZ3D), Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), &path)
-                            // Right side
-                            drawClippedLine(Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin), &path)
-                        }
-                        .stroke(LinearGradient(colors: [Color(hex: "E0E0E0"), Color(hex: "AAAAAA")], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                     } else {
-                        // Sweep Right Rigger
-                        Path { path in
-                            drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                        if isWing3D {
+                            // スウィープ + ウィング
+                            let thinStayAnchorZ3D = z3d_pin + 14.0
+                            let thickWingAnchorZ3D = z3d_pin - 20.0
+                            Path { path in
+                                drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                            }
+                            .stroke(Color.gray.opacity(0.7), lineWidth: 1.8)
+                            
+                            Path { path in
+                                drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thickWingAnchorZ3D), Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), &path)
+                                drawClippedLine(Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                            }
+                            .stroke(LinearGradient(colors: [Color(hex: "E0E0E0"), Color(hex: "AAAAAA")], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                        } else {
+                            // スウィープ + ストレート: V字ステー形状
+                            let thinStayZ3D = z3d_pin + 14.0
+                            let thickWingZ3D = z3d_pin - 20.0
+                            Path { path in
+                                drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thinStayZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                                drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thickWingZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
+                            }
+                            .stroke(LinearGradient(colors: [Color(hex: "E0E0E0"), Color(hex: "AAAAAA")], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                         }
-                        .stroke(Color.gray.opacity(0.7), lineWidth: 2)
-                        
-                        Path { path in
-                            drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thickWingAnchorZ3D), Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), &path)
-                            drawClippedLine(Point3D(x: hullHalfWidthVal + 5, y: 12, z: thickWingAnchorZ3D), Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin), &path)
-                        }
-                        .stroke(LinearGradient(colors: [Color(hex: "E0E0E0"), Color(hex: "AAAAAA")], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                     }
                     
                     Path { path in
-                        drawClippedLine(Point3D(x: halfSpanVal, y: pinHeight3dStarboard - 4, z: z3d_pin), Point3D(x: halfSpanVal, y: pinHeight3dStarboard + 6, z: z3d_pin), &path)
+                        drawClippedLine(Point3D(x: halfSpan3D, y: pinHeight3dStarboard - 4, z: z3d_pin), Point3D(x: halfSpan3D, y: pinHeight3dStarboard + 6, z: z3d_pin), &path)
                     }
                     .stroke(Color.black, lineWidth: 2.5)
                     
                     if isScull {
                         Path { path in
-                            drawClippedLine(Point3D(x: -halfSpanVal, y: pinHeight3dPort - 4, z: z3d_pin), Point3D(x: -halfSpanVal, y: pinHeight3dPort + 6, z: z3d_pin), &path)
+                            drawClippedLine(Point3D(x: -halfSpan3D, y: pinHeight3dPort - 4, z: z3d_pin), Point3D(x: -halfSpan3D, y: pinHeight3dPort + 6, z: z3d_pin), &path)
                         }
                         .stroke(Color.black, lineWidth: 2.5)
                     }
                     
-                    if isPointVisible(Point3D(x: halfSpanVal, y: pinHeight3dStarboard, z: z3d_pin)) {
+                    if isPointVisible(Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin)) {
                         Circle()
                             .fill(Color(hex: "1A1A1A"))
                             .frame(width: 8, height: 8)
                             .overlay(Circle().stroke(Theme.accent.opacity(0.8), lineWidth: 1))
-                            .position(project(halfSpanVal, pinHeight3dStarboard, z3d_pin))
+                            .position(project(halfSpan3D, pinHeight3dStarboard, z3d_pin))
                     }
                     
-                    if isScull && isPointVisible(Point3D(x: -halfSpanVal, y: pinHeight3dPort, z: z3d_pin)) {
+                    if isScull && isPointVisible(Point3D(x: -halfSpan3D, y: pinHeight3dPort, z: z3d_pin)) {
                         Circle()
                             .fill(Color(hex: "1A1A1A"))
                             .frame(width: 8, height: 8)
                             .overlay(Circle().stroke(Theme.accent.opacity(0.8), lineWidth: 1))
-                            .position(project(-halfSpanVal, pinHeight3dPort, z3d_pin))
+                            .position(project(-halfSpan3D, pinHeight3dPort, z3d_pin))
+                    }
+                    
+                    // MARK: - デバッグオーバーレイ (3D View)
+                    if riggerDebugOverlay {
+                        let dbgWingAnchZ = z3d_pin - 20.0
+                        let dbgStayAnchZ = z3d_pin + 14.0
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("── 3D Z座標 ──")
+                                .foregroundColor(.white)
+                            Text("z3d_pin = \(String(format:"%.1f",z3d_pin))")
+                                .foregroundColor(.yellow)
+                            Text("z3d_foot = \(String(format:"%.1f",z3d_foot))")
+                                .foregroundColor(.green)
+                            Text("wing_bowAncZ = \(String(format:"%.1f",dbgWingAnchZ))")
+                                .foregroundColor(.cyan)
+                            Text("stay_strkAncZ = \(String(format:"%.1f",dbgStayAnchZ))")
+                                .foregroundColor(.orange)
+                            Text("halfSpan = \(String(format:"%.1f",halfSpanVal))")
+                                .foregroundColor(.purple)
+                            Text("halfSpan3D = \(String(format:"%.1f",halfSpan3D))")
+                                .foregroundColor(.indigo)
+                            Text("xScale = \(String(format:"%.2f",riggerXScaleFactor))")
+                                .foregroundColor(.white)
+                        }
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .padding(5)
+                        .background(Color.black.opacity(0.8).cornerRadius(6))
+                        .position(x: 62, y: 60)
                     }
                 }
                 

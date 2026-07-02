@@ -35,9 +35,11 @@ struct RiggingEditorView: View {
     @State private var boatFootplateHeight: Double
     @State private var boatSeatPosition: Double
     
-    // Blade Preset State
-    @State private var selectedBladePreset: String = "Smoothie2"
-    @State private var customBladeName: String = ""
+    // Blade Preset State (固定: Smoothie2)
+    private let selectedBladePreset: String = "Smoothie2"
+    
+    // Rigger Type
+    @State private var boatRiggerType: String = "wing" // "wing" or "straight"
     
     // Focused states
     enum Field: Hashable {
@@ -72,7 +74,6 @@ struct RiggingEditorView: View {
     @State private var boatDiagramTab: Int = 0 // 0: Top, 1: Side
     
     private var isNew: Bool
-    private let bladePresets = ["Smoothie2", "Comp", "Macon", "Other"]
     
     private var isJA: Bool {
         LocalizationManager.shared.language == .japanese
@@ -110,21 +111,6 @@ struct RiggingEditorView: View {
         
         isNew = false
         
-        // Blade Type Preset determination
-        let blade = config.oarBladeType
-        if ["smoothie2", "comp", "macon"].contains(blade.lowercased()) {
-            // Find correct casing preset
-            if blade.lowercased() == "smoothie2" {
-                _selectedBladePreset = State(initialValue: "Smoothie2")
-            } else if blade.lowercased() == "comp" {
-                _selectedBladePreset = State(initialValue: "Comp")
-            } else {
-                _selectedBladePreset = State(initialValue: "Macon")
-            }
-        } else {
-            _selectedBladePreset = State(initialValue: "Other")
-            _customBladeName = State(initialValue: blade)
-        }
     }
     
     // Initializer for creating new
@@ -168,7 +154,6 @@ struct RiggingEditorView: View {
         _boatSeatPosition = State(initialValue: 28.0)
         
         isNew = true
-        _selectedBladePreset = State(initialValue: "Smoothie2")
     }
     
     var body: some View {
@@ -238,7 +223,7 @@ struct RiggingEditorView: View {
                             OarDiagramView(
                                 totalLength: activeSide == .port ? oarTotalLengthPort : oarTotalLengthStarboard,
                                 inboard: activeSide == .port ? oarInboardPort : oarInboardStarboard,
-                                bladeType: selectedBladePreset == "Other" ? customBladeName : selectedBladePreset,
+                                bladeType: selectedBladePreset,
                                 sleevePitch: activeSide == .port ? oarSleevePitchPort : oarSleevePitchStarboard,
                                 selectedField: activeOarField
                             )
@@ -287,33 +272,9 @@ struct RiggingEditorView: View {
                                     Text("Blade Type".localized)
                                         .foregroundColor(Theme.textSecondary)
                                     Spacer()
-                                    Picker("", selection: $selectedBladePreset) {
-                                        ForEach(bladePresets, id: \.self) { preset in
-                                            Text(preset).tag(preset)
-                                        }
-                                    }
-                                    .pickerStyle(MenuPickerStyle())
-                                    .tint(Theme.accent)
-                                }
-                                
-                                if selectedBladePreset == "Other" {
-                                    HStack {
-                                        Text(isJA ? "カスタム名" : "Custom Name")
-                                            .font(.caption)
-                                            .foregroundColor(Theme.textSecondary)
-                                        Spacer()
-                                        TextField("e.g. Cleaver", text: $customBladeName)
-                                            .textFieldStyle(PlainTextFieldStyle())
-                                            .focused($focusedField, equals: .oarBladeType)
-                                            .multilineTextAlignment(.trailing)
-                                            .foregroundColor(Theme.textMain)
-                                            .frame(width: 140)
-                                            .padding(.vertical, 4)
-                                            .padding(.horizontal, 8)
-                                            .background(Color.white.opacity(0.1))
-                                            .cornerRadius(6)
-                                    }
-                                    .transition(.opacity)
+                                    Text(selectedBladePreset)
+                                        .foregroundColor(Theme.textMain.opacity(0.7))
+                                        .font(.body)
                                 }
                                 
                                 // Sleeve Pitch (Port & Starboard)
@@ -372,6 +333,7 @@ struct RiggingEditorView: View {
                                 oarGripDiameterPort: oarGripDiameterPort,
                                 oarGripDiameterStarboard: oarGripDiameterStarboard,
                                 oarType: oarType,
+                                riggerType: boatRiggerType,
                                 selectedField: activeBoatField,
                                 activeSide: activeSide,
                                 seatPosition: $boatSeatPosition,
@@ -379,6 +341,19 @@ struct RiggingEditorView: View {
                             )
                             
                             VStack(spacing: 14) {
+                                // Rigger Type
+                                HStack {
+                                    Text(isJA ? "リガータイプ" : "Rigger Type")
+                                        .foregroundColor(Theme.textSecondary)
+                                    Spacer()
+                                    Picker("", selection: $boatRiggerType) {
+                                        Text(isJA ? "ウィングリガー" : "Wing Rigger").tag("wing")
+                                        Text(isJA ? "ストレートリガー" : "Straight Rigger").tag("straight")
+                                    }
+                                    .pickerStyle(MenuPickerStyle())
+                                    .tint(Theme.accent)
+                                }
+                                
                                 HStack {
                                     Text(oarType == .scull ? "Span / Spread".localized + " (Pin-to-Pin)" : "Span / Spread".localized + " (Center-to-Pin)")
                                         .foregroundColor(Theme.textSecondary)
@@ -518,13 +493,7 @@ struct RiggingEditorView: View {
                 }
             }
         }
-        .onChange(of: selectedBladePreset) { _, newPreset in
-            if newPreset == "Other" {
-                focusedField = .oarBladeType
-            } else {
-                focusedField = nil
-            }
-        }
+
     }
     
     // MARK: - Focused fields mapping to diagram highlight fields
@@ -562,9 +531,7 @@ struct RiggingEditorView: View {
     // MARK: - Save Action
     
     private func saveSetup() {
-        let finalBlade = selectedBladePreset == "Other" 
-            ? (customBladeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Cleaver" : customBladeName)
-            : selectedBladePreset
+        let finalBlade = selectedBladePreset
             
         let finalName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty 
             ? "\(boatType.displayName) Setup" 

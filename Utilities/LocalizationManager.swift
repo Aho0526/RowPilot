@@ -247,20 +247,20 @@ class LocalizationManager: ObservableObject {
         •  時刻・経過時間
         •  端末情報（OS種別等、動作確認のため）
         取得する情報は、本アプリの機能提供に必要な範囲に限られます。
-        また、これらの情報は全て本アプリ内で処理されるため外部に送信されることはありません。
+        また、これらの情報はすべてデバイス内で安全に処理され、ユーザーの同意なしに外部に送信されることはありません。
         """, .english: """
         The App may collect the following information:
         • Location (GPS): For recording and displaying distance, speed, pace, and routes.
         • Time and elapsed time.
         • Device info (OS type, etc., for operation verification).
         Information collected is limited to what is necessary for the App's functions.
-        In addition, since all of this information is processed within this app, it is never sent to external sources.
+        In addition, since all of this information is safely processed on your device, it is never sent to external sources without user consent.
         """],
         "Term_5_Title": [.japanese: "5. 位置情報の取り扱い", .english: "5. Handling of Location Information"],
         "Term_5_Content": [.japanese: """
         本アプリは、練習距離・速度・経路の記録を目的として、位置情報（GPS）を利用します。
         位置情報の取得は、ユーザーが端末の設定において許可した場合に限り行われます。
-        取得された位置情報は、本アプリの機能提供の範囲内でのみ利用され、当方が当該情報を閲覧、収集、または第三者へ提供することはありません。
+        取得された位置情報は、本アプリの機能提供の範囲内でのみ利用され、開発者を含む第三者へ意図せず提供されることはありません。
         ユーザーは、端末の設定により、いつでも位置情報の利用を停止することができます。
         """, .english: """
         The App use Location (GPS) for recording distance, speed and route.
