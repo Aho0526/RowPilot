@@ -39,6 +39,7 @@ struct CloudflareTeamListView: View {
     
     var body: some View {
         alertsContent
+            .environmentObject(viewModel)
     }
     
     private var alertsContent: some View {
@@ -957,7 +958,7 @@ struct CloudflareTeamListView: View {
                 let recentWorkouts = Array(viewModel.teamWorkouts.prefix(20))
                 VStack(spacing: 0) {
                     ForEach(recentWorkouts) { record in
-                        NavigationLink(destination: TeamWorkoutRecordDetailView(record: record)) {
+                        NavigationLink(destination: TeamWorkoutRecordDetailView(record: record).environmentObject(viewModel)) {
                             inlineWorkoutRow(record: record)
                         }
                         .buttonStyle(PlainButtonStyle())

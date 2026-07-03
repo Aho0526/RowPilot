@@ -43,8 +43,11 @@ struct RowPilotApp: App {
                     VStack {
                         Spacer()
                         HStack(spacing: 8) {
-                            Image(systemName: message.contains("済み") ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                                .foregroundColor(message.contains("済み") ? .orange : .green)
+                            let isError = message.contains("失敗") || message.contains("エラー") || message.contains("停止") || message.contains("拒否")
+                            let isWarning = message.contains("済み")
+                            
+                            Image(systemName: isError ? "xmark.circle.fill" : (isWarning ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"))
+                                .foregroundColor(isError ? .red : (isWarning ? .orange : .green))
                             Text(message)
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
@@ -83,6 +86,11 @@ struct RowPilotApp: App {
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TeamWorkoutUploadFailed"))) { notification in
                 if let errorMsg = notification.userInfo?["error"] as? String {
                     showBanner(errorMsg)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TeamWorkoutUploadSuccess"))) { notification in
+                if let successMsg = notification.userInfo?["message"] as? String {
+                    showBanner(successMsg)
                 }
             }
             .alert("ワークアウトのインポート", isPresented: $showImportConfirmation) {

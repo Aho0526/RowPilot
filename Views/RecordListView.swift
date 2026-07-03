@@ -177,6 +177,7 @@ struct RecordDetailView: View {
     @State private var showCrewSheet = false
     @State private var currentCrewInfo: CrewInfo? = nil
     @State private var showingExpandedMap = false
+    @State private var showingDeleteConfirmation = false
     
     private var isIndoorRecord: Bool {
         if let tags = record.tags, tags.contains("Indoor") { return true }
@@ -229,6 +230,30 @@ struct RecordDetailView: View {
                     
                     // Notes section
                     notesSection
+                    
+                    Divider()
+                        .padding(.vertical, 10)
+                    
+                    // 記録を削除するボタン
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash")
+                            Text("記録を削除する".localized)
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red.opacity(0.15))
+                        .foregroundColor(.red)
+                        .cornerRadius(14)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                        )
+                    }
+                    .padding(.top, 10)
                 }
                 .padding()
             }
@@ -264,7 +289,9 @@ struct RecordDetailView: View {
                             
                             if !SettingsManager.shared.settings.autoUploadToTeam {
                                 Button {
-                                    TeamRecordUploader.shared.uploadManual(record: record)
+                                    var recordToUpload = record
+                                    recordToUpload.crewInfo = currentCrewInfo
+                                    TeamRecordUploader.shared.uploadManual(record: recordToUpload)
                                 } label: {
                                     Label("チームに共有".localized, systemImage: "person.3.fill")
                                 }
@@ -305,10 +332,22 @@ struct RecordDetailView: View {
                 onSave: { crewInfo in
                     currentCrewInfo = crewInfo
                     app.recordManager.updateCrewInfo(for: record.id, crewInfo: crewInfo)
+                    
+                    if SettingsManager.shared.settings.autoUploadToTeam {
+                        var recordToUpload = record
+                        recordToUpload.crewInfo = crewInfo
+                        TeamRecordUploader.shared.uploadManual(record: recordToUpload)
+                    }
                 },
                 onDelete: {
                     currentCrewInfo = nil
                     app.recordManager.updateCrewInfo(for: record.id, crewInfo: nil)
+                    
+                    if SettingsManager.shared.settings.autoUploadToTeam {
+                        var recordToUpload = record
+                        recordToUpload.crewInfo = nil
+                        TeamRecordUploader.shared.uploadManual(record: recordToUpload)
+                    }
                 }
             )
         }
@@ -330,6 +369,18 @@ struct RecordDetailView: View {
         }
         .sheet(isPresented: $showingShareHelp) {
             ShareHelpView()
+        }
+        .alert("記録の削除".localized, isPresented: $showingDeleteConfirmation) {
+            Button("削除".localized, role: .destructive) {
+                // D1から削除
+                TeamRecordUploader.shared.deleteFromTeam(recordID: record.id)
+                // ローカルから削除
+                app.recordManager.deleteRecord(record)
+                dismiss()
+            }
+            Button("キャンセル".localized, role: .cancel) { }
+        } message: {
+            Text("この記録を削除しますか？チームに共有された記録も削除されます。".localized)
         }
     }
     

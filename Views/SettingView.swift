@@ -416,7 +416,7 @@ struct SettingView: View {
             }
             
             // ─── チーム機能セクション ───
-            if currentPlan.hasTeamFeature {
+            if teamViewModel.myTeam != nil && teamViewModel.myRole != "pending" {
                 SettingsSection(title: "チーム管理".localized, icon: "person.3.fill") {
                     SettingsToggleRow(
                         title: "チームへ自動で記録をアップロードする",

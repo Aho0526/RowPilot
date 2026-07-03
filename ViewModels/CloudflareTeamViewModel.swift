@@ -478,6 +478,33 @@ class CloudflareTeamViewModel: ObservableObject {
             return false
         }
     }
+
+    func deleteWorkout(recordID: String, teamID: String) async -> Bool {
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/workouts/\(recordID)"
+        guard let url = URL(string: urlString) else { return false }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                print("▶ deleteWorkout Success")
+                // 再取得して一覧を更新
+                await fetchTeamWorkouts(teamID: teamID)
+                return true
+            } else {
+                let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
+                self.errorMessage = "Delete Workout Error: \(errStr)"
+                print("▶ deleteWorkout Error: \(errStr)")
+                return false
+            }
+        } catch {
+            self.errorMessage = error.localizedDescription
+            print("▶ deleteWorkout Error: \(error)")
+            return false
+        }
+    }
     
     private func cleanErrorMessage(from data: Data, fallback: String) -> String {
         guard let errStr = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) else {

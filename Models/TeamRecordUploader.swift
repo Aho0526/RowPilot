@@ -44,7 +44,7 @@ class TeamRecordUploader {
                     let workoutType = isOutdoor ? "outdoor" : "indoor"
                     
                     var crewInfoJsonString: String? = nil
-                    if SubscriptionManager.shared.currentPlan.isAtLeast(.pro), let crewInfo = record.crewInfo {
+                    if let crewInfo = record.crewInfo {
                         if let jsonData = try? JSONEncoder().encode(crewInfo) {
                             crewInfoJsonString = String(data: jsonData, encoding: .utf8)
                         }
@@ -79,14 +79,21 @@ class TeamRecordUploader {
                     let (saveData, saveResponse) = try await URLSession.shared.data(for: request)
                     if let saveHttpResponse = saveResponse as? HTTPURLResponse, (200...299).contains(saveHttpResponse.statusCode) {
                         print("TeamRecordUploader: Uploaded workout successfully to Cloudflare D1.")
+                        DispatchQueue.main.async {
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("TeamWorkoutUploadSuccess"),
+                                object: nil,
+                                userInfo: ["message": "記録が正常に共有されました"]
+                            )
+                        }
                     } else {
                         let responseString = String(data: saveData, encoding: .utf8) ?? ""
                         print("TeamRecordUploader: Failed to upload workout. Response: \(responseString)")
                         
-                        var errorMsg = "練習記録のアップロードに失敗しました。"
+                        var errorMsg = "記録の共有に失敗しました"
                         if let dict = try? JSONSerialization.jsonObject(with: saveData, options: []) as? [String: Any],
                            let serverError = dict["error"] as? String {
-                            errorMsg = serverError
+                            errorMsg = "記録の共有に失敗しました: \(serverError)"
                         }
                         
                         DispatchQueue.main.async {
@@ -100,6 +107,29 @@ class TeamRecordUploader {
                 }
             } catch {
                 print("TeamRecordUploader: Error \(error)")
+            }
+        }
+    }
+
+    // D1からワークアウトを削除する
+    func deleteFromTeam(recordID: UUID) {
+        Task {
+            let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/workouts/\(recordID.uuidString)"
+            guard let url = URL(string: urlString) else { return }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                    print("TeamRecordUploader: Deleted workout successfully from Cloudflare D1.")
+                } else {
+                    let responseString = String(data: data, encoding: .utf8) ?? ""
+                    print("TeamRecordUploader: Failed to delete workout. Response: \(responseString)")
+                }
+            } catch {
+                print("TeamRecordUploader: Error deleting workout: \(error)")
             }
         }
     }

@@ -3,6 +3,8 @@ import SwiftUI
 struct TeamWorkoutRecordDetailView: View {
     let record: CloudflareWorkoutRecord
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var teamViewModel: CloudflareTeamViewModel
+    @State private var showingDeleteConfirmation = false
     
     private var decodedCrewInfo: CrewInfo? {
         guard let jsonString = record.crew_info,
@@ -102,6 +104,29 @@ struct TeamWorkoutRecordDetailView: View {
                     }
                     .padding()
                     .glassCardStyle(glowColor: .white, opacity: 0.05, cornerRadius: 16)
+                    
+                    Divider()
+                        .padding(.vertical, 10)
+                    
+                    // チーム記録を削除するボタン
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash")
+                            Text("チームの共有記録から削除".localized)
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red.opacity(0.15))
+                        .foregroundColor(.red)
+                        .cornerRadius(14)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                        )
+                    }
                 }
                 .padding()
             }
@@ -120,6 +145,19 @@ struct TeamWorkoutRecordDetailView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
+        .alert("記録の削除".localized, isPresented: $showingDeleteConfirmation) {
+            Button("削除".localized, role: .destructive) {
+                Task {
+                    let success = await teamViewModel.deleteWorkout(recordID: record.id, teamID: record.team_id)
+                    if success {
+                        dismiss()
+                    }
+                }
+            }
+            Button("キャンセル".localized, role: .cancel) { }
+        } message: {
+            Text("この記録をチームの共有記録から削除しますか？本人のローカルの記録は削除されません。".localized)
+        }
     }
     
     private func statCard(title: String, value: String, icon: String, color: Color) -> some View {

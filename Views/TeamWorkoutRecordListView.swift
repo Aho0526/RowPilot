@@ -3,6 +3,7 @@ import SwiftUI
 struct TeamWorkoutRecordListView: View {
     let workouts: [CloudflareWorkoutRecord]
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var teamViewModel: CloudflareTeamViewModel
     
     private let dayFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -97,7 +98,7 @@ struct TeamWorkoutRecordListView: View {
                 .foregroundColor(.white)
             
             // 詳細リンク
-            NavigationLink(destination: TeamWorkoutRecordDetailView(record: record)) {
+            NavigationLink(destination: TeamWorkoutRecordDetailView(record: record).environmentObject(teamViewModel)) {
                 HStack(spacing: 2) {
                     Text("詳細")
                         .font(.caption)
