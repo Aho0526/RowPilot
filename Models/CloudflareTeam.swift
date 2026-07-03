@@ -8,4 +8,8 @@ struct Team: Codable, Identifiable, Equatable {
     let owner_id: String
     let created_at: String
     var my_role: String? // Added to support GET /users/:id/team response
+    
+    let scheduled_for_deletion_at: String?
+    let members_scheduled_for_deletion_at: String?
 }
+

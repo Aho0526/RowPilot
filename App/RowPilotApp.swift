@@ -80,6 +80,11 @@ struct RowPilotApp: App {
             .onOpenURL { url in
                 handleIncomingFile(url: url)
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TeamWorkoutUploadFailed"))) { notification in
+                if let errorMsg = notification.userInfo?["error"] as? String {
+                    showBanner(errorMsg)
+                }
+            }
             .alert("ワークアウトのインポート", isPresented: $showImportConfirmation) {
                 Button("インポート".localized) {
                     if let data = pendingImportData {

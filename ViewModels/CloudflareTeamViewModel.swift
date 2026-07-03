@@ -9,8 +9,17 @@ class CloudflareTeamViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
     
+    private var cancellables = Set<AnyCancellable>()
+    
     init() {
         print("▶ init Cloudflare VM")
+        NotificationCenter.default.publisher(for: NSNotification.Name("D1TeamPlanSynced"))
+            .sink { [weak self] _ in
+                Task {
+                    await self?.fetchMyTeam()
+                }
+            }
+            .store(in: &cancellables)
     }
     
     @Published var myTeam: Team? = nil
@@ -82,6 +91,7 @@ class CloudflareTeamViewModel: ObservableObject {
                 if responseString == "null" {
                     self.myTeam = nil
                     self.myRole = nil
+                    SubscriptionManager.shared.setCloudflareManager(false)
                     return
                 }
                 
@@ -89,14 +99,21 @@ class CloudflareTeamViewModel: ObservableObject {
                 self.myTeam = decodedTeam
                 self.myRole = decodedTeam.my_role
                 print("▶ fetchMyTeam Success: \(decodedTeam.name), role: \(self.myRole ?? "unknown")")
+                
+                // Cloudflare D1側でmanagerロールであり、且つチームが停止中でない場合にのみManager権限を有効化
+                let isSuspended = decodedTeam.scheduled_for_deletion_at != nil
+                let isManager = (self.myRole?.lowercased() == "manager") && !isSuspended
+                SubscriptionManager.shared.setCloudflareManager(isManager)
             } else {
                 self.myTeam = nil
                 self.myRole = nil
+                SubscriptionManager.shared.setCloudflareManager(false)
             }
         } catch {
             print("Fetch My Team Error:", error)
             self.myTeam = nil
             self.myRole = nil
+            // ネットワークエラー等の場合はキャッシュ状態を維持するため、上書きしない
         }
     }
     

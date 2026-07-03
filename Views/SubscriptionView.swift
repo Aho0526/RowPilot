@@ -61,9 +61,9 @@ private extension SubscriptionPlan {
             ("Strava同期 (準備中)".localized,            [.pro, .team, .max, .manager, .organization, .enterprise]),
             ("PM5 複数台同時接続".localized,             [.team, .max, .organization, .manager, .enterprise]),
             ("リアルタイム一斉トレーニング".localized,    [.team, .max, .organization, .manager, .enterprise]),
-            ("マネージャープランの共有 (3名)".localized,    [.team]),
-            ("マネージャープランの共有 (5名)".localized,    [.max]),
-            ("マネージャープランの共有 (最大10名)".localized, [.organization]),
+            ("マネージャープランの共有 (1名)".localized,    [.team]),
+            ("マネージャープランの共有 (3名)".localized,    [.max]),
+            ("マネージャープランの共有 (最大5名)".localized, [.organization]),
             ("メンバー管理 (最大30名)".localized,         [.team]),
             ("メンバー管理 (最大50名)".localized,         [.max]),
             ("メンバー管理 (最大200名)".localized,        [.organization]),
@@ -79,16 +79,16 @@ private extension SubscriptionPlan {
             .filter { item in
                 let name = item.0
                 if self == .team {
-                    return !name.contains("共有 (5名)") && !name.contains("共有 (最大10名)") &&
+                    return !name.contains("共有 (3名)") && !name.contains("共有 (最大5名)") &&
                            !name.contains("メンバー管理 (最大50名)") && !name.contains("メンバー管理 (最大200名)") &&
                            !name.contains("管理者の指定") && !name.contains("対話型の分析機能")
                 } else if self == .max {
-                    return !name.contains("共有 (3名)") && !name.contains("共有 (最大10名)") &&
+                    return !name.contains("共有 (1名)") && !name.contains("共有 (最大5名)") &&
                            !name.contains("メンバー管理 (最大30名)") && !name.contains("メンバー管理 (最大200名)") &&
                            !name.contains("管理者の指定 (7名)") && !name.contains("テンプレート型") &&
                            name != "AIと対話型の分析機能".localized
                 } else if self == .organization {
-                    return !name.contains("共有 (3名)") && !name.contains("共有 (5名)") &&
+                    return !name.contains("共有 (1名)") && !name.contains("共有 (3名)") &&
                            !name.contains("メンバー管理 (最大30名)") && !name.contains("メンバー管理 (最大50名)") &&
                            !name.contains("管理者の指定 (3名)") && !name.contains("テンプレート型") &&
                            !name.contains("(準備中)")

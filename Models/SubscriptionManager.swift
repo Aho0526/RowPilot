@@ -119,6 +119,22 @@ class SubscriptionManager: ObservableObject {
         }
     }
 
+    // Cloudflare D1側でManagerロールに任命されているか
+    var isCloudflareManager: Bool {
+        get { UserDefaults.standard.bool(forKey: "isCloudflareManager") }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "isCloudflareManager")
+            objectWillChange.send()
+        }
+    }
+
+    func setCloudflareManager(_ isManager: Bool) {
+        DispatchQueue.main.async {
+            self.isCloudflareManager = isManager
+            self.refreshPublishedState()
+        }
+    }
+
     var sharedFromOwnerId: String? {
         get { UserDefaults.standard.string(forKey: "sharedFromOwnerId") }
         set {
@@ -433,7 +449,16 @@ class SubscriptionManager: ObservableObject {
 
     private func refreshPublishedState() {
         let record = savedRecord
-        let effective = record.effectivePlan
+        var effective = record.effectivePlan
+
+        // Cloudflare D1側でmanagerロールになっている場合はmanager権限を解放
+        if isCloudflareManager {
+            if effective.level < SubscriptionPlan.manager.level {
+                effective = .manager
+            }
+        }
+
+        let oldPlan = currentPlan
 
         currentPlan = effective
         autoRenew   = effective == .free ? false : record.autoRenew
@@ -449,6 +474,14 @@ class SubscriptionManager: ObservableObject {
             updated.autoRenew = false
             savedRecord = updated
             print("[StoreKit] Subscription expired. Downgraded to Free.")
+        }
+
+        if oldPlan != effective {
+            let ownerId = myUserRecordId
+            let planRaw = effective.rawValue
+            Task {
+                await syncTeamPlanWithCloudflare(ownerId: ownerId, plan: planRaw)
+            }
         }
     }
 
@@ -480,6 +513,38 @@ class SubscriptionManager: ObservableObject {
             uploadShareRecord()
         } else {
             deleteShareRecord()
+        }
+    }
+
+    func syncTeamPlanWithCloudflare(ownerId: String, plan: String) async {
+        guard !ownerId.isEmpty else { return }
+        
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/sync-plan"
+        guard let url = URL(string: urlString) else { return }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body = [
+            "owner_id": ownerId,
+            "plan": plan
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                print("[SubscriptionManager] D1 plan sync success: \(plan)")
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: NSNotification.Name("D1TeamPlanSynced"), object: nil)
+                }
+            } else {
+                let resStr = String(data: data, encoding: .utf8) ?? ""
+                print("[SubscriptionManager] D1 plan sync error response: \(resStr)")
+            }
+        } catch {
+            print("[SubscriptionManager] D1 plan sync network error: \(error.localizedDescription)")
         }
     }
 
@@ -537,6 +602,12 @@ class SubscriptionManager: ObservableObject {
                 if self?.currentPlan == .team || self?.currentPlan == .max || self?.currentPlan == .organization {
                     self?.loadSharedMembers()
                 }
+                
+                if let self = self {
+                    Task {
+                        await self.syncTeamPlanWithCloudflare(ownerId: self.myUserRecordId, plan: self.currentPlan.rawValue)
+                    }
+                }
             }
         }
     }
@@ -553,15 +624,19 @@ class SubscriptionManager: ObservableObject {
         if self.currentPlan == .team || self.currentPlan == .max || self.currentPlan == .organization {
             self.loadSharedMembers()
         }
+        
+        Task {
+            await self.syncTeamPlanWithCloudflare(ownerId: self.myUserRecordId, plan: self.currentPlan.rawValue)
+        }
     }
 
     // MARK: - 共有上限
 
     var shareLimit: Int {
         switch currentPlan {
-        case .team: return 3
-        case .max:  return 5
-        case .organization: return 10
+        case .team: return 1
+        case .max:  return 3
+        case .organization: return 5
         case .enterprise: return 9999
         default:    return 0
         }

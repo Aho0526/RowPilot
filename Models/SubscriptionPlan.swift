@@ -35,9 +35,9 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .free: return "基本機能(潮汐確認、GPSレート計、PM5と1:1接続など)"
         case .pro:  return "ForceCurveやStrava同期などプロ向けの機能を開放"
         case .manager: return "個人向け上位機能(Pro機能に加えてマネージャー機能を開放)"
-        case .team: return "3人に「マネージャープラン」を共有、30人のメンバーをまとめて管理、AIとテンプレート型の分析機能(準備中)"
-        case .max:  return "5人に「マネージャープラン」を共有、3人を管理者に指定、最大50人をメンバー化、AIと対話型の分析機能(準備中)"
-        case .organization: return "最大10人に「マネージャープラン」を共有、7人を管理者として指定、最大200人をメンバーとして追加、AIと対話型の分析機能"
+        case .team: return "1人に「マネージャープラン」を共有、30人のメンバーをまとめて管理、AIとテンプレート型の分析機能(準備中)"
+        case .max:  return "3人に「マネージャープラン」を共有、3人を管理者に指定、最大50人をメンバー化、AIと対話型の分析機能(準備中)"
+        case .organization: return "最大5人に「マネージャープラン」を共有、7人を管理者として指定、最大200人をメンバーとして追加、AIと対話型の分析機能"
         case .enterprise: return "大規模導入・独自カスタマイズなど、チームに最適化されたカスタムプラン"
         }
     }
@@ -51,11 +51,11 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .manager:
             return ["Proプランの全機能", "PM5複数台接続機能", "マネージャー機能"]
         case .team:
-            return ["「マネージャープラン」を3人に共有", "30人のメンバーをまとめて管理", "AIとテンプレート型の分析機能 (準備中)"]
+            return ["「マネージャープラン」を1人に共有", "30人のメンバーをまとめて管理", "AIとテンプレート型の分析機能 (準備中)"]
         case .max:
-            return ["「マネージャープラン」を5人に共有", "3人を管理者に指定", "最大50人をメンバー化", "AIと対話型の分析機能 (準備中)"]
+            return ["「マネージャープラン」を3人に共有", "3人を管理者に指定", "最大50人をメンバー化", "AIと対話型の分析機能 (準備中)"]
         case .organization:
-            return ["「マネージャープラン」を最大10人に共有", "7人を管理者として指定", "最大200人をメンバーとして追加", "AIと対話型の分析機能"]
+            return ["「マネージャープラン」を最大5人に共有", "7人を管理者として指定", "最大200人をメンバーとして追加", "AIと対話型の分析機能"]
         case .enterprise:
             return ["エンタープライズサポート", "チーム人数無制限", "独自カスタマイズ", "専用クラウド・SLA保証"]
         }

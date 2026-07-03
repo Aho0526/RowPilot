@@ -261,6 +261,14 @@ struct RecordDetailView: View {
                                     Label("Export CSV (.csv) 👑".localized, systemImage: "tablecells")
                                 }
                             }
+                            
+                            if !SettingsManager.shared.settings.autoUploadToTeam {
+                                Button {
+                                    TeamRecordUploader.shared.uploadManual(record: record)
+                                } label: {
+                                    Label("チームに共有".localized, systemImage: "person.3.fill")
+                                }
+                            }
                         } label: {
                             Image(systemName: "square.and.arrow.up")
                                 .foregroundColor(Theme.accent)
@@ -271,14 +279,6 @@ struct RecordDetailView: View {
                         } label: {
                             Image(systemName: "questionmark.circle")
                                 .foregroundColor(Theme.accent)
-                        }
-                        
-                        if currentPlan.hasTeamFeature || !app.pm5Manager.connectedDevices.isEmpty {
-                            Button {
-                                TeamRecordUploader.shared.uploadManual(record: record)
-                            } label: {
-                                Label("チームへアップロード".localized, systemImage: "person.3.fill")
-                            }
                         }
                     }
                     

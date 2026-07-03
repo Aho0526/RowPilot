@@ -40,21 +40,32 @@ class TeamRecordUploader {
                     let formatter = ISO8601DateFormatter()
                     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                     
+                    let isOutdoor = record.startLocation != nil || (record.routePoints != nil && !record.routePoints!.isEmpty)
+                    let workoutType = isOutdoor ? "outdoor" : "indoor"
+                    
+                    var crewInfoJsonString: String? = nil
+                    if SubscriptionManager.shared.currentPlan.isAtLeast(.pro), let crewInfo = record.crewInfo {
+                        if let jsonData = try? JSONEncoder().encode(crewInfo) {
+                            crewInfoJsonString = String(data: jsonData, encoding: .utf8)
+                        }
+                    }
+                    
                     let workout = CloudflareWorkoutRecord(
                         id: record.id.uuidString,
                         athlete_id: userID,
                         recorded_by_id: userID,
                         team_id: decodedTeam.id,
-                        type: "rowing",
+                        type: workoutType,
                         format: "time",
                         distance_m: Int(record.distance),
                         duration_sec: Int(record.duration),
                         split_500m_sec: Int(record.averagePace),
                         stroke_rate: record.averageSPM,
-                        boat_type: "1x", // Or appropriate type
+                        boat_type: record.crewInfo?.boatType.rawValue ?? "1x",
                         recorded_on: formatter.string(from: record.date),
                         created_at: formatter.string(from: Date()),
-                        athlete_name: nil
+                        athlete_name: nil,
+                        crew_info: crewInfoJsonString
                     )
                     
                     let saveUrlString = "https://rowpilot-api.rowpilot-jp.workers.dev/workouts"
@@ -65,11 +76,26 @@ class TeamRecordUploader {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.httpBody = try JSONEncoder().encode(workout)
                     
-                    let (_, saveResponse) = try await URLSession.shared.data(for: request)
+                    let (saveData, saveResponse) = try await URLSession.shared.data(for: request)
                     if let saveHttpResponse = saveResponse as? HTTPURLResponse, (200...299).contains(saveHttpResponse.statusCode) {
                         print("TeamRecordUploader: Uploaded workout successfully to Cloudflare D1.")
                     } else {
-                        print("TeamRecordUploader: Failed to upload workout.")
+                        let responseString = String(data: saveData, encoding: .utf8) ?? ""
+                        print("TeamRecordUploader: Failed to upload workout. Response: \(responseString)")
+                        
+                        var errorMsg = "練習記録のアップロードに失敗しました。"
+                        if let dict = try? JSONSerialization.jsonObject(with: saveData, options: []) as? [String: Any],
+                           let serverError = dict["error"] as? String {
+                            errorMsg = serverError
+                        }
+                        
+                        DispatchQueue.main.async {
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("TeamWorkoutUploadFailed"),
+                                object: nil,
+                                userInfo: ["error": errorMsg]
+                            )
+                        }
                     }
                 }
             } catch {

@@ -4,6 +4,14 @@ struct TeamWorkoutRecordDetailView: View {
     let record: CloudflareWorkoutRecord
     @Environment(\.dismiss) private var dismiss
     
+    private var decodedCrewInfo: CrewInfo? {
+        guard let jsonString = record.crew_info,
+              let data = jsonString.data(using: .utf8) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(CrewInfo.self, from: data)
+    }
+    
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
@@ -49,6 +57,30 @@ struct TeamWorkoutRecordDetailView: View {
                             statCard(title: "500m ペース".localized, value: record.formattedSplit, icon: "speedometer", color: .purple)
                             statCard(title: "ストロープレート".localized, value: record.stroke_rate.map { "\($0) spm" } ?? "- spm", icon: "waveform.path", color: .orange)
                         }
+                    }
+                    
+                    // Crew Card
+                    if let crewInfo = decodedCrewInfo {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("クルー編成".localized)
+                                .font(.headline)
+                                .foregroundColor(.white.opacity(0.8))
+                            
+                            BoatDiagramView(crewInfo: crewInfo)
+                                .frame(height: 180)
+                                .padding(.vertical, 8)
+                                .background(Color.white.opacity(0.02))
+                                .cornerRadius(12)
+                            
+                            HStack {
+                                Spacer()
+                                Text("\(crewInfo.filledCount)/\(crewInfo.members.count) 名登録済み")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                        }
+                        .padding()
+                        .glassCardStyle(glowColor: Theme.accent, opacity: 0.06, cornerRadius: 16)
                     }
                     
                     // Metadata Card

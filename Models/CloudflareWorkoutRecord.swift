@@ -15,6 +15,7 @@ struct CloudflareWorkoutRecord: Identifiable, Codable, Equatable {
     var recorded_on: String
     var created_at: String
     var athlete_name: String? // JOINで取得した表示名
+    var crew_info: String? // クルー情報 (JSON)
 
     var recordedDate: Date? {
         let formatter = ISO8601DateFormatter()

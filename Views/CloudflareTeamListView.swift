@@ -152,7 +152,9 @@ struct CloudflareTeamListView: View {
                         ScrollView {
                             if let team = viewModel.myTeam {
                                 VStack(spacing: 20) {
-                                    pendingSection(team: team)
+                                    if viewModel.myRole == "owner" || viewModel.myRole == "admin" {
+                                        pendingSection(team: team)
+                                    }
                                     activeMembersList(team: team)
                                 }
                                 .padding()
@@ -266,33 +268,54 @@ struct CloudflareTeamListView: View {
         AnyView(memberMenuContent(member: member))
     }
     
+    private func roleLevel(_ role: String) -> Int {
+        switch role.lowercased() {
+        case "owner": return 3
+        case "admin": return 2
+        case "manager": return 1
+        case "athlete": return 0
+        default: return 0
+        }
+    }
+    
     @ViewBuilder
     private func memberNonOwnerMenuContent(member: CloudflareUser, teamID: String) -> some View {
-        if member.role == "manager" {
-            Button("Manager権限を解除") {
-                Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "athlete", teamID: teamID) }
-            }
-        } else if !hasPersonalManagerPlan(entitlement: member.entitlement) {
-            let teamPlan = viewModel.myTeam?.plan ?? ""
-            if usedManagerSlots() < managerLimit(for: teamPlan) {
-                Button("Manager権限を付与") {
-                    Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "manager", teamID: teamID) }
+        let myRoleLevel = roleLevel(viewModel.myRole ?? "")
+        let targetRoleLevel = roleLevel(member.role)
+        
+        let canManage = viewModel.myRole == "owner" || (viewModel.myRole == "admin" && targetRoleLevel < myRoleLevel)
+        
+        if canManage {
+            if member.role == "manager" {
+                Button("Manager権限を解除") {
+                    Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "athlete", teamID: teamID) }
+                }
+            } else if !hasPersonalManagerPlan(entitlement: member.entitlement) {
+                let teamPlan = viewModel.myTeam?.plan ?? ""
+                if usedManagerSlots() < managerLimit(for: teamPlan) {
+                    Button("Manager権限を付与") {
+                        Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "manager", teamID: teamID) }
+                    }
                 }
             }
-        }
-        
-        if member.role != "admin" {
-            Button("管理者に任命") {
-                Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "admin", teamID: teamID) }
+            
+            if viewModel.myRole == "owner" {
+                if member.role != "admin" {
+                    Button("管理者に任命") {
+                        Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "admin", teamID: teamID) }
+                    }
+                } else {
+                    Button("管理者権限を解除") {
+                        Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "athlete", teamID: teamID) }
+                    }
+                }
+            }
+            
+            Button("チームから追放する", role: .destructive) {
+                Task { _ = await viewModel.deleteMember(userID: member.id, teamID: teamID) }
             }
         } else {
-            Button("管理者権限を解除") {
-                Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "athlete", teamID: teamID) }
-            }
-        }
-        
-        Button("チームから追放する", role: .destructive) {
-            Task { _ = await viewModel.deleteMember(userID: member.id, teamID: teamID) }
+            Text("権限がありません").font(.caption).foregroundColor(.white.opacity(0.4))
         }
     }
 
@@ -463,6 +486,108 @@ struct CloudflareTeamListView: View {
     
     private func myTeamDashboard(team: Team) -> some View {
         VStack(spacing: 24) {
+            // チーム停止・削除警告バナー
+            if let scheduledDeletion = team.scheduled_for_deletion_at {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.red)
+                            .font(.title2)
+                        Text("【重要】チーム機能の停止中")
+                            .font(.headline)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                    Text("サブスクリプションの変更により、現在チーム機能が停止され「閲覧のみ」となっています。")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.8))
+                    
+                    if let formattedDate = formatISO8601Date(scheduledDeletion) {
+                        Text("削除予定日: \(formattedDate)\nまでにプランを継続（再登録）しない場合、チームデータは完全に削除されます。")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.red)
+                    }
+                }
+                .padding()
+                .background(Color.red.opacity(0.15))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.red.opacity(0.4), lineWidth: 1)
+                )
+            }
+            
+            // メンバー自動削減 / プラン移行警告バナー
+            if let membersScheduledDeletion = team.members_scheduled_for_deletion_at {
+                let owner = viewModel.members.first(where: { $0.role == "owner" })
+                let targetPlan = owner?.entitlement ?? team.plan
+                let targetLimit = memberLimit(for: targetPlan)
+                let activeCount = viewModel.members.filter { $0.role != "pending" }.count
+                let isOverLimit = activeCount > targetLimit
+                
+                if isOverLimit {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                                .font(.title2)
+                            Text("【警告】チームメンバー超過")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        }
+                        Text("移行先プランの上限人数（\(targetLimit)名）を超えています。期限までに手動でメンバーを削減してください。")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        if let formattedDate = formatISO8601Date(membersScheduledDeletion) {
+                            Text("自動削減実行日: \(formattedDate)\n期日を過ぎると、後から追加されたメンバーが自動的に削除されます。")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.red)
+                        }
+                    }
+                    .padding()
+                    .background(Color.red.opacity(0.15))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.red.opacity(0.4), lineWidth: 1)
+                    )
+                } else {
+                    // 人数制限内（黄色警告）
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.yellow)
+                                .font(.title2)
+                            Text("【注意】プラン移行の猶予期間中")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        }
+                        Text("ダウングレード移行の猶予期間に入っています。移行後は追加可能人数・マネージャー共有枠の減少があります。")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        if let formattedDate = formatISO8601Date(membersScheduledDeletion) {
+                            Text("移行完了日: \(formattedDate)\nまでに再度元のプランに復帰すれば、移行はキャンセルされます。")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.yellow)
+                        }
+                    }
+                    .padding()
+                    .background(Color.yellow.opacity(0.15))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.yellow.opacity(0.4), lineWidth: 1)
+                    )
+                }
+            }
+
             teamSummaryCard(team: team)
             recordFeedSection
             if viewModel.myRole == "owner" {
@@ -503,7 +628,7 @@ struct CloudflareTeamListView: View {
                     HStack(spacing: 8) {
                         Text(team.name)
                             .font(.title2).fontWeight(.black).foregroundColor(.white)
-                        if isEditable {
+                        if isEditable && team.scheduled_for_deletion_at == nil {
                             Button(action: {
                                 renameText = team.name
                                 showRenameAlert = true
@@ -603,17 +728,21 @@ struct CloudflareTeamListView: View {
                     .font(.caption2).foregroundColor(.white.opacity(0.5))
             }
             Spacer()
-            HStack(spacing: 8) {
-                Button(action: { memberToReject = member; showRejectConfirm = true }) {
-                    Image(systemName: "xmark").font(.caption).fontWeight(.bold)
-                        .foregroundColor(.red).padding(8)
-                        .background(Color.red.opacity(0.15)).clipShape(Circle())
+            if viewModel.myTeam?.scheduled_for_deletion_at == nil {
+                HStack(spacing: 8) {
+                    Button(action: { memberToReject = member; showRejectConfirm = true }) {
+                        Image(systemName: "xmark").font(.caption).fontWeight(.bold)
+                            .foregroundColor(.red).padding(8)
+                            .background(Color.red.opacity(0.15)).clipShape(Circle())
+                    }
+                    Button(action: { memberToApprove = member; showApproveConfirm = true }) {
+                        Image(systemName: "checkmark").font(.caption).fontWeight(.bold)
+                            .foregroundColor(.green).padding(8)
+                            .background(Color.green.opacity(0.2)).clipShape(Circle())
+                    }
                 }
-                Button(action: { memberToApprove = member; showApproveConfirm = true }) {
-                    Image(systemName: "checkmark").font(.caption).fontWeight(.bold)
-                        .foregroundColor(.green).padding(8)
-                        .background(Color.green.opacity(0.2)).clipShape(Circle())
-                }
+            } else {
+                Text("停止中").font(.caption2).foregroundColor(.white.opacity(0.4))
             }
         }
         .padding(12)
@@ -625,6 +754,8 @@ struct CloudflareTeamListView: View {
     
     private func activeMembersList(team: Team) -> some View {
         let activeMembers = viewModel.members.filter { $0.role != "pending" }
+        let excessIds = getExcessMemberIds(team: team)
+        
         return VStack(alignment: .leading, spacing: 16) {
             if activeMembers.isEmpty {
                 VStack(spacing: 10) {
@@ -640,7 +771,7 @@ struct CloudflareTeamListView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(activeMembers, id: \.id) { member in
-                        memberRow(member: member)
+                        memberRow(member: member, isExcess: excessIds.contains(member.id))
                         if member.id != activeMembers.last?.id {
                             Divider().background(Color.white.opacity(0.08))
                         }
@@ -652,15 +783,15 @@ struct CloudflareTeamListView: View {
         }
     }
     
-    private func memberRow(member: CloudflareUser) -> some View {
+    private func memberRow(member: CloudflareUser, isExcess: Bool) -> some View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(roleColor(for: member.role).opacity(0.15))
+                    .fill(isExcess ? Color.red.opacity(0.15) : roleColor(for: member.role).opacity(0.15))
                     .frame(width: 40, height: 40)
                 Text(String(member.display_name.prefix(1)))
                     .font(.headline).fontWeight(.bold)
-                    .foregroundColor(roleColor(for: member.role))
+                    .foregroundColor(isExcess ? .red : roleColor(for: member.role))
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -669,13 +800,22 @@ struct CloudflareTeamListView: View {
                     if hasPersonalManagerPlan(entitlement: member.entitlement) {
                         Image(systemName: "star.fill").font(.caption2).foregroundColor(.yellow)
                     }
+                    if isExcess {
+                        Text("削除予定")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.red)
+                            .cornerRadius(4)
+                    }
                 }
                 HStack(spacing: 8) {
                     Text(displayRole(for: member.role))
                         .font(.caption2).fontWeight(.bold)
                         .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(roleColor(for: member.role).opacity(0.2))
-                        .foregroundColor(roleColor(for: member.role))
+                        .background(isExcess ? Color.red.opacity(0.2) : roleColor(for: member.role).opacity(0.2))
+                        .foregroundColor(isExcess ? .red : roleColor(for: member.role))
                         .cornerRadius(5)
                     if member.role != "manager" && hasPersonalManagerPlan(entitlement: member.entitlement) {
                         Text("Personal Manager").font(.caption2).foregroundColor(.white.opacity(0.4))
@@ -684,12 +824,15 @@ struct CloudflareTeamListView: View {
             }
             Spacer()
             if member.id != subManager.myUserRecordId {
-                Button(action: { selectedMember = member; showMemberOptions = true }) {
-                    Image(systemName: "ellipsis")
-                        .foregroundColor(.white.opacity(0.4))
-                        .padding(10)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(8)
+                let isCurrentUserEditable = (viewModel.myRole == "owner" || viewModel.myRole == "admin") && viewModel.myTeam?.scheduled_for_deletion_at == nil
+                if isCurrentUserEditable {
+                    Button(action: { selectedMember = member; showMemberOptions = true }) {
+                        Image(systemName: "ellipsis")
+                            .foregroundColor(.white.opacity(0.4))
+                            .padding(10)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(8)
+                    }
                 }
             } else {
                 Text("自分").font(.caption2).foregroundColor(.white.opacity(0.35))
@@ -892,9 +1035,9 @@ struct CloudflareTeamListView: View {
     
     private func managerLimit(for plan: String) -> Int {
         switch plan.lowercased() {
-        case "team": return 3
-        case "max": return 5
-        case "organization": return 10
+        case "team": return 1
+        case "max": return 3
+        case "organization": return 5
         default: return 0
         }
     }
@@ -936,6 +1079,39 @@ struct CloudflareTeamListView: View {
         case "manager": return .blue
         default: return .gray
         }
+    }
+    
+    private func getExcessMemberIds(team: Team) -> Set<String> {
+        guard team.members_scheduled_for_deletion_at != nil else { return [] }
+        
+        let activeMembers = viewModel.members.filter { $0.role != "pending" }
+        let sortedMembers = activeMembers.sorted { $0.created_at < $1.created_at }
+        
+        let owner = viewModel.members.first(where: { $0.role == "owner" })
+        let targetPlan = owner?.entitlement ?? team.plan
+        let limit = memberLimit(for: targetPlan)
+        
+        if sortedMembers.count <= limit {
+            return []
+        }
+        
+        let excessMembers = sortedMembers.suffix(sortedMembers.count - limit)
+        return Set(excessMembers.map { $0.id })
+    }
+    
+    private func formatISO8601Date(_ isoString: String) -> String? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let fallbackFormatter = ISO8601DateFormatter()
+        
+        guard let date = formatter.date(from: isoString) ?? fallbackFormatter.date(from: isoString) else {
+            return nil
+        }
+        
+        let outputFormatter = DateFormatter()
+        outputFormatter.locale = Locale(identifier: "ja_JP")
+        outputFormatter.dateFormat = "yyyy年MM月dd日 HH時mm分"
+        return outputFormatter.string(from: date)
     }
 }
 

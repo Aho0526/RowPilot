@@ -623,8 +623,8 @@ struct SettingView: View {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("Launch Version 1.0.1(Build 21)")
-                Text("Build from July 2")
+                Text("TestFlight Version 1.0.1(Build 21)")
+                Text("Build from July 3")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)
