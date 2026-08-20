@@ -526,6 +526,12 @@ struct TideHelpView: View {
                                 
                                 helpBulletRow(title: isJA ? "現在時刻のインジケータ" : "Current Time Indicator",
                                              desc: isJA ? "「今日」のデータを表示している場合、現在の時間を示す破線（バー）がグラフ内に縦に表示されます。" : "When viewing \"Today's\" data, a vertical dashed line marks the current hour on the chart.")
+                                
+                                helpBulletRow(title: isJA ? "基準水位の表示" : "Threshold Line",
+                                             desc: isJA ? "「基準水位を表示」をオンにすると、グラフ上に任意の高さ（cm）で赤い水平破線が表示されます。出艇・帰着制限の目安として活用できます。" : "Enable \"Show Threshold Line\" to draw a red horizontal line at a custom height (cm). Useful as a guide for launch limits.")
+                                
+                                helpBulletRow(title: isJA ? "インタラクティブな潮位確認" : "Interactive Chart Selection",
+                                             desc: isJA ? "グラフ上を左右にドラッグ（長押ししてスライド）すると、その時間の潮位（cm）がリアルタイムに確認できます。" : "Drag horizontally across the chart to see predicted tide levels at any hour.")
                             }
                         }
                         .padding()

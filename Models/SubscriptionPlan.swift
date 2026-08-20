@@ -1,8 +1,8 @@
 import Foundation
 
-/// サブスクリプションプラン（free < pro < team < max の順に権限上位）
+/// サブスクリプションプラン（free < pro < manager < team < max < organization の順に権限上位）
 enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
-    case free, pro, manager, team, max, organization, enterprise
+    case free, pro, manager, team, max, organization
 
     var id: String { self.rawValue }
 
@@ -14,7 +14,6 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .team: return "RowPilot Team"
         case .max:  return "RowPilot MAX"
         case .organization: return "RowPilot Organization"
-        case .enterprise: return "RowPilot Enterprise"
         }
     }
 
@@ -26,7 +25,6 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .team: return "¥4,980 / 月"
         case .max:  return "¥7,500 / 月"
         case .organization: return "¥15,000 / 月"
-        case .enterprise: return "要問い合わせ"
         }
     }
 
@@ -38,7 +36,6 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .team: return "1人に「マネージャープラン」を共有、30人のメンバーをまとめて管理、AIとテンプレート型の分析機能(準備中)"
         case .max:  return "3人に「マネージャープラン」を共有、3人を管理者に指定、最大50人をメンバー化、AIと対話型の分析機能(準備中)"
         case .organization: return "最大5人に「マネージャープラン」を共有、7人を管理者として指定、最大200人をメンバーとして追加、AIと対話型の分析機能"
-        case .enterprise: return "大規模導入・独自カスタマイズなど、チームに最適化されたカスタムプラン"
         }
     }
 
@@ -56,8 +53,6 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
             return ["「マネージャープラン」を3人に共有", "3人を管理者に指定", "最大50人をメンバー化", "AIと対話型の分析機能 (準備中)"]
         case .organization:
             return ["「マネージャープラン」を最大5人に共有", "7人を管理者として指定", "最大200人をメンバーとして追加", "AIと対話型の分析機能"]
-        case .enterprise:
-            return ["エンタープライズサポート", "チーム人数無制限", "独自カスタマイズ", "専用クラウド・SLA保証"]
         }
     }
 
@@ -71,7 +66,6 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .team: return 3
         case .max:  return 4
         case .organization: return 5
-        case .enterprise: return 6
         }
     }
 
@@ -102,7 +96,7 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         return isAtLeast(.max)
     }
 
-    /// チーム機能が利用可能か（Team/MAX/Enterpriseのみ）
+    /// チーム機能が利用可能か（Team以上）
     var hasTeamFeature: Bool {
         return isAtLeast(.team)
     }
@@ -113,7 +107,6 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .team: return 30
         case .max: return 50
         case .organization: return 200
-        case .enterprise: return 9999
         default: return 0
         }
     }
@@ -127,7 +120,6 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .team: return "rowpilot_team"
         case .max: return "rowpilot_max"
         case .organization: return "rowpilot_org"
-        case .enterprise: return nil
         }
     }
 }

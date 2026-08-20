@@ -373,22 +373,25 @@ struct SettingView: View {
                 }
             }
             
-            // マネージャー設定（サブスク解放時のみ表示）
+            // マネージャー設定（Manager以上で表示）
             if currentPlan.hasManagerMode {
                 SettingsSection(title: "Manager Mode".localized, icon: "person.3.sequence.fill") {
                     SettingsToggleRow(title: "Save 0-Record PM5s".localized, isOn: $settingsManager.settings.saveZeroRecordPM5s)
-                    
-                    if currentPlan.hasTeamFeature {
-                        Divider().background(Theme.textSecondary.opacity(0.3))
-                        NavigationLink(destination: TeamMaxManagerView()) {
-                            HStack {
-                                Text("Manage Teammates".localized)
-                                    .foregroundColor(Theme.textMain)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(Theme.textSecondary)
-                            }
+                }
+            }
+            
+            // チーム管理リンク（Team以上で表示）
+            if currentPlan.hasTeamFeature {
+                SettingsSection(title: "Team Management".localized, icon: "person.3.fill") {
+                    Divider().background(Theme.textSecondary.opacity(0.3))
+                    NavigationLink(destination: TeamMaxManagerView()) {
+                        HStack {
+                            Text("Manage Teammates".localized)
+                                .foregroundColor(Theme.textMain)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
                         }
                     }
                 }
@@ -623,8 +626,8 @@ struct SettingView: View {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("TestFlight Version 1.0.1(Build 21)")
-                Text("Build from July 3")
+                Text("TestFlight Version 1.0.1(Build 3)")
+                Text("Build from August 5")
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)

@@ -100,8 +100,8 @@ class CloudflareTeamViewModel: ObservableObject {
                 self.myRole = decodedTeam.my_role
                 print("▶ fetchMyTeam Success: \(decodedTeam.name), role: \(self.myRole ?? "unknown")")
                 
-                // Cloudflare D1側でmanagerロールであり、且つチームが停止中でない場合にのみManager権限を有効化
-                let isSuspended = decodedTeam.scheduled_for_deletion_at != nil
+                // アーカイブ猶予期間（30日間）が終了した場合のみ Manager 権限を停止する
+                let isSuspended = decodedTeam.isSuspended
                 let isManager = (self.myRole?.lowercased() == "manager") && !isSuspended
                 SubscriptionManager.shared.setCloudflareManager(isManager)
             } else {

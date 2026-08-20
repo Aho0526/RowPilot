@@ -19,6 +19,8 @@ struct TideContent: View {
     @ObservedObject var tideManager: TideManager
     @State private var currentLocationName: String = "Waiting for GPS".localized
     @State private var showingHelp = false
+    @State private var showingThresholdPopover = false
+    @State private var showingStationMap = false
     
     @State private var dateList: [Date] = []
     
@@ -54,24 +56,58 @@ struct TideContent: View {
                         portraitLayout
                     }
                 }
-                // ヘルプボタンをZStack内の右上に配置
-                if SettingsManager.shared.settings.showHelpButtons {
-                    VStack {
-                        HStack {
-                            Spacer()
+                
+                // 右上に地図ボタン・定規ボタン・ヘルプボタンを配置
+                VStack {
+                    HStack(spacing: 10) {
+                        Spacer()
+
+                        // 観測所地図選択ボタン
+                        Button {
+                            showingStationMap = true
+                        } label: {
+                            Image(systemName: "map.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(tideManager.selectedStation != nil ? Theme.secondaryAccent : Theme.accent)
+                                .frame(width: 36, height: 36)
+                                .background(Theme.cardBackground.opacity(0.8))
+                                .clipShape(Circle())
+                                .shadow(radius: 3)
+                        }
+
+                        // 基準水位設定ポップオーバーボタン
+                        Button {
+                            showingThresholdPopover = true
+                        } label: {
+                            Image(systemName: "ruler.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(Theme.accent)
+                                .frame(width: 36, height: 36)
+                                .background(Theme.cardBackground.opacity(0.8))
+                                .clipShape(Circle())
+                                .shadow(radius: 3)
+                        }
+                        .popover(isPresented: $showingThresholdPopover) {
+                            ThresholdSettingsPopoverView()
+                        }
+
+                        if SettingsManager.shared.settings.showHelpButtons {
                             HelpCircleButton {
                                 showingHelp = true
                             }
-                            .padding()
                         }
-                        Spacer()
                     }
+                    .padding()
+                    Spacer()
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .sheet(isPresented: $showingHelp) {
                 TideHelpView()
+            }
+            .sheet(isPresented: $showingStationMap) {
+                TideStationMapView(tideManager: tideManager)
             }
             .animation(.easeInOut, value: LocalizationManager.shared.language)
             .onAppear {
@@ -129,55 +165,57 @@ struct TideContent: View {
     private var landscapeLayout: some View {
         HStack(spacing: 0) {
             // Left Column: Date, Location, Tide Type & High/Low Times
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "location.fill")
-                            .font(.caption)
-                            .foregroundColor(Theme.accent)
-                        Text(currentLocationName)
-                            .font(.caption)
-                            .bold()
-                            .foregroundColor(Theme.textMain)
-                            .lineLimit(1)
-                    }
-                    
-                    if let station = tideManager.nearestStation {
-                        Text(station.name)
-                            .font(.system(size: 10))
-                            .foregroundColor(Theme.textSecondary)
-                    }
-                }
-                
-                if let data = tideManager.currentTideData {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(alignment: .lastTextBaseline, spacing: 4) {
-                            Text(dateFormatter.string(from: data.date))
-                                .font(.system(size: 40, weight: .bold, design: .rounded))
-                                .foregroundColor(Theme.textMain)
-                                .contentTransition(.numericText())
-                            Text("(\(dayFormatter.string(from: data.date)))")
-                                .font(.system(size: 20, weight: .semibold, design: .rounded))
-                                .foregroundColor(Theme.textSecondary)
-                                .contentTransition(.numericText())
+            VStack(alignment: .leading, spacing: 12) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "location.fill")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.accent)
+                                Text(currentLocationName)
+                                    .font(.caption)
+                                    .bold()
+                                    .foregroundColor(Theme.textMain)
+                                    .lineLimit(1)
+                            }
+                            
+                            if let station = tideManager.nearestStation {
+                                Text(station.name)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Theme.textSecondary)
+                            }
                         }
                         
-                        Text(data.tideType)
-                            .font(.headline)
-                            .foregroundColor(Theme.accent)
-                    }
-                    
-                    // High/Low Times
-                    VStack(spacing: 8) {
-                        landscapeTideInfo(title: "High".localized, events: data.highTides, color: Theme.secondaryAccent)
-                        landscapeTideInfo(title: "Low".localized, events: data.lowTides, color: Theme.accent)
+                        if let data = tideManager.currentTideData {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(alignment: .lastTextBaseline, spacing: 4) {
+                                    Text(dateFormatter.string(from: data.date))
+                                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                                        .foregroundColor(Theme.textMain)
+                                        .contentTransition(.numericText())
+                                    Text("(\(dayFormatter.string(from: data.date)))")
+                                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                        .foregroundColor(Theme.textSecondary)
+                                        .contentTransition(.numericText())
+                                }
+                                
+                                Text(data.tideType)
+                                    .font(.headline)
+                                    .foregroundColor(Theme.accent)
+                            }
+                            
+                            // High/Low Times
+                            VStack(spacing: 8) {
+                                landscapeTideInfo(title: "High".localized, events: data.highTides, color: Theme.secondaryAccent)
+                                landscapeTideInfo(title: "Low".localized, events: data.lowTides, color: Theme.accent)
+                            }
+                        }
                     }
                 }
-                
-                Spacer()
             }
             .padding()
-            .frame(width: 200)
+            .frame(width: 210)
             .background(Theme.cardBackground.opacity(0.5))
             .animation(.easeInOut(duration: 0.3), value: tideManager.currentDate)
             
@@ -203,8 +241,33 @@ struct TideContent: View {
                 Text(currentLocationName)
                     .font(Theme.subHeaderFont())
                     .foregroundColor(Theme.textMain)
-                
-                if let station = tideManager.nearestStation {
+
+                if let selected = tideManager.selectedStation {
+                    // 手動選択中の観測所を表示 ＋ GPS最寄りに戻すボタン
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin.circle.fill")
+                            .font(.caption)
+                            .foregroundColor(Theme.secondaryAccent)
+                        Text(selected.name)
+                            .font(.caption)
+                            .bold()
+                            .foregroundColor(Theme.secondaryAccent)
+
+                        Button {
+                            withAnimation {
+                                tideManager.resetToNearestStation()
+                            }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Theme.secondaryAccent.opacity(0.15))
+                    .clipShape(Capsule())
+                } else if let station = tideManager.nearestStation {
                     Text("(\(station.name))")
                         .font(.caption)
                         .foregroundColor(Theme.textSecondary)
@@ -254,7 +317,7 @@ struct TideContent: View {
             get: { tideManager.currentDate },
             set: { tideManager.currentDate = $0 }
         )
-        
+
         return TabView(selection: dateBinding) {
             ForEach(dateList, id: \.self) { date in
                 TideChart(date: date, tideManager: tideManager, isLandscape: isLandscape)
@@ -424,6 +487,15 @@ struct TideChart: View {
     @ObservedObject var tideManager: TideManager
     let isLandscape: Bool
     
+    @AppStorage("tideThresholdEnabled") private var thresholdEnabled: Bool = false
+    @AppStorage("tideThresholdLevel") private var thresholdLevel: Int = 100
+    
+    @State private var selectedHour: Int? = nil
+    
+    private var isJA: Bool {
+        LocalizationManager.shared.language == .japanese
+    }
+    
     private var keyFormatter: DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
@@ -431,78 +503,215 @@ struct TideChart: View {
     }
     
     var body: some View {
-        let key = keyFormatter.string(from: date)
-        let tideData = tideManager.tideDataCache[key]
-        
-        ZStack {
-            if let tideData = tideData {
-                Chart {
-                    ForEach(tideData.hourlyLevels) { item in
-                        LineMark(
-                            x: .value("Hour", item.hour),
-                            y: .value("Level", item.level)
-                        )
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(Theme.primaryGradient)
-                        .lineStyle(StrokeStyle(lineWidth: 3))
+        let station = tideManager.selectedStation ?? tideManager.nearestStation
+        let dateKey = keyFormatter.string(from: date)
+        let cacheKey = station != nil ? "\(station!.id)_\(dateKey)" : dateKey
+        let tideData = tideManager.tideDataCache[cacheKey]
+
+        return VStack(spacing: 0) {
+            // インタラクティブ表示部（高さ固定でレイアウト崩れを防ぐ）
+            ZStack {
+                if let tideData = tideData, let selectedHour = selectedHour,
+                   let matched = tideData.hourlyLevels.first(where: { $0.hour == selectedHour }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock.fill")
+                            .foregroundColor(Theme.accent)
+                            .font(.caption)
+                        Text("\(selectedHour)\(isJA ? "時" : "h"):")
+                            .font(.system(.footnote, design: .rounded))
+                            .bold()
+                            .foregroundColor(Theme.textSecondary)
+                        Text("\(matched.level)cm")
+                            .font(.system(.subheadline, design: .monospaced))
+                            .bold()
+                            .foregroundColor(Theme.accent)
+
+                        if thresholdEnabled {
+                            let diff = matched.level - thresholdLevel
+                            let sign = diff >= 0 ? "+" : ""
+                            Text("(\(sign)\(diff)cm)")
+                                .font(.system(.caption, design: .monospaced))
+                                .bold()
+                                .foregroundColor(diff >= 0 ? Theme.secondaryAccent : .red)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 12)
+                    .background(Theme.cardBackground)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
+                } else {
+                    Color.clear
+                }
+            }
+            .frame(height: 36)  // 固定高さでグラフ引き伸ばしを防ぐ
+
+            ZStack {
+                if let tideData = tideData {
+                    Chart {
+                        ForEach(tideData.hourlyLevels) { item in
+                            LineMark(
+                                x: .value("Hour", item.hour),
+                                y: .value("Level", item.level)
+                            )
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle(Theme.primaryGradient)
+                            .lineStyle(StrokeStyle(lineWidth: 3))
+                            
+                            AreaMark(
+                                x: .value("Hour", item.hour),
+                                y: .value("Level", item.level)
+                            )
+                            .interpolationMethod(.catmullRom)
+                            .foregroundStyle(LinearGradient(
+                                colors: [Theme.accent.opacity(0.4), Theme.accent.opacity(0.0)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ))
+                        }
                         
-                        AreaMark(
-                            x: .value("Hour", item.hour),
-                            y: .value("Level", item.level)
-                        )
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(LinearGradient(
-                            colors: [Theme.accent.opacity(0.4), Theme.accent.opacity(0.0)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ))
+                        // 現在時刻インジケータ (今日の場合)
+                        if Calendar.current.isDate(Date(), inSameDayAs: tideData.date) {
+                            let currentHour = Calendar.current.component(.hour, from: Date())
+                            RuleMark(x: .value("Now", currentHour))
+                                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5]))
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                        
+                        // 基準の高さの水平線
+                        if thresholdEnabled {
+                            RuleMark(y: .value("Threshold", thresholdLevel))
+                                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4]))
+                                .foregroundStyle(Color.red.opacity(0.8))
+                                .annotation(position: .trailing, alignment: .trailing) {
+                                    Text("\(thresholdLevel)cm")
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.red)
+                                        .padding(.horizontal, 3)
+                                        .background(Theme.background.opacity(0.8))
+                                        .cornerRadius(3)
+                                        .offset(x: isLandscape ? 0 : -8)
+                                }
+                        }
+                        
+                        // 選択された時間の垂直線 & 点
+                        if let selectedHour = selectedHour,
+                           let matched = tideData.hourlyLevels.first(where: { $0.hour == selectedHour }) {
+                            RuleMark(x: .value("SelectedHour", selectedHour))
+                                .lineStyle(StrokeStyle(lineWidth: 1))
+                                .foregroundStyle(Theme.accent.opacity(0.7))
+                            
+                            PointMark(
+                                x: .value("SelectedHour", selectedHour),
+                                y: .value("SelectedLevel", matched.level)
+                            )
+                            .foregroundStyle(Theme.accent)
+                            .symbolSize(80)
+                        }
                     }
+                    .chartXScale(domain: 0...23) // X軸範囲を0-23に固定（基準線描写などでの自動拡張を防ぐ）
+                    .chartYAxis {
+                        AxisMarks(position: .leading, values: .automatic) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
+                            AxisTick().foregroundStyle(Color.white.opacity(0.5))
+                            AxisValueLabel() {
+                                if let level = value.as(Int.self) {
+                                    Text("\(level)")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(Color.white.opacity(0.7))
+                                        .frame(width: 40, alignment: .trailing)
+                                }
+                            }
+                        }
+                    }
+                    .chartXAxis {
+                        AxisMarks(values: .stride(by: 3)) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
+                            AxisTick().foregroundStyle(Color.white.opacity(0.5))
+                            AxisValueLabel() {
+                                if let hour = value.as(Int.self) {
+                                    Text("\(hour)h")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(Color.white.opacity(0.7))
+                                }
+                            }
+                        }
+                    }
+                    .chartXSelection(value: $selectedHour)
+                    .padding(.leading, isLandscape ? 40 : 10)
+                    .padding(.trailing, isLandscape ? 5 : 10)  
+                    .padding(.bottom, 15)
                     
-                    if Calendar.current.isDate(Date(), inSameDayAs: tideData.date) {
-                        let currentHour = Calendar.current.component(.hour, from: Date())
-                        RuleMark(x: .value("Now", currentHour))
-                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [5]))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
+                } else {
+                    Text("Loading...")
+                        .foregroundColor(Theme.textSecondary)
                 }
-                .chartYAxis {
-                    AxisMarks(position: .leading, values: .automatic) { value in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
-                        AxisTick().foregroundStyle(Color.white.opacity(0.5))
-                        AxisValueLabel() {
-                            if let level = value.as(Int.self) {
-                                Text("\(level)")
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(Color.white.opacity(0.7))
-                                    .frame(width: 40, alignment: .trailing) // Even more secure width
-                            }
-                        }
-                    }
-                }
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: 3)) { value in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.1))
-                        AxisTick().foregroundStyle(Color.white.opacity(0.5))
-                        AxisValueLabel() {
-                            if let hour = value.as(Int.self) {
-                                Text("\(hour)h")
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(Color.white.opacity(0.7))
-                            }
-                        }
-                    }
-                }
-                .padding(.leading, isLandscape ? 40 : 10) // Only heavy padding in landscape
-                .padding(.trailing, isLandscape ? 5 : 10)  
-                .padding(.bottom, 15)
-                
-            } else {
-                Text("Loading...")
-                    .foregroundColor(Theme.textSecondary)
             }
         }
     }
 }
+
+// MARK: - Tide Threshold Settings View
+struct ThresholdSettingsPopoverView: View {
+    @AppStorage("tideThresholdEnabled") private var thresholdEnabled: Bool = false
+    @AppStorage("tideThresholdLevel") private var thresholdLevel: Int = 100
+    
+    private var isJA: Bool {
+        LocalizationManager.shared.language == .japanese
+    }
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            Toggle(isOn: $thresholdEnabled) {
+                Text(isJA ? "基準水位を表示" : "Show Threshold")
+                    .font(.footnote)
+                    .bold()
+                    .foregroundColor(Theme.textMain)
+            }
+            .tint(Theme.accent)
+            
+            if thresholdEnabled {
+                Divider()
+                    .background(Color.white.opacity(0.2))
+                
+                HStack(spacing: 8) {
+                    Text(isJA ? "高さ:" : "Level:")
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                    
+                    TextField("0", value: $thresholdLevel, format: .number)
+                        .textFieldStyle(.plain)
+                        .keyboardType(.numbersAndPunctuation)
+                        .multilineTextAlignment(.center)
+                        .frame(width: 50)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(6)
+                        .foregroundColor(Theme.textMain)
+                        .font(.system(.footnote, design: .monospaced))
+                    
+                    Text("cm")
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                    
+                    Spacer()
+                    
+                    Stepper("", value: $thresholdLevel, in: -500...500, step: 5)
+                        .labelsHidden()
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 220)
+        .background(Theme.cardBackground)
+        .presentationCompactAdaptation(.popover) // iPhoneでもpopover表示
+    }
+}
+
 #Preview {
     TideView()
 }

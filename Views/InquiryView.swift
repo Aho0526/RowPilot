@@ -1,157 +1,203 @@
 import SwiftUI
 
 struct InquiryView: View {
-    @State private var selectedPage: String = "ホーム"
-    @State private var selectedElement: String = ""
+    @State private var selectedPage: String = "Please select"
+    @State private var selectedElement: String = "Please select"
     @State private var message: String = ""
+    @State private var email: String = ""
     @State private var includeGPS: Bool = false
-    @State private var isSending: Bool = false
-    @State private var showingAlert: Bool = false
-    @State private var alertMessage: String = ""
-    @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
+    @State private var shouldDismissToSettings: Bool = false
     @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var app: AppViewModel
     
-    let pages = ["ホーム", "潮位", "RowMode","練習","設定", "その他"]
+    @ObservedObject private var themeManager = ThemeManager.shared
+    
+    let pages = ["Please select", "ホーム", "潮位", "RowMode", "練習", "設定", "その他"]
     
     var elements: [String] {
         switch selectedPage {
-        case "ホーム": return ["検索","表示","進捗","リギング","最近の記録", "その他"]
-        case "潮位": return ["日付変更", "データ表示","現在地","その他"]
-        case "RowMode": return ["リギング", "Bluetooth接続", "記録", "画面表示", "その他"]
-        case "練習": return ["PM5との接続", "NFC接続","アクティビティの共有", "チーム管理機能","その他"]
-        case "設定": return ["アカウント", "言語設定", "表示設定", "天気予報", "ワークアウト共有", "データ同期", "利用規約", "サブスクリプション", "その他"]
-        default: return ["該当なし"]
+        case "Please select":
+            return ["Please select"]
+        case "ホーム":
+            return ["Please select", "検索", "表示", "進捗", "リギング", "最近の記録", "その他"]
+        case "潮位":
+            return ["Please select", "データ表示", "現在地", "その他"]
+        case "RowMode":
+            return ["Please select", "リギング", "Bluetooth接続", "記録", "画面表示", "その他"]
+        case "練習":
+            return ["Please select", "PM5との接続", "NFC接続", "アクティビティの共有", "チーム管理機能", "その他"]
+        case "設定":
+            return ["Please select", "アカウント", "言語設定", "表示設定", "天気予報", "ワークアウト共有", "データ同期", "利用規約", "サブスクリプション", "その他"]
+        default:
+            return ["Please select", "該当なし"]
         }
+    }
+    
+    var isEmailValid: Bool {
+        if email.isEmpty { return true }
+        let emailRegEx = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
+        let emailPred = NSPredicate(format:"SELF MATCHES %@", emailRegEx)
+        return emailPred.evaluate(with: email)
+    }
+    
+    var isFormValid: Bool {
+        selectedPage != "Please select" &&
+        selectedElement != "Please select" &&
+        !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        isEmailValid
     }
     
     var body: some View {
-        Form {
-            Section(header: Text("問題の発生箇所")) {
-                Picker("ページ", selection: $selectedPage) {
-                    ForEach(pages, id: \.self) { page in
-                        Text(page).tag(page)
-                    }
-                }
-                .onChange(of: selectedPage) { _, _ in
-                    selectedElement = elements.first ?? ""
-                }
-                
-                Picker("要素", selection: $selectedElement) {
-                    ForEach(elements, id: \.self) { element in
-                        Text(element).tag(element)
-                    }
-                }
-            }
-            .onAppear {
-                if selectedElement.isEmpty {
-                    selectedElement = elements.first ?? ""
-                }
-            }
+        ZStack {
+            Theme.background.ignoresSafeArea()
             
-            Section(header: Text("お問い合わせ内容")) {
-                TextEditor(text: $message)
-                    .frame(minHeight: 150)
-            }
-            
-            Section(header: Text("追加情報"), footer: Text("潮位やRowModeの問題の場合はオンにしていただくと解決がスムーズです。")) {
-                Toggle("GPS情報を含める", isOn: $includeGPS)
-            }
-            
-            Section {
-                Button(action: sendInquiry) {
-                    HStack {
-                        Spacer()
-                        if isSending {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle())
-                        } else {
-                            Text("送信する")
-                                .fontWeight(.bold)
+            ScrollView {
+                VStack(spacing: 20) {
+                    InquirySection(title: "Location of Issue (Required)".localized, icon: "mappin.and.ellipse") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Page:".localized)
+                                    .foregroundColor(Theme.textSecondary)
+                                Spacer()
+                                Picker("Page:".localized, selection: $selectedPage) {
+                                    ForEach(pages, id: \.self) { page in
+                                        Text(page.localized).tag(page)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(Theme.accent)
+                            }
+                            
+                            Divider()
+                                .background(Color.white.opacity(0.1))
+                            
+                            HStack {
+                                Text("Element:".localized)
+                                    .foregroundColor(Theme.textSecondary)
+                                Spacer()
+                                Picker("Element:".localized, selection: $selectedElement) {
+                                    ForEach(elements, id: \.self) { element in
+                                        Text(element.localized).tag(element)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(Theme.accent)
+                            }
                         }
-                        Spacer()
                     }
+                    .onChange(of: selectedPage) { _, _ in
+                        selectedElement = elements.first ?? "Please select"
+                    }
+                    
+                    InquirySection(title: "Inquiry Content (Required)".localized, icon: "square.and.pencil") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextEditor(text: $message)
+                                .frame(minHeight: 150)
+                                .scrollContentBackground(.hidden)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(8)
+                                .foregroundColor(Theme.textMain)
+                                .tint(Theme.accent)
+                        }
+                    }
+                    
+                    InquirySection(title: "Email Address (Optional)".localized, icon: "envelope") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField("example@example.com", text: $email)
+                                .keyboardType(.emailAddress)
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                                .padding(10)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(8)
+                                .foregroundColor(Theme.textMain)
+                                .tint(Theme.accent)
+                            
+                            Text("Email Description".localized)
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                            
+                            if !email.isEmpty && !isEmailValid {
+                                Text("Invalid email address format".localized)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    }
+                    
+                    InquirySection(title: "Additional Info".localized, icon: "info.circle") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle("GPS情報を含める".localized, isOn: $includeGPS)
+                                .foregroundColor(Theme.textMain)
+                                .tint(Theme.accent)
+                            
+                            Text("潮位やRowModeの問題の場合はオンにしていただくと解決がスムーズです。".localized)
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                    }
+                    
+                    NavigationLink(destination: InquiryConfirmView(
+                        selectedPage: selectedPage,
+                        selectedElement: selectedElement,
+                        message: message,
+                        email: email,
+                        includeGPS: includeGPS,
+                        shouldDismissToSettings: $shouldDismissToSettings
+                    )) {
+                        HStack {
+                            Spacer()
+                            Text("Proceed to Confirm".localized)
+                                .fontWeight(.bold)
+                            Spacer()
+                        }
+                        .padding()
+                        .background(isFormValid ? Theme.primaryGradient : LinearGradient(colors: [.gray.opacity(0.3)], startPoint: .leading, endPoint: .trailing))
+                        .cornerRadius(12)
+                        .foregroundColor(.white)
+                        .shadow(color: isFormValid ? Theme.accent.opacity(0.4) : .clear, radius: 10, x: 0, y: 4)
+                    }
+                    .disabled(!isFormValid)
+                    .padding(.top, 10)
                 }
-                .disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
+                .padding()
             }
         }
-        .navigationTitle("お問い合わせ")
-        .alert("送信結果", isPresented: $showingAlert) {
-            Button("OK") {
-                if !isSending && alertMessage.contains("完了") {
-                    dismiss()
-                }
-            }
-        } message: {
-            Text(alertMessage)
-        }
-    }
-    
-    private func sendInquiry() {
-        isSending = true
-        
-        let urlString = "https://script.google.com/macros/s/AKfycby02tHfmAG-qRjI2ZhOA7BTLQi9S_Oqaaf3pI6o_PSSa233L8w5IcAodjFtAKLiiXo9/exec"
-        guard let url = URL(string: urlString) else {
-            alertMessage = "送信先URLが設定されていません。"
-            showingAlert = true
-            isSending = false
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        var locationInfo = "なし"
-        if includeGPS {
-            if let location = app.locationManager.previousLocation {
-                locationInfo = "緯度: \(location.coordinate.latitude), 経度: \(location.coordinate.longitude)"
-            } else {
-                locationInfo = "取得不可（GPS権限がない、または取得待ちです）"
+        .navigationTitle("Contact".localized)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .onChange(of: shouldDismissToSettings) { _, newValue in
+            if newValue {
+                dismiss()
             }
         }
-        
-        let payload: [String: Any] = [
-            "page": selectedPage,
-            "element": selectedElement,
-            "message": message,
-            "includeGPS": locationInfo,
-            "plan": currentPlan.rawValue,
-            "timestamp": ISO8601DateFormatter().string(from: Date())
-        ]
-        
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
-        } catch {
-            alertMessage = "データの作成に失敗しました。"
-            showingAlert = true
-            isSending = false
-            return
-        }
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
-                self.isSending = false
-                
-                if let error = error {
-                    self.alertMessage = "送信に失敗しました: \(error.localizedDescription)"
-                    self.showingAlert = true
-                    return
-                }
-                
-                if let httpResponse = response as? HTTPURLResponse, 
-                   (200...299).contains(httpResponse.statusCode) {
-                    self.alertMessage = "お問い合わせの送信が完了しました。ご協力ありがとうございます。"
-                    self.showingAlert = true
-                } else {
-                    self.alertMessage = "サーバーエラーが発生しました。時間をおいて再度お試しください。"
-                    self.showingAlert = true
-                }
-            }
-        }.resume()
     }
 }
 
-#Preview {
-    InquiryView()
+struct InquirySection<Content: View>: View {
+    let title: String
+    let icon: String
+    let content: Content
+    
+    init(title: String, icon: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.content = content()
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(Theme.accent)
+                Text(title)
+                    .font(Theme.subHeaderFont())
+                    .foregroundColor(Theme.textMain)
+            }
+            
+            VStack(spacing: 16) {
+                content
+            }
+            .padding()
+            .glassCardStyle()
+        }
+    }
 }

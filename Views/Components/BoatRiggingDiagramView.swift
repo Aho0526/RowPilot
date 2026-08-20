@@ -744,10 +744,11 @@ struct BoatRiggingDiagramView: View {
             let halfSpan3D = halfSpanVal * CGFloat(riggerXScaleFactor) // ピンを近づける（ユーザー調整可能）
             
             let heelsY3d = -CGFloat(max(0.0, min(25.0, footplateHeight)))
-            let z3d_foot = 20.0 + CGFloat(footstretch)
-            // TopビューのriggerPinYOffset（pt）をスケール1.3で割りで3D空間のcmに変換
-            // TopビューのY+方向（スターン側）→ 3DのZ+方向（スターン側）と同方向
-            let z3d_pin: CGFloat = 40.0 + CGFloat(riggerPinYOffset) / 1.3
+            // TopビューのY+方向（スターン側）→ 3DのZ-方向（スターン側）
+            // つまりZ+方向がボウ側（靴・フットストレッチはピンよりボウ側=Z+）
+            let z3d_pin: CGFloat = 40.0 - CGFloat(riggerPinYOffset) / 1.3
+            // 靴（フットストレッチャー）はピンよりfootstretcher cm分だけボウ側（Z+）
+            let z3d_foot = z3d_pin + CGFloat(footstretch)
             let pinHeight3dPort = CGFloat(workHeightPort)
             let pinHeight3dStarboard = CGFloat(workHeightStarboard)
             
@@ -759,7 +760,8 @@ struct BoatRiggingDiagramView: View {
             let zoom: CGFloat = baseZoom * userZoomFactor
             
             // Center shift moves focus directly to the footplate area when zoomed in
-            let centerShiftZ: CGFloat = isZoomedIn ? (z3d_foot + 10.0) : 42.0
+            // 非ズーム時はピン〜靴の中間にカメラフォーカス
+            let centerShiftZ: CGFloat = isZoomedIn ? (z3d_foot + 10.0) : (z3d_pin + z3d_foot) / 2.0
             let centerShiftY: CGFloat = isZoomedIn ? (heelsY3d + 8.0) : 0.0
             let distance: CGFloat = isZoomedIn ? 40.0 : 100.0
             
@@ -1109,12 +1111,14 @@ struct BoatRiggingDiagramView: View {
                     .background(Color.black.opacity(0.3).cornerRadius(6))
                     .position(x: w - 75, y: 15)
                 
-                // 3D Cockpit Deck Floor (Clipped - Semi-translucent panel look)
+                // 3D Cockpit Deck Floor (ピン位置・靴位置を基準に動的に生成)
+                let floorStartZ = z3d_pin - 30
+                let floorEndZ   = z3d_foot + 20
                 let floorVertices = [
-                    Point3D(x: -hullHalfWidthVal, y: 0, z: 5),
-                    Point3D(x: hullHalfWidthVal, y: 0, z: 5),
-                    Point3D(x: hullHalfWidthVal, y: 0, z: 85),
-                    Point3D(x: -hullHalfWidthVal, y: 0, z: 85)
+                    Point3D(x: -hullHalfWidthVal, y: 0, z: floorStartZ),
+                    Point3D(x: hullHalfWidthVal, y: 0, z: floorStartZ),
+                    Point3D(x: hullHalfWidthVal, y: 0, z: floorEndZ),
+                    Point3D(x: -hullHalfWidthVal, y: 0, z: floorEndZ)
                 ]
                 Path { path in
                     drawClippedPolygon(floorVertices, &path)
@@ -1127,17 +1131,19 @@ struct BoatRiggingDiagramView: View {
                     )
                 )
                 
-                // Slide Rails (Cut at appropriate position dynamically relative to footplate)
-                let seatZ: CGFloat = 40.0 - CGFloat(seatPosition) * (20.0 / 28.0)
-                let railsEndZ = max(seatZ + 4, z3d_foot - 3.0)
+                // Slide Rails (ピン基準で位置を算出)
+                // トップビューと同じく、シートはピンよりスターン側（Z-方向）
+                let seatZ: CGFloat = z3d_pin - CGFloat(seatPosition) * (20.0 / 28.0)
+                let railsEndZ = min(seatZ - 4, z3d_foot - 3.0)
+                let railStartZ = z3d_pin - 15
                 
                 Path { path in
-                    drawClippedLine(Point3D(x: -6, y: 2, z: 8), Point3D(x: -6, y: 2, z: railsEndZ), &path)
+                    drawClippedLine(Point3D(x: -6, y: 2, z: railStartZ), Point3D(x: -6, y: 2, z: railsEndZ), &path)
                 }
                 .stroke(LinearGradient(colors: [Theme.accent.opacity(0.8), Theme.secondaryAccent.opacity(0.8)], startPoint: .top, endPoint: .bottom), lineWidth: 2)
                 
                 Path { path in
-                    drawClippedLine(Point3D(x: 6, y: 2, z: 8), Point3D(x: 6, y: 2, z: railsEndZ), &path)
+                    drawClippedLine(Point3D(x: 6, y: 2, z: railStartZ), Point3D(x: 6, y: 2, z: railsEndZ), &path)
                 }
                 .stroke(LinearGradient(colors: [Theme.accent.opacity(0.8), Theme.secondaryAccent.opacity(0.8)], startPoint: .top, endPoint: .bottom), lineWidth: 2)
                 
@@ -1277,9 +1283,15 @@ struct BoatRiggingDiagramView: View {
                     let isWing3D = riggerType == "wing"
                     if isScull {
                         if isWing3D {
-                            // ウィングリガー: ストローク側ブレース + ボウ側メインアーム
-                            let thinStayAnchorZ3D = z3d_pin + 14.0  // ピンよりストローク側
-                            let thickWingAnchorZ3D = z3d_pin - 20.0 // ピンよりボウ側
+                            // ウィングリガー
+                            // ストローク側ブレース (細い線)：ピンよりZ-方向（スターン側）
+                            // トップビューでriggerStrokeAnchorY = riggerPinY + riggerStrokeOffset（負=ボウ側）
+                            // 3DではZ-がスターン側なので: z3d_pin - riggerStrokeOffset/1.3（負を打ち消してZ+=ボウ方向）
+                            // ただしここはストローク(スターン)側なのでZ-: z3d_pin + riggerStrokeOffset/1.3
+                            // ※riggerStrokeOffsetは負値なのでZ-方向になる
+                            let thinStayAnchorZ3D = z3d_pin + CGFloat(riggerStrokeOffset) / 1.3
+                            // メインアーム(太い線)：ボウ側 = z3d_pin - riggerBowOffset/1.3（正値なのでZ-方向）
+                            let thickWingAnchorZ3D = z3d_pin - CGFloat(riggerBowOffset) / 1.3
                             // ストローク側ブレース (細い線)
                             Path { path in
                                 drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: -halfSpan3D, y: pinHeight3dPort, z: z3d_pin), &path)
@@ -1296,8 +1308,8 @@ struct BoatRiggingDiagramView: View {
                             .stroke(LinearGradient(colors: [Color(hex: "E0E0E0"), Color(hex: "AAAAAA")], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                         } else {
                             // ストレートリガー: V字ステー形状
-                            let thinStayZ3D = z3d_pin + 14.0
-                            let thickWingZ3D = z3d_pin - 20.0
+                            let thinStayZ3D   = z3d_pin + CGFloat(riggerStrokeOffset) / 1.3 // スターン側(Z-)
+                            let thickWingZ3D  = z3d_pin - CGFloat(riggerBowOffset) / 1.3    // ボウ側(Z-)
                             Path { path in
                                 drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thinStayZ3D), Point3D(x: -halfSpan3D, y: pinHeight3dPort, z: z3d_pin), &path)
                                 drawClippedLine(Point3D(x: -hullHalfWidthVal, y: 12, z: thickWingZ3D), Point3D(x: -halfSpan3D, y: pinHeight3dPort, z: z3d_pin), &path)
@@ -1309,8 +1321,8 @@ struct BoatRiggingDiagramView: View {
                     } else {
                         if isWing3D {
                             // スウィープ + ウィング
-                            let thinStayAnchorZ3D = z3d_pin + 14.0
-                            let thickWingAnchorZ3D = z3d_pin - 20.0
+                            let thinStayAnchorZ3D  = z3d_pin + CGFloat(riggerStrokeOffset) / 1.3
+                            let thickWingAnchorZ3D = z3d_pin - CGFloat(riggerBowOffset) / 1.3
                             Path { path in
                                 drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thinStayAnchorZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
                             }
@@ -1323,8 +1335,8 @@ struct BoatRiggingDiagramView: View {
                             .stroke(LinearGradient(colors: [Color(hex: "E0E0E0"), Color(hex: "AAAAAA")], startPoint: .top, endPoint: .bottom), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                         } else {
                             // スウィープ + ストレート: V字ステー形状
-                            let thinStayZ3D = z3d_pin + 14.0
-                            let thickWingZ3D = z3d_pin - 20.0
+                            let thinStayZ3D  = z3d_pin + CGFloat(riggerStrokeOffset) / 1.3
+                            let thickWingZ3D = z3d_pin - CGFloat(riggerBowOffset) / 1.3
                             Path { path in
                                 drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thinStayZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
                                 drawClippedLine(Point3D(x: hullHalfWidthVal, y: 12, z: thickWingZ3D), Point3D(x: halfSpan3D, y: pinHeight3dStarboard, z: z3d_pin), &path)
@@ -1363,8 +1375,8 @@ struct BoatRiggingDiagramView: View {
                     
                     // MARK: - デバッグオーバーレイ (3D View)
                     if riggerDebugOverlay {
-                        let dbgWingAnchZ = z3d_pin - 20.0
-                        let dbgStayAnchZ = z3d_pin + 14.0
+                        let dbgThinStayZ  = z3d_pin + CGFloat(riggerStrokeOffset) / 1.3 // スターン側細いブレース
+                        let dbgThickWingZ = z3d_pin - CGFloat(riggerBowOffset) / 1.3    // ボウ側太いアーム
                         VStack(alignment: .leading, spacing: 2) {
                             Text("── 3D Z座標 ──")
                                 .foregroundColor(.white)
@@ -1372,9 +1384,9 @@ struct BoatRiggingDiagramView: View {
                                 .foregroundColor(.yellow)
                             Text("z3d_foot = \(String(format:"%.1f",z3d_foot))")
                                 .foregroundColor(.green)
-                            Text("wing_bowAncZ = \(String(format:"%.1f",dbgWingAnchZ))")
+                            Text("thinStayZ = \(String(format:"%.1f",dbgThinStayZ)) (stern)")
                                 .foregroundColor(.cyan)
-                            Text("stay_strkAncZ = \(String(format:"%.1f",dbgStayAnchZ))")
+                            Text("thickWingZ = \(String(format:"%.1f",dbgThickWingZ)) (bow)")
                                 .foregroundColor(.orange)
                             Text("halfSpan = \(String(format:"%.1f",halfSpanVal))")
                                 .foregroundColor(.purple)

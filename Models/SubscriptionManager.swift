@@ -637,7 +637,6 @@ class SubscriptionManager: ObservableObject {
         case .team: return 1
         case .max:  return 3
         case .organization: return 5
-        case .enterprise: return 9999
         default:    return 0
         }
     }

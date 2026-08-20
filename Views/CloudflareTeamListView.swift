@@ -487,40 +487,62 @@ struct CloudflareTeamListView: View {
     
     private func myTeamDashboard(team: Team) -> some View {
         VStack(spacing: 24) {
-            // チーム停止・削除警告バナー
-            if let scheduledDeletion = team.scheduled_for_deletion_at {
+            // チームアーカイブ警告バナー
+            if let scheduledDeletion = team.scheduled_for_deletion_at, (viewModel.myRole == "owner" || viewModel.myRole == "admin" || viewModel.myRole == "manager") {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.red)
-                            .font(.title2)
-                        Text("【重要】チーム機能の停止中")
-                            .font(.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                    }
-                    Text("サブスクリプションの変更により、現在チーム機能が停止され「閲覧のみ」となっています。")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.8))
-                    
-                    if let formattedDate = formatISO8601Date(scheduledDeletion) {
-                        Text("削除予定日: \(formattedDate)\nまでにプランを継続（再登録）しない場合、チームデータは完全に削除されます。")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.red)
+                    if team.isSuspended {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                                .font(.title2)
+                            Text("【重要】チームのアーカイブ中")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        }
+                        Text("猶予期間が終了したため、現在チームはアーカイブ（閲覧のみ）されています。新規の練習記録や管理操作を行うには、プランの継続（再登録）が必要です。")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        if let formattedDate = formatISO8601Date(scheduledDeletion) {
+                            Text("アーカイブ開始日: \(formattedDate)")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.red)
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .font(.title2)
+                            Text("【重要】チームのアーカイブ猶予期間中")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        }
+                        Text("サブスクリプションの変更により、現在チームはアーカイブ猶予期間に入っています。期間中は通常通り記録や操作を行えますが、期限を過ぎるとアーカイブ状態（閲覧のみ）となります。")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        if let graceDate = team.gracePeriodEndDate {
+                            Text("アーカイブ開始予定日: \(formatDate(graceDate))")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.orange)
+                        }
                     }
                 }
                 .padding()
-                .background(Color.red.opacity(0.15))
+                .background(team.isSuspended ? Color.red.opacity(0.15) : Color.orange.opacity(0.15))
                 .cornerRadius(16)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.red.opacity(0.4), lineWidth: 1)
+                        .stroke(team.isSuspended ? Color.red.opacity(0.4) : Color.orange.opacity(0.4), lineWidth: 1)
                 )
             }
             
             // メンバー自動削減 / プラン移行警告バナー
-            if let membersScheduledDeletion = team.members_scheduled_for_deletion_at {
+            if let membersScheduledDeletion = team.members_scheduled_for_deletion_at, (viewModel.myRole == "owner" || viewModel.myRole == "admin" || viewModel.myRole == "manager") {
                 let owner = viewModel.members.first(where: { $0.role == "owner" })
                 let targetPlan = owner?.entitlement ?? team.plan
                 let targetLimit = memberLimit(for: targetPlan)
@@ -629,7 +651,7 @@ struct CloudflareTeamListView: View {
                     HStack(spacing: 8) {
                         Text(team.name)
                             .font(.title2).fontWeight(.black).foregroundColor(.white)
-                        if isEditable && team.scheduled_for_deletion_at == nil {
+                        if isEditable && !team.isSuspended {
                             Button(action: {
                                 renameText = team.name
                                 showRenameAlert = true
@@ -729,7 +751,7 @@ struct CloudflareTeamListView: View {
                     .font(.caption2).foregroundColor(.white.opacity(0.5))
             }
             Spacer()
-            if viewModel.myTeam?.scheduled_for_deletion_at == nil {
+            if let team = viewModel.myTeam, !team.isSuspended {
                 HStack(spacing: 8) {
                     Button(action: { memberToReject = member; showRejectConfirm = true }) {
                         Image(systemName: "xmark").font(.caption).fontWeight(.bold)
@@ -825,7 +847,7 @@ struct CloudflareTeamListView: View {
             }
             Spacer()
             if member.id != subManager.myUserRecordId {
-                let isCurrentUserEditable = (viewModel.myRole == "owner" || viewModel.myRole == "admin") && viewModel.myTeam?.scheduled_for_deletion_at == nil
+                let isCurrentUserEditable = (viewModel.myRole == "owner" || viewModel.myRole == "admin") && !(viewModel.myTeam?.isSuspended ?? false)
                 if isCurrentUserEditable {
                     Button(action: { selectedMember = member; showMemberOptions = true }) {
                         Image(systemName: "ellipsis")
@@ -1113,6 +1135,13 @@ struct CloudflareTeamListView: View {
         outputFormatter.locale = Locale(identifier: "ja_JP")
         outputFormatter.dateFormat = "yyyy年MM月dd日 HH時mm分"
         return outputFormatter.string(from: date)
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "yyyy年MM月dd日 HH時mm分"
+        return formatter.string(from: date)
     }
 }
 

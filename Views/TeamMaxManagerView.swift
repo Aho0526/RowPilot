@@ -7,7 +7,7 @@ struct TeamMaxManagerView: View {
     // @ObservedObject var codeManager = InviteCodeManager.shared
     @ObservedObject var requestManager = ShareRequestManager.shared
 
-    @AppStorage("userSubscriptionPlan") private var currentPlanRaw: String = "free"
+    @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
 
     @State private var showingAlert = false
     @State private var alertTitle = ""
@@ -15,10 +15,6 @@ struct TeamMaxManagerView: View {
     @State private var showingResetConfirm = false
     @State private var showingApproveConfirm: ShareRequest? = nil
     @State private var showingRejectConfirm: ShareRequest? = nil
-
-    var currentPlan: SubscriptionPlan {
-        SubscriptionPlan(rawValue: currentPlanRaw) ?? .free
-    }
 
     var body: some View {
         ZStack {

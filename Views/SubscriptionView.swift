@@ -11,7 +11,6 @@ private extension SubscriptionPlan {
         case .team: return "person.3.fill"
         case .max:  return "crown.fill"
         case .organization: return "building.fill"
-        case .enterprise: return "building.2.fill"
         }
     }
 
@@ -23,7 +22,6 @@ private extension SubscriptionPlan {
         case .team: return [Color(hex: "10B981"), Color(hex: "065F46")]
         case .max:  return [Color(hex: "F59E0B"), Color(hex: "B45309")]
         case .organization: return [Color(hex: "6366F1"), Color(hex: "4338CA")]
-        case .enterprise: return [Color(hex: "8B5CF6"), Color(hex: "5B21B6")]
         }
     }
 
@@ -37,7 +35,6 @@ private extension SubscriptionPlan {
         case .team: return "チーム全員で使える".localized
         case .max:  return "プロコーチのための最高峰".localized
         case .organization: return "中〜大規模チームで共有して使う".localized
-        case .enterprise: return "大規模チーム・団体向け".localized
         }
     }
 
@@ -45,22 +42,22 @@ private extension SubscriptionPlan {
     var periodString: String {
         switch self {
         case .free: return "無料"
-        case .pro, .manager, .team, .max, .organization, .enterprise: return "月額（毎月自動更新）"
+        case .pro, .manager, .team, .max, .organization: return "月額（毎月自動更新）"
         }
     }
 
     var allFeatures: [(String, Bool)] {
         let all: [(String, [SubscriptionPlan])] = [
-            ("潮汐情報の確認".localized,                 [.free, .pro, .team, .max, .manager, .organization, .enterprise]),
-            ("GPSレート計".localized,                    [.free, .pro, .team, .max, .manager, .organization, .enterprise]),
-            ("PM5との1:1接続".localized,                [.free, .pro, .team, .max, .manager, .organization, .enterprise]),
-            ("リギングの管理".localized,                 [.free, .pro, .team, .max, .manager, .organization, .enterprise]),
-            ("iCloudバックアップ".localized,             [.free, .pro, .team, .max, .manager, .organization, .enterprise]),
-            ("Force Curve の表示".localized,             [.pro, .team, .max, .manager, .organization, .enterprise]),
-            ("ゴーストレース機能".localized,             [.pro, .team, .max, .manager, .organization, .enterprise]),
-            ("Strava同期 (準備中)".localized,            [.pro, .team, .max, .manager, .organization, .enterprise]),
-            ("PM5 複数台同時接続".localized,             [.team, .max, .organization, .manager, .enterprise]),
-            ("リアルタイム一斉トレーニング".localized,    [.team, .max, .organization, .manager, .enterprise]),
+            ("潮汐情報の確認".localized,                 [.free, .pro, .team, .max, .manager, .organization]),
+            ("GPSレート計".localized,                    [.free, .pro, .team, .max, .manager, .organization]),
+            ("PM5との1:1接続".localized,                [.free, .pro, .team, .max, .manager, .organization]),
+            ("リギングの管理".localized,                 [.free, .pro, .team, .max, .manager, .organization]),
+            ("iCloudバックアップ".localized,             [.free, .pro, .team, .max, .manager, .organization]),
+            ("Force Curve の表示".localized,             [.pro, .team, .max, .manager, .organization]),
+            ("ゴーストレース機能".localized,             [.pro, .team, .max, .manager, .organization]),
+            ("Strava同期 (準備中)".localized,            [.pro, .team, .max, .manager, .organization]),
+            ("PM5 複数台同時接続".localized,             [.team, .max, .organization, .manager]),
+            ("リアルタイム一斉トレーニング".localized,    [.team, .max, .organization, .manager]),
             ("マネージャープランの共有 (1名)".localized,    [.team]),
             ("マネージャープランの共有 (3名)".localized,    [.max]),
             ("マネージャープランの共有 (最大5名)".localized, [.organization]),
@@ -72,8 +69,8 @@ private extension SubscriptionPlan {
             ("AIとテンプレート型の分析機能 (準備中)".localized, [.team]),
             ("AIと対話型の分析機能 (準備中)".localized,    [.max]),
             ("AIと対話型の分析機能".localized,            [.organization]),
-            ("CSV形式での記録出力".localized,             [.max, .organization, .enterprise]),
-            ("レースビュー (高度な可視化)".localized,     [.max, .organization, .enterprise]),
+            ("CSV形式での記録出力".localized,             [.max, .organization]),
+            ("レースビュー (高度な可視化)".localized,     [.max, .organization]),
         ]
         return all
             .filter { item in
@@ -392,10 +389,6 @@ struct SubscriptionView: View {
             SectionLabel(text: "For Organization")
                 .padding(.top, 8)
             PlanCard(plan: .organization, currentPlan: subManager.currentPlan)
-
-            SectionLabel(text: "Enterprise")
-                .padding(.top, 8)
-            PlanCard(plan: .enterprise, currentPlan: subManager.currentPlan)
         }
     }
 
@@ -664,7 +657,7 @@ struct SubscriptionDetailView: View {
                 infoRow(label: "サブスクリプション名", value: plan.displayName)
                 Divider().background(Color.white.opacity(0.08))
                 infoRow(label: "期間", value: plan.periodString)
-                if plan != .free && plan != .enterprise {
+                if plan != .free {
                     Divider().background(Color.white.opacity(0.08))
                     // 商品取得中・取得済みで表示を変える
                     if subManager.isLoadingProducts {
@@ -743,48 +736,44 @@ struct SubscriptionDetailView: View {
             return "最大5人に「RowPilot Manager」を共有でき、最大3人を管理者として指定、最大50人をメンバーとして追加できます。さらに、AIと対話型の分析機能（準備中）が追加されます。".localized
         case .organization:
             return "最大10人に「RowPilot Manager」を共有でき、最大7人の管理者として指定、最大200人をメンバーとして追加できます。さらに、AIと対話型の分析機能が利用可能です。".localized
-        case .enterprise:
-            return "お問い合わせください。".localized
         }
     }
 
     // MARK: - Features List
     @ViewBuilder
     private var featuresSection: some View {
-        if plan != .enterprise {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("含まれる機能".localized)
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .tracking(0.8)
-                    .foregroundColor(.white.opacity(0.4))
-                    .textCase(.uppercase)
+        VStack(alignment: .leading, spacing: 10) {
+            Text("含まれる機能".localized)
+                .font(.caption)
+                .fontWeight(.bold)
+                .tracking(0.8)
+                .foregroundColor(.white.opacity(0.4))
+                .textCase(.uppercase)
 
-                VStack(spacing: 0) {
-                    ForEach(Array(plan.allFeatures.enumerated()), id: \.offset) { idx, item in
-                        let (name, included) = item
-                        HStack(spacing: 12) {
-                            Image(systemName: included ? "checkmark.circle.fill" : "xmark.circle")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(included ? plan.accentColor : Color.white.opacity(0.2))
+            VStack(spacing: 0) {
+                ForEach(Array(plan.allFeatures.enumerated()), id: \.offset) { idx, item in
+                    let (name, included) = item
+                    HStack(spacing: 12) {
+                        Image(systemName: included ? "checkmark.circle.fill" : "xmark.circle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(included ? plan.accentColor : Color.white.opacity(0.2))
 
-                            Text(name)
-                                .font(.subheadline)
-                                .foregroundColor(included ? .white.opacity(0.9) : .white.opacity(0.25))
+                        Text(name)
+                            .font(.subheadline)
+                            .foregroundColor(included ? .white.opacity(0.9) : .white.opacity(0.25))
 
-                            Spacer()
-                        }
-                        .padding(.vertical, 11)
-                        .padding(.horizontal, 14)
-                        .background(idx % 2 == 0 ? Color.white.opacity(0.03) : Color.clear)
+                        Spacer()
                     }
+                    .padding(.vertical, 11)
+                    .padding(.horizontal, 14)
+                    .background(idx % 2 == 0 ? Color.white.opacity(0.03) : Color.clear)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                )
             }
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.white.opacity(0.07), lineWidth: 1)
+            )
         }
     }
 
@@ -792,26 +781,7 @@ struct SubscriptionDetailView: View {
     @ViewBuilder
     private var actionArea: some View {
         if !isSelected {
-            if plan == .enterprise {
-                Button(action: contactEnterprise) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "envelope.fill")
-                            .font(.headline)
-                        Text("お問い合わせ".localized)
-                            .font(.headline)
-                            .fontWeight(.bold)
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(
-                        LinearGradient(colors: plan.gradientColors,
-                                       startPoint: .leading, endPoint: .trailing)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .shadow(color: plan.accentColor.opacity(0.4), radius: 12, x: 0, y: 5)
-                }
-            } else if plan == .free {
+            if plan == .free {
                 // Freeプランは購入ボタン不要
                 EmptyView()
             } else {
@@ -985,7 +955,7 @@ struct SubscriptionDetailView: View {
     // MARK: - Detail Legal Section (Guideline 3.1.2(c))
     private var detailLegalSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if plan != .free && plan != .enterprise {
+            if plan != .free {
                 Text("サブスクリプションは購入確認後、Apple IDアカウントに課金されます。現在の期間終了の24時間以上前にキャンセルしない限り自動更新されます。購入後は「設定 > Apple ID > サブスクリプション」からいつでも管理・キャンセルできます。")
                     .font(.caption2)
                     .foregroundColor(.white.opacity(0.35))
@@ -1060,16 +1030,6 @@ struct SubscriptionDetailView: View {
                     showingAuthError = true
                 }
             }
-        }
-    }
-
-    private func contactEnterprise() {
-        let email = "rowpilot.jp@gmail.com"
-        let subject = "RowPilot Enterpriseプランについてのお問い合わせ".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let body = "RowPilot Enterpriseプランについて、以下の内容でお問い合わせします。\n\n・チーム名:\n・ご利用予定人数:\n・お問い合わせ内容:\n".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        
-        if let url = URL(string: "mailto:\(email)?subject=\(subject)&body=\(body)") {
-            UIApplication.shared.open(url)
         }
     }
 }

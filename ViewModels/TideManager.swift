@@ -3,10 +3,14 @@ import CoreLocation
 import Combine
 
 class TideManager: ObservableObject {
-    @Published var nearestStation: TideStation?
+    @Published var nearestStation: TideStation?       // GPS最寄り地点
+    @Published var selectedStation: TideStation?      // 地図から手動選択された地点
     @Published var currentTideData: TideData?
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+
+    /// 地図表示用: 全239地点を公開
+    var allStations: [TideStation] { stations }
     
     // @Published var currentDate is below
     @Published var currentDate: Date = Calendar.current.startOfDay(for: Date()) {
@@ -268,26 +272,44 @@ class TideManager: ObservableObject {
         TideStation(id: "FK", name: "深浦", coordinate: CLLocationCoordinate2D(latitude: 40.6500, longitude: 139.9333))
     ]
     
-    // 最寄りの観測所を探す
+    // 最寄りの観測所を探す（GPS用）
     func findNearestStation(location: CLLocation) {
         let sortedStations = stations.sorted {
             let loc1 = CLLocation(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)
             let loc2 = CLLocation(latitude: $1.coordinate.latitude, longitude: $1.coordinate.longitude)
             return location.distance(from: loc1) < location.distance(from: loc2)
         }
-        
+
         guard let nearest = sortedStations.first else { return }
-        
-        // 既に同じ地点を表示中ならリロードしない
-        if self.nearestStation?.id != nearest.id || self.currentTideData == nil {
-            self.nearestStation = nearest
-            // Infinite loop prevention: Set currentDate explicitly to trigger update
-            // This is the entry point for initialization
+        self.nearestStation = nearest
+
+        // 手動選択中は GPS 最寄りへ切り替えない
+        guard selectedStation == nil else { return }
+
+        if self.currentTideData == nil {
             self.currentDate = Calendar.current.startOfDay(for: Date())
         }
     }
-    
-    // 日付変更 (スワイプ用)
+
+    init() {
+        // 軽量な初期化のみ
+    }
+
+    /// 地図から任意の観測所を選択してデータを切り替える
+    func selectStation(_ station: TideStation) {
+        guard selectedStation?.id != station.id else { return }
+        self.selectedStation = station
+        self.currentDate = Calendar.current.startOfDay(for: Date())
+        updateCurrentTideData()
+    }
+
+    /// GPSで最も近い観測所にワンタップでリセットする
+    func resetToNearestStation() {
+        guard selectedStation != nil else { return }
+        self.selectedStation = nil
+        self.currentDate = Calendar.current.startOfDay(for: Date())
+        updateCurrentTideData()
+    }
     func changeDate(by days: Int) {
         let calendar = Calendar.current
         if let newDate = calendar.date(byAdding: .day, value: days, to: currentDate) {
@@ -297,28 +319,35 @@ class TideManager: ObservableObject {
     }
     
     private func updateCurrentTideData() {
-        let key = self.dateFormatter.string(from: currentDate)
+        let station = selectedStation ?? nearestStation
+        guard let station = station else { return }
+        let dateKey = self.dateFormatter.string(from: currentDate)
+        let key = "\(station.id)_\(dateKey)"
         if let data = self.tideDataCache[key] {
             self.currentTideData = data
-        } else if let station = nearestStation {
-            // データがない場合 (年が変わった等)
+        } else {
             fetchTideData(for: station, date: currentDate)
         }
     }
     
     // 気象庁のテキストデータを取得してパースする
-    func fetchTideData(for station: TideStation, date: Date) {
+    func fetchTideData(for station: TideStation, date: Date, completion: ((TideData?) -> Void)? = nil) {
         let calendar = Calendar.current
         let year = calendar.component(.year, from: date)
         
-        // 簡易チェック: その年のデータがキャッシュに少しでもあればOKとする
-        let keyPrefix = "\(year)-"
+        // 簡易チェック: その観測所のその年のデータがキャッシュに少しでもあればOKとする
+        let keyPrefix = "\(station.id)_\(year)-"
+        let dateKey = self.dateFormatter.string(from: date)
+        let fullKey = "\(station.id)_\(dateKey)"
+
         if self.tideDataCache.keys.contains(where: { $0.hasPrefix(keyPrefix) }) {
              // Cache hit logic
-             let key = self.dateFormatter.string(from: date)
-             if let data = self.tideDataCache[key] {
+             let data = self.tideDataCache[fullKey]
+             let activeStation = selectedStation ?? nearestStation
+             if activeStation?.id == station.id {
                  self.currentTideData = data
              }
+             completion?(data)
              return
         }
         
@@ -331,6 +360,7 @@ class TideManager: ObservableObject {
         guard let url = URL(string: urlString) else {
             self.errorMessage = "Invalid URL"
             self.isLoading = false
+            completion?(nil)
             return
         }
         
@@ -339,6 +369,7 @@ class TideManager: ObservableObject {
                 DispatchQueue.main.async {
                     self?.isLoading = false
                     self?.errorMessage = error.localizedDescription
+                    completion?(nil)
                 }
                 return
             }
@@ -347,19 +378,26 @@ class TideManager: ObservableObject {
                 DispatchQueue.main.async {
                     self?.isLoading = false
                     self?.errorMessage = "Data decoding failed"
+                    completion?(nil)
                 }
                 return
             }
             
             // Background processing
-            // Use local self? to call instance method
             let (cache, current) = self?.parseAllJMATextAndGetResult(text, station: station, targetDate: date) ?? ([:], nil)
             
             DispatchQueue.main.async {
                 self?.isLoading = false
                 self?.cachedText = text
-                self?.tideDataCache = cache
-                self?.currentTideData = current
+                // 既存の他地点のキャッシュとマージ
+                for (k, v) in cache {
+                    self?.tideDataCache[k] = v
+                }
+                let activeStation = self?.selectedStation ?? self?.nearestStation
+                if activeStation?.id == station.id {
+                    self?.currentTideData = current
+                }
+                completion?(current)
             }
         }.resume()
     }
@@ -393,13 +431,19 @@ class TideManager: ObservableObject {
                 }
             }
             
-            // 2. Date
+            // 2. Date (月日チェックでターゲット日付近のみピンポイントパース)
             let yyStr = String(chars[72..<74]).trimmingCharacters(in: .whitespaces)
             let mmStr = String(chars[74..<76]).trimmingCharacters(in: .whitespaces)
             let ddStr = String(chars[76..<78]).trimmingCharacters(in: .whitespaces)
             
             guard let yy = Int(yyStr), let mm = Int(mmStr), let dd = Int(ddStr) else { continue }
             let year = 2000 + yy
+
+            let targetMonth = Calendar.current.component(.month, from: targetDate)
+            // ターゲット月とその前後の月のみに絞り込んで超高速化（365日分の不要処理を即パス）
+            if abs(mm - targetMonth) > 1 && !(mm == 12 && targetMonth == 1) && !(mm == 1 && targetMonth == 12) {
+                continue
+            }
             
             var dateComponents = DateComponents()
             dateComponents.year = year
@@ -422,10 +466,11 @@ class TideManager: ObservableObject {
                 tideType: tideType
             )
             
-            let key = formatter.string(from: date)
+            let dateKey = formatter.string(from: date)
+            let key = "\(station.id)_\(dateKey)"
             tempCache[key] = tideData
             
-            if key == targetKey {
+            if dateKey == targetKey {
                 targetData = tideData
             }
         }
