@@ -133,6 +133,19 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// 意図的に削除され、自動再接続を許可しないデバイスのID集合
     @Published var ignoredDeviceIDs: Set<UUID> = []
     
+    /// 現在の有効な最大接続台数（開発者モード時は開発者設定値、それ以外は現在のサブスクリプションプランの上限）
+    var effectiveMaxConnections: Int {
+        if DeveloperModeManager.shared.isEnabled {
+            return DeveloperModeManager.shared.maxPM5Connections
+        }
+        return SubscriptionManager.shared.currentPlan.maxPM5Connections
+    }
+    
+    /// 最大接続台数に達しているか
+    var isConnectionLimitReached: Bool {
+        return (connectedDevices.count + connectingDeviceIDs.count) >= effectiveMaxConnections
+    }
+    
     /// Bluetoothの電源状態
     @Published var isBluetoothPoweredOn: Bool = false
     
@@ -156,6 +169,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     @Published var workoutSplitTime: Int? = nil     // スプリット時間
     @Published var workoutSplitCalories: Int? = nil // スプリットカロリー
     @Published var workoutRestTime: Int? = nil      // 休憩時間（秒）
+    @Published var workoutVariableIntervals: [VariableIntervalEntry]? = nil // 可変インターバル設定
     
     /// ダッシュボード表示フラグ
     @Published var showDashboard: Bool = false
@@ -264,9 +278,14 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             return
         }
         
-        // 接続数の上限を10台に制限
-        guard connectedDevices.count + connectingDeviceIDs.count < 10 else {
-            errorMessage = "Max connection limit is 10 devices".localized
+        // 接続数の上限を動的制限（Proプランは最大4台、Manager以上は通常10台、開発者モード時は設定値）
+        let maxConnections = effectiveMaxConnections
+        guard connectedDevices.count + connectingDeviceIDs.count < maxConnections else {
+            if SubscriptionManager.shared.currentPlan == .pro && !DeveloperModeManager.shared.isEnabled {
+                errorMessage = "Pro Plan Limit Notice".localized
+            } else {
+                errorMessage = "Max connection limit is \(maxConnections) devices".localized
+            }
             return
         }
         
@@ -798,9 +817,12 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         }
         workoutDistance = nil
         workoutTime = nil
+        workoutCalories = nil
         workoutRestTime = nil
         workoutSplitDistance = nil
         workoutSplitTime = nil
+        workoutSplitCalories = nil
+        workoutVariableIntervals = intervals
         workoutStartTime = Date()
         initializeAllMetrics()
         
@@ -909,7 +931,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             frame: workoutFrame,
             label: "WORKOUT_DIST_\(limitedMeters)m",
             perDeviceStatus: .configuring
-        ) {
+        ) { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.isSending = false
@@ -945,7 +967,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             frame: workoutFrame,
             label: "WORKOUT_TIME_\(limitedSeconds)s",
             perDeviceStatus: .configuring
-        ) {
+        ) { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.isSending = false
@@ -981,7 +1003,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             frame: workoutFrame,
             label: "WORKOUT_CALS_\(limitedCalories)cal",
             perDeviceStatus: .configuring
-        ) {
+        ) { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.isSending = false
@@ -1019,7 +1041,8 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     
     private func startDataRecordingTimer() {
         stopDataRecordingTimer()
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.dataRecordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 Task { @MainActor in
                     self?.recordDataPoints()
@@ -1137,6 +1160,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         workoutCalories = calories
         workoutSplitCalories = calories != nil ? split : nil
         workoutRestTime = nil
+        workoutVariableIntervals = nil
         workoutStartTime = Date()
         initializeAllMetrics()
         
@@ -1176,6 +1200,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         workoutSplitDistance = nil
         workoutSplitTime = nil
         workoutSplitCalories = nil
+        workoutVariableIntervals = nil
         workoutStartTime = Date()
         initializeAllMetrics()
         

@@ -7,6 +7,8 @@ class SoundManager: ObservableObject {
     private var audioPlayer: AVAudioPlayer?
     private var sosTimer: Timer?
     private var pressingTimer: Timer?
+    private var sosWorkItem: DispatchWorkItem?
+    private var toneStopWorkItem: DispatchWorkItem?
     
     @Published var isSOSActive = false
     @Published var isPressing = false
@@ -76,12 +78,18 @@ class SoundManager: ObservableObject {
         isSOSActive = false
         sosTimer?.invalidate()
         sosTimer = nil
+        sosWorkItem?.cancel()
+        sosWorkItem = nil
+        toneStopWorkItem?.cancel()
+        toneStopWorkItem = nil
         audioPlayer?.stop()
     }
     
     // MARK: - Internal Logic
     
     private func startMorseSequence() {
+        sosWorkItem?.cancel()
+        sosWorkItem = nil
         let sequence: [(duration: TimeInterval, isSound: Bool)] = [
             // S
             (dotDuration, true), (gapDuration, false),
@@ -110,15 +118,18 @@ class SoundManager: ObservableObject {
         }
         
         let nextDelay = item.duration
-        DispatchQueue.main.asyncAfter(deadline: .now() + nextDelay) { [weak self] in
+        let workItem = DispatchWorkItem { [weak self] in
             self?.playNextSignal(sequence: sequence, index: index + 1)
         }
+        sosWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + nextDelay, execute: workItem)
     }
     
     private func playTone(duration: TimeInterval) {
         // Ensure player is ready
         guard let player = audioPlayer else { return }
         
+        toneStopWorkItem?.cancel()
         if player.isPlaying {
             player.stop()
             player.currentTime = 0
@@ -128,15 +139,11 @@ class SoundManager: ObservableObject {
         player.volume = 1.0
         player.play()
         
-        // Stop after 'duration'
-        // Note: The timer approach to stop playback works for synthesized constant tones.
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
-            // Only stop if we are still supposed to be playing this exact tone? 
-            // If another tone started, player.currentTime would be reset.
-            // This is a bit racy but for a beep it is usually fine.
-            // Better: Fade out?
+        let stopWorkItem = DispatchWorkItem { [weak self] in
             self?.audioPlayer?.stop()
         }
+        toneStopWorkItem = stopWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: stopWorkItem)
     }
     
     private func generateToneFile() {

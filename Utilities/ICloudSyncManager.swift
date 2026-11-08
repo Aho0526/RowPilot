@@ -127,15 +127,32 @@ class ICloudSyncManager: ObservableObject {
 
     /// iCloud Drive上の.rowpilotファイルをすべて読み込み、RecordManagerへインポートする
     func importAll(into recordManager: RecordManager, completion: @escaping (Int) -> Void) {
-        guard let containerURL = iCloudContainerURL else {
-            completion(0)
-            return
-        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else {
+                DispatchQueue.main.async { completion(0) }
+                return
+            }
 
-        DispatchQueue.global(qos: .userInitiated).async {
+            let resolvedURL: URL?
+            if let cached = self.cachedContainerURL {
+                resolvedURL = cached
+            } else {
+                let url = FileManager.default.url(forUbiquityContainerIdentifier: nil)?
+                    .appendingPathComponent("Documents", isDirectory: true)
+                DispatchQueue.main.async {
+                    self.cachedContainerURL = url
+                }
+                resolvedURL = url
+            }
+
+            guard let containerURL = resolvedURL else {
+                DispatchQueue.main.async { completion(0) }
+                return
+            }
+
             // まずiCloudのメタデータをダウンロードさせる
             let coordinator = NSFileCoordinator()
-            var importedCount = 0
+            var decodedItems: [SharedWorkoutData] = []
 
             do {
                 let files = try FileManager.default.contentsOfDirectory(
@@ -159,13 +176,7 @@ class ICloudSyncManager: ObservableObject {
                               let sharedData = try? JSONDecoder().decode(SharedWorkoutData.self, from: data) else {
                             return
                         }
-
-                        DispatchQueue.main.sync {
-                            let result = WorkoutShareManager.shared.importToRecordManager(sharedData, recordManager: recordManager)
-                            if result == .success {
-                                importedCount += 1
-                            }
-                        }
+                        decodedItems.append(sharedData)
                     }
                 }
             } catch {
@@ -173,6 +184,13 @@ class ICloudSyncManager: ObservableObject {
             }
 
             DispatchQueue.main.async {
+                var importedCount = 0
+                for sharedData in decodedItems {
+                    let result = WorkoutShareManager.shared.importToRecordManager(sharedData, recordManager: recordManager)
+                    if result == .success {
+                        importedCount += 1
+                    }
+                }
                 completion(importedCount)
             }
         }

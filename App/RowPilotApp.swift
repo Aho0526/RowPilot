@@ -75,8 +75,9 @@ struct RowPilotApp: App {
                 app.handleScenePhaseChange(newPhase)
             }
             .onChange(of: app.isSplashVisible) { _, isVisible in
-                // スプラッシュ溈了後（起動時）にiCloudから未取得の記録をインポート
+                // スプラッシュ終了後（起動時）にGPS権限リクエストおよびiCloud同期を実行
                 if !isVisible {
+                    app.onSplashFinished()
                     importFromICloudOnLaunch()
                 }
             }

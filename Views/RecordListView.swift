@@ -268,14 +268,22 @@ struct RecordDetailView: View {
                     HStack(spacing: 8) {
                         Menu {
                             Button {
-                                WorkoutShareManager.shared.presentShareSheet(for: record)
+                                var updated = record
+                                updated.notes = editedNotes
+                                updated.tags = editedTags
+                                updated.crewInfo = currentCrewInfo
+                                WorkoutShareManager.shared.presentShareSheet(for: updated)
                             } label: {
                                 Label("Share RowPilot Data (.rowpilot)".localized, systemImage: "doc.text")
                             }
                             
                             Button {
                                 if currentPlan.hasCSVExport {
-                                    WorkoutShareManager.shared.presentCSVShareSheet(for: record)
+                                    var updated = record
+                                    updated.notes = editedNotes
+                                    updated.tags = editedTags
+                                    updated.crewInfo = currentCrewInfo
+                                    WorkoutShareManager.shared.presentCSVShareSheet(for: updated)
                                 } else {
                                     showMaxPlanAlert = true
                                 }
@@ -290,6 +298,8 @@ struct RecordDetailView: View {
                             if !SettingsManager.shared.settings.autoUploadToTeam {
                                 Button {
                                     var recordToUpload = record
+                                    recordToUpload.notes = editedNotes
+                                    recordToUpload.tags = editedTags
                                     recordToUpload.crewInfo = currentCrewInfo
                                     TeamRecordUploader.shared.uploadManual(record: recordToUpload)
                                 } label: {

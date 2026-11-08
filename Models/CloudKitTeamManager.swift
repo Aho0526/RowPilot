@@ -565,14 +565,6 @@ class CloudKitTeamManager: ObservableObject {
 
     func rejectJoinRequest(_ request: CKJoinRequest, completion: @escaping (Bool, String?) -> Void) {
         completion(false, "現在Cloudflare移行中のため使用できません")
-        return
-        
-        updateJoinRequestStatus(request.id, to: .rejected)
-        DispatchQueue.main.async {
-            self.pendingJoinRequests.removeAll { $0.id == request.id }
-            self.saveLocalCache()
-            completion(true, nil)
-        }
     }
 
     // MARK: - メンバー脱退（選手側）

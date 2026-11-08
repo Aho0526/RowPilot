@@ -12,7 +12,6 @@ struct PortraitView: View {
     private var locationManager: LocationManager { app.locationManager }
     private var recordManager: RecordManager { app.recordManager }
 
-    @State private var showingSaveAlert = false
     @State private var showingHelp = false
     @State private var showingSOSWarningAlert = false
     @State private var showingSOSButtonWarningAlert = false
@@ -37,7 +36,8 @@ struct PortraitView: View {
     }
 
     // セッション状態はAppViewModelから取得
-    private var isRunning: Bool { app.isSessionActive }
+    private var isRunning: Bool { app.isRecording }
+    private var isPaused: Bool { app.isSessionActive && !app.isRecording }
     private var elapsedTime: TimeInterval { app.elapsedTime }
 
     private var formattedTime: String {
@@ -152,13 +152,19 @@ struct PortraitView: View {
                         
                         // GPS Indicator (Top Left)
                         if SettingsManager.shared.settings.showGPSAccuracy {
+                            let accuracy = locationManager.previousLocation?.horizontalAccuracy ?? -1
                             HStack(spacing: 6) {
                                 Image(systemName: "location.fill")
                                     .font(.caption)
-                                Text(gpsLabel(accuracy: locationManager.previousLocation?.horizontalAccuracy ?? -1))
-                                    .font(.caption).bold()
+                                if DeveloperModeManager.shared.isEnabled && accuracy >= 0 {
+                                    Text(String(format: "%.1fm", accuracy))
+                                        .font(.caption).bold()
+                                } else {
+                                    Text(gpsLabel(accuracy: accuracy))
+                                        .font(.caption).bold()
+                                }
                             }
-                            .foregroundColor(gpsColor(accuracy: locationManager.previousLocation?.horizontalAccuracy ?? -1))
+                            .foregroundColor(gpsColor(accuracy: accuracy))
                             .padding(12)
                             .background(Theme.cardBackground)
                             .cornerRadius(20)
@@ -257,24 +263,55 @@ struct PortraitView: View {
                     ZStack {
                         LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.3)], startPoint: .top, endPoint: .bottom)
                         
-                        Button(action: {
-                            if isRunning {
-                                stopSession()
-                            } else {
-                                checkSOSAndStart()
+                        if isPaused {
+                            HStack(spacing: 16) {
+                                Button(action: {
+                                    app.resumeSession()
+                                }) {
+                                    Text("Resume".localized)
+                                        .font(Theme.headerFont())
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 70)
+                                        .background(Theme.accent)
+                                        .foregroundColor(Color.white)
+                                        .cornerRadius(35)
+                                        .shadow(color: Theme.accent.opacity(0.5), radius: 10, x: 0, y: 5)
+                                }
+                                
+                                Button(action: {
+                                    stopSession()
+                                }) {
+                                    Text("Stop".localized)
+                                        .font(Theme.headerFont())
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 70)
+                                        .background(Color.red)
+                                        .foregroundColor(Color.white)
+                                        .cornerRadius(35)
+                                        .shadow(color: Color.red.opacity(0.5), radius: 10, x: 0, y: 5)
+                                }
                             }
-                        }) {
-                            Text(isRunning ? "Stop".localized : "Start Rowing".localized)
-                                .font(Theme.headerFont())
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 70)
-                                .background(isRunning ? Color.red : Theme.accent)
-                                .foregroundColor(Color.white)
-                                .cornerRadius(35)
-                                .shadow(color: (isRunning ? Color.red : Theme.accent).opacity(0.5), radius: 10, x: 0, y: 5)
-                                .padding(.horizontal, 40)
-                                .scaleEffect(isRunning ? 0.98 : 1.0)
-                                .animation(.spring(response: 0.3), value: isRunning)
+                            .padding(.horizontal, 24)
+                        } else {
+                            Button(action: {
+                                if isRunning {
+                                    stopSession()
+                                } else {
+                                    checkSOSAndStart()
+                                }
+                            }) {
+                                Text(isRunning ? "Stop".localized : "Start Rowing".localized)
+                                    .font(Theme.headerFont())
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 70)
+                                    .background(isRunning ? Color.red : Theme.accent)
+                                    .foregroundColor(Color.white)
+                                    .cornerRadius(35)
+                                    .shadow(color: (isRunning ? Color.red : Theme.accent).opacity(0.5), radius: 10, x: 0, y: 5)
+                                    .padding(.horizontal, 40)
+                                    .scaleEffect(isRunning ? 0.98 : 1.0)
+                                    .animation(.spring(response: 0.3), value: isRunning)
+                            }
                         }
                     }
                     .frame(height: geometry.size.height * 0.22) // Increased slightly
@@ -389,7 +426,7 @@ struct PortraitView: View {
         .onDisappear {
             // ...
         }
-        .alert("Save Record".localized, isPresented: $showingSaveAlert) {
+        .alert("Save Record".localized, isPresented: $app.showingRowModeSaveAlert) {
             Button("Save".localized, role: .none) {
                 saveRecord()
             }
@@ -469,7 +506,7 @@ struct PortraitView: View {
 
     private func stopSession() {
         app.stopSession()
-        showingSaveAlert = true
+        app.showingRowModeSaveAlert = true
     }
     
     private func saveRecord() {

@@ -5,6 +5,7 @@ struct PracticeView: View {
     @EnvironmentObject var ergManager: RowErgManager
     @EnvironmentObject var app: AppViewModel
     @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
+    @ObservedObject private var devMode = DeveloperModeManager.shared
     @State private var showingHelp = false
     @State private var showingSubscription = false
     @State private var pulseScale: CGFloat = 1.0
@@ -43,8 +44,10 @@ struct PracticeView: View {
                             JoinTeamModule()
                         }
 
-                        // MARK: - Research Module
-                        ResearchModule(ergManager: ergManager)
+                        // MARK: - Research Module (Developer Mode Only)
+                        if devMode.isEnabled {
+                            ResearchModule(ergManager: ergManager)
+                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
@@ -538,9 +541,9 @@ struct ManagerModeModule: View {
         RPModuleCard(
             title: "Manager Mode".localized,
             icon: "person.2.fill",
-            accentColor: currentPlan.hasManagerMode ? .purple : Theme.textSecondary
+            accentColor: currentPlan.hasMultiPM5Control ? .purple : Theme.textSecondary
         ) {
-            if currentPlan.hasManagerMode {
+            if currentPlan.hasMultiPM5Control {
                 NavigationLink {
                     PM5ManagerView()
                 } label: {
@@ -1089,6 +1092,15 @@ struct JoinTeamModule: View {
         .onDisappear {
             stopPolling()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TeamJoinStatusChanged"))) { _ in
+            Task {
+                await teamViewModel.fetchMyTeam()
+                if teamViewModel.myRole == "pending" {
+                    wasPollingPending = true
+                }
+                startPollingIfNeeded()
+            }
+        }
     }
 
     /// 承認待ち中のみポーリングを開始
@@ -1127,44 +1139,6 @@ struct TeamManagementModule: View {
             accentColor: .blue
         ) {
             VStack(spacing: 12) {
-                // 共有メンバーを管理 (TeamMaxManagerView)
-                NavigationLink(destination: TeamMaxManagerView()) {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.blue.opacity(0.15))
-                                .frame(width: 44, height: 44)
-                            Image(systemName: "person.3.sequence.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.blue)
-                        }
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("共有メンバーを管理".localized)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundColor(Theme.textMain)
-                            Text("Managerプランをチームメンバーに共有します。".localized)
-                                .font(.caption)
-                                .foregroundColor(Theme.textSecondary)
-                                .lineLimit(1)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(Theme.textSecondary)
-                    }
-                    .padding(14)
-                    .background(Color.blue.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.blue.opacity(0.25), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-
                 if let team = teamViewModel.myTeam {
                     if teamViewModel.myRole == "pending" {
                         Button(action: { showingPendingAlert = true }) {
@@ -1331,6 +1305,21 @@ struct TeamManagementModule: View {
                         TeamInviteCodeInputView()
                     }
                 }
+            }
+        }
+        .task {
+            await teamViewModel.fetchMyTeam()
+        }
+        .onChange(of: showingTeamJoinInput) { _, isShowing in
+            if !isShowing {
+                Task {
+                    await teamViewModel.fetchMyTeam()
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TeamJoinStatusChanged"))) { _ in
+            Task {
+                await teamViewModel.fetchMyTeam()
             }
         }
     }
@@ -1512,17 +1501,17 @@ struct PracticeHelpView: View {
                                 HelpStepView(step: "5", text: "終了時に保存/破棄を選択し、ワークアウトを終了します。".localized)
                             }
 
-                            HelpSectionView(title: "1:複数通信 (マネージャーモード)時".localized, icon: "person.3.fill") {
+                            HelpSectionView(title: "1:複数通信 (複数PM5制御)時".localized, icon: "person.3.fill") {
                                 VStack(alignment: .leading, spacing: 12) {
                                     HStack(spacing: 6) {
                                         Image(systemName: "star.fill")
                                             .foregroundColor(.yellow)
-                                        Text("※これを利用するにはRowPilot Managerのサブスクリプション登録が必要です。".localized)
+                                        Text("※これを利用するにはRowPilot Pro以上のサブスクリプション登録が必要です（Proは最大4台、Manager以上は最大10台）。".localized)
                                             .font(.caption)
                                             .foregroundColor(Theme.textSecondary)
                                     }
 
-                                    HelpStepView(step: "1", text: "マネージャーモードを選択後、PM5をスキャンします。".localized)
+                                    HelpStepView(step: "1", text: "複数PM5制御を選択後、PM5をスキャンします。".localized)
                                     HelpStepView(step: "2", text: "使用する全てのPM5を接続可能状態にし、使用するPM5の全てを追加します。".localized)
                                     HelpStepView(step: "3", text: "「次へ→」を選択し、単一距離か単一時間ワークアウトを設定します。対応レンジ内で距離・時間を設定し送信します(送信台数に応じて少し時間がかかります)。".localized)
                                     HelpStepView(step: "4", text: "送信後、ダッシュボード画面に自動で遷移し全ての接続状況やワークアウト状況が見られます。".localized)

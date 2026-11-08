@@ -268,34 +268,35 @@ struct ManagerRaceView: View {
         let rightInfoWidth: CGFloat = 100
         let trackWidth = width - nameColumnWidth - rightInfoWidth - 16
         
+        let safeTargetDist = max(targetDistance, 1.0)
         let range = visibleDistanceRange
         let visibleSpan = range.end - range.start
         
         // ズーム時はより細かい目盛りを表示
-        let markerStep: Double
+        let rawStep: Double
         if zoomEnabled {
             // 表示範囲に応じて適切な目盛り間隔を決定
             if visibleSpan <= 30 {
-                markerStep = 5
+                rawStep = 5
             } else if visibleSpan <= 60 {
-                markerStep = 10
+                rawStep = 10
             } else if visibleSpan <= 150 {
-                markerStep = 25
+                rawStep = 25
             } else if visibleSpan <= 300 {
-                markerStep = 50
+                rawStep = 50
             } else {
-                markerStep = 100
+                rawStep = 100
             }
         } else {
-            let totalDist = targetDistance
-            markerStep = totalDist / 5.0
+            rawStep = safeTargetDist / 5.0
         }
+        let markerStep = max(rawStep, 1.0)
         
         // 目盛り位置を計算
         let firstMarker = ceil(range.start / markerStep) * markerStep
         var markers: [Double] = []
         var m = firstMarker
-        while m <= range.end {
+        while m <= range.end && m <= safeTargetDist {
             markers.append(m)
             m += markerStep
         }
@@ -309,10 +310,10 @@ struct ManagerRaceView: View {
                     .frame(height: 2)
                 
                 ForEach(Array(markers.enumerated()), id: \.offset) { _, dist in
-                    let remaining = targetDistance - dist
+                    let remaining = max(safeTargetDist - dist, 0)
                     let normalizedProgress: CGFloat = zoomEnabled
                         ? ((range.end - range.start) > 0 ? CGFloat((dist - range.start) / (range.end - range.start)) : 0)
-                        : CGFloat(dist / targetDistance)
+                        : CGFloat(dist / safeTargetDist)
                     let xPos = trackWidth * normalizedProgress
                     
                     VStack(spacing: 2) {

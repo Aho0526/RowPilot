@@ -20,7 +20,6 @@ struct LandscapeView: View {
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     @State private var gpsStrength: Int = 100
     @State private var statusTimer: Timer?
-    @State private var showingSaveAlert = false
     @State private var showingHelp = false
     @State private var showingSOSWarningAlert = false
     @State private var showingSOSButtonWarningAlert = false
@@ -370,7 +369,7 @@ struct LandscapeView: View {
                 RowModeLandscapeHelpView()
             }
         } // GeometryReader end
-        .alert("Save Record".localized, isPresented: $showingSaveAlert) {
+        .alert("Save Record".localized, isPresented: $app.showingRowModeSaveAlert) {
             Button("Save".localized, role: .none) {
                 saveRecord()
             }
@@ -486,7 +485,8 @@ struct LandscapeView: View {
 
     private func exitSession() {
         app.stopSession()
-        showingSaveAlert = true
+        app.lockLandscape()
+        app.showingRowModeSaveAlert = true
     }
 
     private func resetSession() {

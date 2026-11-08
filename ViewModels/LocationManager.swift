@@ -4,10 +4,12 @@ import CoreLocation
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let locationManager = CLLocationManager()
     @Published var previousLocation: CLLocation?
+    @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
 
     @Published var totalDistance: Double = 0.0
     @Published var currentSpeed: Double = 0.0
     @Published var routePoints: [LocationData] = []
+    @Published var isTracking: Bool = false
 
     private var wasGpsLost = false
     private var lastRecordedPointTime: Date?
@@ -22,31 +24,23 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager.desiredAccuracy = LocationConstants.defaultAccuracy
         locationManager.distanceFilter = LocationConstants.distanceFilterMeters
         locationManager.allowsBackgroundLocationUpdates = false
+        authorizationStatus = locationManager.authorizationStatus
     }
 
     private var isFirstUpdateAfterStart = false
 
-    func startTracking() {
+    /// 位置情報の権限をリクエストし、許可済みであれば位置情報の更新を開始する
+    func requestPermission() {
         guard !isPreview else {
             print("Previewモードでは位置情報を使用しません。")
             return
         }
 
-        // 距離はリセットするが、前回の位置情報(信号強度用)は保持する
-        // ただし、距離計算の飛びを防ぐためにフラグを立てる
-        totalDistance = 0.0
-        routePoints = []
-        isFirstUpdateAfterStart = true
-        wasGpsLost = false
-        lastRecordedPointTime = nil
-        
-        // 権限リクエストのみ（UIスレッド警告回避のため locationServicesEnabled を使用しない）
         switch locationManager.authorizationStatus {
         case .notDetermined:
             locationManager.requestWhenInUseAuthorization()
 
         case .authorizedWhenInUse, .authorizedAlways:
-            // すぐに開始（※許可がある場合）
             beginLocationUpdates()
 
         case .restricted, .denied:
@@ -56,13 +50,34 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             print("未知の認可状態")
         }
     }
+
+    /// ワークアウト計測中のトラッキングを開始する
+    func startTracking() {
+        guard !isPreview else {
+            print("Previewモードでは位置情報を使用しません。")
+            return
+        }
+
+        isTracking = true
+        totalDistance = 0.0
+        routePoints = []
+        isFirstUpdateAfterStart = true
+        wasGpsLost = false
+        lastRecordedPointTime = nil
+
+        requestPermission()
+    }
     
+    /// ワークアウト計測中のトラッキングを停止する
     func stopTracking() {
-        locationManager.stopUpdatingLocation()
+        isTracking = false
     }
     
     // 許可変更時に呼ばれる（iOS 14+）
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        DispatchQueue.main.async {
+            self.authorizationStatus = manager.authorizationStatus
+        }
         switch manager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             beginLocationUpdates()
@@ -95,41 +110,45 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
 
         DispatchQueue.main.async {
-            // トレーニング記録用の距離計算はより厳密な精度(20m)を維持する場合、ここでチェック
-            let isAccuracyOkForTraining = newLocation.horizontalAccuracy <= 20
-            
-            if !self.isFirstUpdateAfterStart, let previous = self.previousLocation {
-                if isAccuracyOkForTraining {
-                    let distance = newLocation.distance(from: previous)
-                    self.totalDistance += distance
-                    
-                    var isGap = self.wasGpsLost
-                    if let lastTime = self.lastRecordedPointTime {
-                        let timeDiff = newLocation.timestamp.timeIntervalSince(lastTime)
-                        if timeDiff > 15 {
-                            isGap = true
+            let prevLocation = self.previousLocation
+
+            // ワークアウト計測中のみ距離計算・ルートポイント蓄積を行う
+            if self.isTracking {
+                let isAccuracyOkForTraining = newLocation.horizontalAccuracy <= 20
+                
+                if !self.isFirstUpdateAfterStart, let previous = prevLocation {
+                    if isAccuracyOkForTraining {
+                        let distance = newLocation.distance(from: previous)
+                        self.totalDistance += distance
+                        
+                        var isGap = self.wasGpsLost
+                        if let lastTime = self.lastRecordedPointTime {
+                            let timeDiff = newLocation.timestamp.timeIntervalSince(lastTime)
+                            if timeDiff > 15 {
+                                isGap = true
+                            }
                         }
+                        
+                        self.routePoints.append(LocationData(
+                            latitude: newLocation.coordinate.latitude,
+                            longitude: newLocation.coordinate.longitude,
+                            isPostGap: isGap
+                        ))
+                        
+                        self.lastRecordedPointTime = newLocation.timestamp
+                        self.wasGpsLost = false
+                    } else {
+                        self.wasGpsLost = true
                     }
-                    
-                    self.routePoints.append(LocationData(
-                        latitude: newLocation.coordinate.latitude,
-                        longitude: newLocation.coordinate.longitude,
-                        isPostGap: isGap
-                    ))
-                    
-                    self.lastRecordedPointTime = newLocation.timestamp
-                    self.wasGpsLost = false
                 } else {
-                    self.wasGpsLost = true
-                }
-            } else {
-                if isAccuracyOkForTraining {
-                    // 初回更新
-                    self.isFirstUpdateAfterStart = false
-                    self.lastRecordedPointTime = newLocation.timestamp
-                    self.wasGpsLost = false
-                } else {
-                    self.wasGpsLost = true
+                    if isAccuracyOkForTraining {
+                        // 初回更新
+                        self.isFirstUpdateAfterStart = false
+                        self.lastRecordedPointTime = newLocation.timestamp
+                        self.wasGpsLost = false
+                    } else {
+                        self.wasGpsLost = true
+                    }
                 }
             }
             
@@ -137,8 +156,10 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             let speed = newLocation.speed
             self.currentSpeed = (speed >= 0) ? speed * LocationConstants.metersPerSecondToKmPerHour : 0.0 // km/h へ変換
 
-            // 位置更新（TideManagerなどが利用）
-            self.previousLocation = newLocation
+            // 位置更新（ワークアウト中は高精度ポイントのみ更新し、低精度ポイント混入時の距離ジャンプを防止）
+            if !self.isTracking || newLocation.horizontalAccuracy <= 20 || self.previousLocation == nil {
+                self.previousLocation = newLocation
+            }
         }
     }
 
@@ -146,13 +167,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("LocationManager Error: \(error.localizedDescription)")
     }
 
-    // LocationManager に追加
     func reset() {
         // 位置情報はクリアせず、積算値のみリセット
         totalDistance = 0.0
         currentSpeed = 0.0
         routePoints = []
-        // 次回の開始時に距離が飛ばないようにフラグをリセット(念のため)
+        isTracking = false
         isFirstUpdateAfterStart = true 
         wasGpsLost = false
         lastRecordedPointTime = nil

@@ -252,7 +252,24 @@ struct TeamInviteCodeInputView: View {
     }
 
     private func submitRequest() {
+        guard !subManager.myUserRecordId.isEmpty else {
+            resultSuccess = false
+            resultMessage = "ユーザーIDが取得できません。iCloudにサインインしてから再度お試しください。"
+            showingResult = true
+            return
+        }
+        
         Task {
+            let displayName = settingsManager.settings.sharingName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !displayName.isEmpty {
+                _ = await viewModel.createUser(
+                    userID: subManager.myUserRecordId,
+                    displayName: displayName,
+                    email: nil,
+                    isGhost: 0,
+                    entitlement: subManager.currentPlan.rawValue
+                )
+            }
             let success = await viewModel.joinTeam(
                 inviteCode: inviteCode,
                 userID: subManager.myUserRecordId
@@ -263,6 +280,8 @@ struct TeamInviteCodeInputView: View {
                     resultSuccess = true
                     let teamName = viewModel.myTeam?.name ?? "チーム"
                     resultMessage = "\(teamName)への参加が完了しました！"
+                    // チーム参加状態の変更を通知
+                    NotificationCenter.default.post(name: NSNotification.Name("TeamJoinStatusChanged"), object: nil)
                 } else {
                     resultSuccess = false
                     resultMessage = viewModel.errorMessage ?? "参加に失敗しました"

@@ -20,21 +20,21 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
     var priceString: String {
         switch self {
         case .free: return "無料 (Free)"
-        case .pro:  return "¥980 / 月"
-        case .manager: return "¥2,980 / 月"
-        case .team: return "¥4,980 / 月"
-        case .max:  return "¥7,500 / 月"
-        case .organization: return "¥15,000 / 月"
+        case .pro:  return "¥200 / 月"
+        case .manager: return "¥500 / 月"
+        case .team: return "¥1,000 / 月"
+        case .max:  return "¥3,000 / 月"
+        case .organization: return "廃止"
         }
     }
 
     var description: String {
         switch self {
         case .free: return "基本機能(潮汐確認、GPSレート計、PM5と1:1接続など)"
-        case .pro:  return "ForceCurveやStrava同期などプロ向けの機能を開放"
-        case .manager: return "個人向け上位機能(Pro機能に加えてマネージャー機能を開放)"
-        case .team: return "1人に「マネージャープラン」を共有、30人のメンバーをまとめて管理、AIとテンプレート型の分析機能(準備中)"
-        case .max:  return "3人に「マネージャープラン」を共有、3人を管理者に指定、最大50人をメンバー化、AIと対話型の分析機能(準備中)"
+        case .pro:  return "ForceCurveやPM5最大4台同時制御、全国潮位任意選択など本格的な機能を開放"
+        case .manager: return "指導者向け機能。Pro機能に加えてPM5最大10台接続や記録共有を開放"
+        case .team: return "高校部活やサークル向け。最大30名の部員を一元管理し、マネージャー1名に権限共有"
+        case .max:  return "顧問・監督・強豪校向け最上位。最大100名管理、複数指導者体制（管理3名/共有3名）、レースビュー、CSV出力"
         case .organization: return "最大5人に「マネージャープラン」を共有、7人を管理者として指定、最大200人をメンバーとして追加、AIと対話型の分析機能"
         }
     }
@@ -44,13 +44,13 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         case .free:
             return ["潮汐情報の確認", "GPSレート計", "PM5との1:1接続"]
         case .pro:
-            return ["ForceCurveの表示", "Stravaとの同期", "ゴーストレース機能"]
+            return ["ForceCurveの表示", "全国潮位の任意選択", "PM5最大4台同時制御", "ゴーストレース機能"]
         case .manager:
-            return ["Proプランの全機能", "PM5複数台接続機能", "マネージャー機能"]
+            return ["Proプランの全機能", "PM5最大10台同時接続", "記録共有機能"]
         case .team:
-            return ["「マネージャープラン」を1人に共有", "30人のメンバーをまとめて管理", "AIとテンプレート型の分析機能 (準備中)"]
+            return ["メンバー管理 (最大30名)", "「マネージャープラン」を1名に共有", "チーム内データ集約"]
         case .max:
-            return ["「マネージャープラン」を3人に共有", "3人を管理者に指定", "最大50人をメンバー化", "AIと対話型の分析機能 (準備中)"]
+            return ["【顧問・管理者向け最上位】", "メンバー管理 (最大100名)", "「マネージャープラン」を3名に共有", "管理者を最大3名指定", "レースビュー (エルゴ競走モード)", "練習ログのCSVエクスポート"]
         case .organization:
             return ["「マネージャープラン」を最大5人に共有", "7人を管理者として指定", "最大200人をメンバーとして追加", "AIと対話型の分析機能"]
         }
@@ -81,7 +81,24 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         return isAtLeast(.pro)
     }
 
-    /// Manager以上でマネージャーモード（PM5複数台接続）を解放
+    /// Pro以上で複数PM5制御（最大4台、Manager以上は最大10台）を解放
+    var hasMultiPM5Control: Bool {
+        return isAtLeast(.pro)
+    }
+
+    /// プランに応じたPM5最大同時接続台数
+    var maxPM5Connections: Int {
+        switch self {
+        case .free:
+            return 1
+        case .pro:
+            return 4
+        default:
+            return 10
+        }
+    }
+
+    /// Manager以上でマネージャーモード（記録共有等）を解放
     var hasManagerMode: Bool {
         return isAtLeast(.manager)
     }
@@ -105,8 +122,18 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
     var teamMemberLimit: Int {
         switch self {
         case .team: return 30
-        case .max: return 50
+        case .max: return 100
         case .organization: return 200
+        default: return 0
+        }
+    }
+
+    /// マネージャープラン共有可能枠
+    var managerShareLimit: Int {
+        switch self {
+        case .team: return 1
+        case .max: return 3
+        case .organization: return 5
         default: return 0
         }
     }

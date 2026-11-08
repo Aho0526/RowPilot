@@ -28,20 +28,40 @@ class TeamRecordUploader {
             let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/users/\(userID)/team"
             guard let url = URL(string: urlString) else { return }
             
+            var teamRequest = URLRequest(url: url)
+            let token = SubscriptionManager.shared.apiToken
+            if !token.isEmpty {
+                teamRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            
             do {
-                let (data, response) = try await URLSession.shared.data(from: url)
+                let (data, response) = try await URLSession.shared.data(for: teamRequest)
                 if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                     let responseString = String(data: data, encoding: .utf8) ?? ""
                     if responseString == "null" { return }
                     
                     let decodedTeam = try JSONDecoder().decode(Team.self, from: data)
                     
+                    // アーカイブ状態のチームへのアップロードをスキップ
+                    if decodedTeam.isSuspended {
+                        print("TeamRecordUploader: Team is suspended (archived). Skipping upload.")
+                        return
+                    }
+                    
                     // 2. 所属チームがあれば CloudflareWorkoutRecord を作成してアップロード
                     let formatter = ISO8601DateFormatter()
                     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                     
-                    let isOutdoor = record.startLocation != nil || (record.routePoints != nil && !record.routePoints!.isEmpty)
+                    let isIndoor = (record.tags?.contains("Indoor") == true) || record.isManagerMode || (record.pm5SerialNumber != nil)
+                    let isOutdoor = !isIndoor
                     let workoutType = isOutdoor ? "outdoor" : "indoor"
+                    
+                    let workoutFormat: String = {
+                        if record.notes?.localizedCaseInsensitiveContains("interval") == true || record.tags?.contains("interval") == true {
+                            return "interval"
+                        }
+                        return record.isDistanceWorkout ? "distance" : "time"
+                    }()
                     
                     var crewInfoJsonString: String? = nil
                     if let crewInfo = record.crewInfo {
@@ -50,16 +70,20 @@ class TeamRecordUploader {
                         }
                     }
                     
+                    let safeDistance = record.distance.isFinite && record.distance >= 0 ? Int(record.distance) : 0
+                    let safeDuration = record.duration.isFinite && record.duration >= 0 ? Int(record.duration) : 0
+                    let safePace = record.averagePace.isFinite && record.averagePace >= 0 ? Int(record.averagePace) : 0
+                    
                     let workout = CloudflareWorkoutRecord(
                         id: record.id.uuidString,
                         athlete_id: userID,
                         recorded_by_id: userID,
                         team_id: decodedTeam.id,
                         type: workoutType,
-                        format: "time",
-                        distance_m: Int(record.distance),
-                        duration_sec: Int(record.duration),
-                        split_500m_sec: Int(record.averagePace),
+                        format: workoutFormat,
+                        distance_m: safeDistance,
+                        duration_sec: safeDuration,
+                        split_500m_sec: safePace,
                         stroke_rate: record.averageSPM,
                         boat_type: record.crewInfo?.boatType.rawValue ?? "1x",
                         recorded_on: formatter.string(from: record.date),
@@ -72,6 +96,9 @@ class TeamRecordUploader {
                     guard let saveUrl = URL(string: saveUrlString) else { return }
                     
                     var request = URLRequest(url: saveUrl)
+                    if !token.isEmpty {
+                        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    }
                     request.httpMethod = "POST"
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.httpBody = try JSONEncoder().encode(workout)
@@ -107,6 +134,13 @@ class TeamRecordUploader {
                 }
             } catch {
                 print("TeamRecordUploader: Error \(error)")
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("TeamWorkoutUploadFailed"),
+                        object: nil,
+                        userInfo: ["error": "通信エラーが発生しました: \(error.localizedDescription)"]
+                    )
+                }
             }
         }
     }
@@ -114,10 +148,16 @@ class TeamRecordUploader {
     // D1からワークアウトを削除する
     func deleteFromTeam(recordID: UUID) {
         Task {
-            let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/workouts/\(recordID.uuidString)"
+            let requesterId = SubscriptionManager.shared.myUserRecordId
+            guard !requesterId.isEmpty else { return }
+            let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/workouts/\(recordID.uuidString)?requester_id=\(requesterId)"
             guard let url = URL(string: urlString) else { return }
             
             var request = URLRequest(url: url)
+            let token = SubscriptionManager.shared.apiToken
+            if !token.isEmpty {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
             request.httpMethod = "DELETE"
             
             do {

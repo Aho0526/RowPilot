@@ -7,6 +7,8 @@ struct CloudflareTeamListView: View {
     @State private var showDeleteConfirm = false
     @State private var showCreateAlert = false
     @State private var newTeamName = ""
+    @State private var showUpgradeRequiredAlert = false
+    @State private var showSubscriptionSheet = false
     
     // Member Options
     @State private var selectedMember: CloudflareUser?
@@ -92,6 +94,9 @@ struct CloudflareTeamListView: View {
             }
             .task { await initialLoad() }
             .onDisappear { stopApprovalPolling() }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TeamJoinStatusChanged"))) { _ in
+                Task { await viewModel.refreshMyTeamStatus() }
+            }
             .onChange(of: viewModel.myRole) { _, newRole in handleRoleChange(newRole: newRole) }
             .onChange(of: viewModel.errorMessage) { _, error in if error != nil { showErrorAlert = true } }
             .alert("エラー", isPresented: $showErrorAlert) {
@@ -118,6 +123,17 @@ struct CloudflareTeamListView: View {
                 Button("キャンセル", role: .cancel) {}
             } message: {
                 Text("作成するチームの名前を入力してください。")
+            }
+            .alert("チーム作成にはプランのアップグレードが必要です", isPresented: $showUpgradeRequiredAlert) {
+                Button("プランを確認する") {
+                    showSubscriptionSheet = true
+                }
+                Button("キャンセル", role: .cancel) {}
+            } message: {
+                Text("チームの作成・管理機能を利用するには、TeamプランまたはMAXプランへのご加入が必要です。")
+            }
+            .sheet(isPresented: $showSubscriptionSheet) {
+                SubscriptionView()
             }
             .alert("チーム名の変更", isPresented: $showRenameAlert) {
                 TextField("新しいチーム名を入力", text: $renameText)
@@ -324,6 +340,10 @@ struct CloudflareTeamListView: View {
     // MARK: - Action Handlers
     
     private func handleCreateTeam() {
+        guard subManager.currentPlan.hasTeamFeature else {
+            showUpgradeRequiredAlert = true
+            return
+        }
         let name = newTeamName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
         Task {
@@ -379,7 +399,7 @@ struct CloudflareTeamListView: View {
     
     private func startApprovalPolling() {
         stopApprovalPolling()
-        pollingTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+        pollingTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
             Task { @MainActor in
                 await viewModel.fetchMyTeam()
             }
@@ -464,20 +484,44 @@ struct CloudflareTeamListView: View {
             }
             .padding(.top, 20)
             
-            Button(action: { newTeamName = ""; showCreateAlert = true }) {
-                HStack {
-                    Image(systemName: "plus.circle.fill")
-                    Text("チームを新規作成").fontWeight(.bold)
+            if subManager.currentPlan.hasTeamFeature {
+                Button(action: { newTeamName = ""; showCreateAlert = true }) {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                        Text("チームを新規作成").fontWeight(.bold)
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Theme.primaryGradient)
+                    .cornerRadius(16)
+                    .shadow(color: Theme.accent.opacity(0.3), radius: 8, x: 0, y: 4)
                 }
-                .font(.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Theme.primaryGradient)
-                .cornerRadius(16)
-                .shadow(color: Theme.accent.opacity(0.3), radius: 8, x: 0, y: 4)
+                .padding(.horizontal, 20)
+            } else {
+                Button(action: { showUpgradeRequiredAlert = true }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "crown.fill")
+                            .foregroundColor(.yellow)
+                        Text("チーム機能を開放する (Team / MAX)").fontWeight(.bold)
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "10B981"), Color(hex: "065F46")],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(16)
+                    .shadow(color: Color.green.opacity(0.3), radius: 8, x: 0, y: 4)
+                }
+                .padding(.horizontal, 20)
             }
-            .padding(.horizontal, 20)
         }
         .padding(24)
         .glassCardStyle(glowColor: Theme.accent, opacity: 0.1, cornerRadius: 24)
@@ -892,7 +936,7 @@ struct CloudflareTeamListView: View {
             
             HStack(spacing: 8) {
                 ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .orange)).scaleEffect(0.7)
-                Text("15秒ごとに自動確認中...").font(.caption).foregroundColor(.orange.opacity(0.8))
+                Text("10秒ごとに自動確認中...").font(.caption).foregroundColor(.orange.opacity(0.8))
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
             .background(Color.orange.opacity(0.08)).cornerRadius(10)
@@ -950,6 +994,7 @@ struct CloudflareTeamListView: View {
                         ZStack {
                             Theme.background.ignoresSafeArea()
                             TeamWorkoutRecordListView(workouts: viewModel.teamWorkouts)
+                                .environmentObject(viewModel)
                         }
                         .navigationTitle("すべての記録")
                         .navigationBarTitleDisplayMode(.inline)
@@ -1068,7 +1113,7 @@ struct CloudflareTeamListView: View {
     private func memberLimit(for plan: String) -> Int {
         switch plan.lowercased() {
         case "team": return 30
-        case "max": return 50
+        case "max": return 100
         case "organization": return 200
         default: return 30
         }

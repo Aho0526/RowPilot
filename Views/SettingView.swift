@@ -6,12 +6,12 @@ struct SettingView: View {
     @ObservedObject private var settingsManager = SettingsManager.shared
     @ObservedObject private var themeManager = ThemeManager.shared
     @ObservedObject private var localizationManager = LocalizationManager.shared
+    @ObservedObject private var devMode = DeveloperModeManager.shared
     @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
     @State private var showingResetAlert = false
     @State private var showingDeleteAllAlert = false
     @State private var showingTargetEditAlert = false
     @State private var targetDistanceInput = ""
-    @State private var showingInviteCodeInput = false
     // CloudKitTeamManager依存を削除（Cloudflare移行中）
     // @ObservedObject private var ckTeam = CloudKitTeamManager.shared
     @State private var showingICloudDeleteAlert = false
@@ -25,88 +25,87 @@ struct SettingView: View {
     
     @State private var showingApprovalAlert = false
     @State private var showingPendingAlert = false
+    @State private var isCheckingApproval = false
     @AppStorage("lastKnownTeamRole") private var lastKnownTeamRole: String = ""
     @State private var profileSyncTask: Task<Void, Never>? = nil
     @State private var approvalTimer: Timer? = nil
     
+    // Developer Mode Toast
+    @State private var devModeToastMessage: String = ""
+    @State private var showDevModeToast: Bool = false
+    @State private var devModeToastTask: Task<Void, Never>? = nil
+    
+    private var isJA: Bool {
+        localizationManager.language == .japanese
+    }
+
     var body: some View {
         NavigationStack(path: $app.settingsNavigationPath) {
-            ZStack {
-                Theme.background.ignoresSafeArea()
-                
-                ScrollView {
-                    settingsContent.padding()
-                }
-            }
-            .navigationTitle("Settings".localized)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .alert("Reset Settings".localized, isPresented: $showingResetAlert) {
-                Button("Reset".localized, role: .destructive) {
-                    settingsManager.resetToDefaults()
-                }
-                Button("Cancel".localized, role: .cancel) {}
-            } message: {
-                Text("Reset Alert Message".localized)
-            }
-            .alert(localizationManager.language == .japanese ? "月間目標距離の変更" : "Change Monthly Goal", isPresented: $showingTargetEditAlert) {
-                TextField(localizationManager.language == .japanese ? "目標距離 (km)" : "Target Distance (km)", text: $targetDistanceInput)
-                    .keyboardType(.decimalPad)
-                Button(localizationManager.language == .japanese ? "保存" : "Save") {
-                    if let km = Double(targetDistanceInput), km > 0 {
-                        settingsManager.settings.monthlyTargetDistance = km * 1000.0
+            mainScrollArea
+                .navigationTitle("Settings".localized)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .alert("Reset Settings".localized, isPresented: $showingResetAlert) {
+                    Button("Reset".localized, role: .destructive) {
+                        settingsManager.resetToDefaults()
                     }
+                    Button("Cancel".localized, role: .cancel) {}
+                } message: {
+                    Text("Reset Alert Message".localized)
                 }
-                Button(localizationManager.language == .japanese ? "キャンセル" : "Cancel", role: .cancel) {}
-            } message: {
-                Text(localizationManager.language == .japanese ? "新しい月間目標距離をキロメートル(km)単位で入力してください。" : "Please enter the new monthly target distance in kilometers (km).")
-            }
-            .alert("Delete All Workouts".localized, isPresented: $showingDeleteAllAlert) {
-                Button("Delete".localized, role: .destructive) {
-                    app.recordManager.deleteAllRecords()
+                .alert(isJA ? "月間目標距離の変更" : "Change Monthly Goal", isPresented: $showingTargetEditAlert) {
+                    TextField(isJA ? "目標距離 (km)" : "Target Distance (km)", text: $targetDistanceInput)
+                        .keyboardType(.decimalPad)
+                    Button(isJA ? "保存" : "Save") {
+                        if let km = Double(targetDistanceInput), km > 0 {
+                            settingsManager.settings.monthlyTargetDistance = km * 1000.0
+                        }
+                    }
+                    Button(isJA ? "キャンセル" : "Cancel", role: .cancel) {}
+                } message: {
+                    Text(isJA ? "新しい月間目標距離をキロメートル(km)単位で入力してください。" : "Please enter the new monthly target distance in kilometers (km).")
                 }
-                Button("Cancel".localized, role: .cancel) {}
-            } message: {
-                Text("Delete All Alert Message".localized)
-            }
-            .alert("iCloudのデータを削除", isPresented: $showingICloudDeleteAlert) {
-                Button("すべて削除", role: .destructive) {
-                    ICloudSyncManager.shared.deleteAllFromICloud { _ in }
+                .alert("Delete All Workouts".localized, isPresented: $showingDeleteAllAlert) {
+                    Button("Delete".localized, role: .destructive) {
+                        app.recordManager.deleteAllRecords()
+                    }
+                    Button("Cancel".localized, role: .cancel) {}
+                } message: {
+                    Text("Delete All Alert Message".localized)
                 }
-                Button("キャンセル", role: .cancel) {
-                    // OFFにしたがキャンセル → トグルを戻す
-                    settingsManager.settings.iCloudSyncEnabled = true
+                .alert("iCloudのデータを削除", isPresented: $showingICloudDeleteAlert) {
+                    Button("すべて削除", role: .destructive) {
+                        ICloudSyncManager.shared.deleteAllFromICloud { _ in }
+                    }
+                    Button("キャンセル", role: .cancel) {
+                        settingsManager.settings.iCloudSyncEnabled = true
+                    }
+                } message: {
+                    Text("iCloud上のRowPilotのデータをすべて削除しますか？\nこの操作は取り消せません。ローカルのデータには影響しません。")
                 }
-            } message: {
-                Text("iCloud上のRowPilotのデータをすべて削除しますか？\nこの操作は取り消せません。ローカルのデータには影響しません。")
+        }
+        .alert("iCloud同期", isPresented: $showingICloudSyncAllAlert) {
+            Button("今すぐ同期", role: .none) {
+                ICloudSyncManager.shared.syncAll(records: app.recordManager.records)
             }
-            .alert("iCloud同期", isPresented: $showingICloudSyncAllAlert) {
-                Button("今すぐ同期", role: .none) {
-                    ICloudSyncManager.shared.syncAll(records: app.recordManager.records)
-                }
-                Button("キャンセル", role: .cancel) {}
-            } message: {
-                Text("ローカルのすべての記録（\(app.recordManager.records.count)件）をiCloudにアップロードします。")
-            }
-            .sheet(isPresented: $showingInviteCodeInput) {
-                InviteCodeInputView()
-            }
-
-            .alert(localizationManager.language == .japanese ? "プロフィール保存" : "Profile Save", isPresented: $showingProfileSaveResult) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(profileSaveMessage)
-            }
-            .alert(localizationManager.language == .japanese ? "参加承認" : "Join Approved", isPresented: $showingApprovalAlert) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(localizationManager.language == .japanese ? "チームへの参加が承認されました！" : "Your request to join the team has been approved!")
-            }
-            .alert(localizationManager.language == .japanese ? "承認待ち" : "Pending Approval", isPresented: $showingPendingAlert) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(localizationManager.language == .japanese ? "まだ申請が通っていません。管理者の承認をお待ちください。" : "Your request is still pending. Please wait for the admin's approval.")
-            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("ローカルのすべての記録（\(app.recordManager.records.count)件）をiCloudにアップロードします。")
+        }
+        .alert(isJA ? "プロフィール保存" : "Profile Save", isPresented: $showingProfileSaveResult) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(profileSaveMessage)
+        }
+        .alert(isJA ? "参加承認" : "Join Approved", isPresented: $showingApprovalAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(isJA ? "チームへの参加が承認されました！" : "Your request to join the team has been approved!")
+        }
+        .alert(isJA ? "承認待ち" : "Pending Approval", isPresented: $showingPendingAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(isJA ? "まだ申請が通っていません。管理者の承認をお待ちください。" : "Your request is still pending. Please wait for the admin's approval.")
         }
         .task {
             await teamViewModel.fetchMyTeam()
@@ -125,7 +124,12 @@ struct SettingView: View {
                 stopApprovalPolling()
             }
         }
-
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TeamJoinStatusChanged"))) { _ in
+            Task {
+                await teamViewModel.fetchMyTeam()
+                checkTeamApprovalStatus()
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task {
@@ -164,6 +168,38 @@ struct SettingView: View {
             }
         }
     }
+
+    private var mainScrollArea: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            
+            ScrollView {
+                settingsContent.padding()
+            }
+
+            if showDevModeToast {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 10) {
+                        Image(systemName: devMode.isEnabled ? "hammer.fill" : "hammer")
+                            .foregroundColor(devMode.isEnabled ? Theme.accent : Theme.textSecondary)
+                        Text(devModeToastMessage)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Theme.textMain)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 4)
+                    .padding(.bottom, 32)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .animation(.spring(response: 0.4, dampingFraction: 0.75), value: showDevModeToast)
+            }
+        }
+    }
     
     private func checkTeamApprovalStatus() {
         if let role = teamViewModel.myRole {
@@ -178,7 +214,7 @@ struct SettingView: View {
     
     private func startApprovalPolling() {
         approvalTimer?.invalidate()
-        approvalTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+        approvalTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
             Task {
                 await teamViewModel.fetchMyTeam()
                 await MainActor.run {
@@ -191,6 +227,22 @@ struct SettingView: View {
     private func stopApprovalPolling() {
         approvalTimer?.invalidate()
         approvalTimer = nil
+    }
+    
+    private func checkApprovalManually() {
+        isCheckingApproval = true
+        Task {
+            await teamViewModel.fetchMyTeam()
+            await MainActor.run {
+                isCheckingApproval = false
+                if let role = teamViewModel.myRole, role != "pending" {
+                    showingApprovalAlert = true
+                    lastKnownTeamRole = role
+                } else {
+                    showingPendingAlert = true
+                }
+            }
+        }
     }
     
     private var settingsContent: some View {
@@ -373,8 +425,8 @@ struct SettingView: View {
                 }
             }
             
-            // マネージャー設定（Manager以上で表示）
-            if currentPlan.hasManagerMode {
+            // 複数PM5制御設定（Pro以上で表示）
+            if currentPlan.hasMultiPM5Control {
                 SettingsSection(title: "Manager Mode".localized, icon: "person.3.sequence.fill") {
                     SettingsToggleRow(title: "Save 0-Record PM5s".localized, isOn: $settingsManager.settings.saveZeroRecordPM5s)
                 }
@@ -384,7 +436,7 @@ struct SettingView: View {
             if currentPlan.hasTeamFeature {
                 SettingsSection(title: "Team Management".localized, icon: "person.3.fill") {
                     Divider().background(Theme.textSecondary.opacity(0.3))
-                    NavigationLink(destination: TeamMaxManagerView()) {
+                    NavigationLink(destination: CloudflareTeamListView()) {
                         HStack {
                             Text("Manage Teammates".localized)
                                 .foregroundColor(Theme.textMain)
@@ -397,20 +449,54 @@ struct SettingView: View {
                 }
             }
             
-            // Manager Plan 共有申請（Team/MAX未加入ユーザー向け）
-            if !currentPlan.hasManagerMode && (teamViewModel.myTeam == nil || teamViewModel.myRole == "pending") {
-                SettingsSection(title: "Manager Plan共有".localized, icon: "person.badge.key.fill") {
-                    Button(action: { showingInviteCodeInput = true }) {
+            // チーム参加申請中（pending時）のステータス表示
+            if teamViewModel.myRole == "pending" {
+                SettingsSection(title: localizationManager.language == .japanese ? "チーム参加申請中" : "Team Request Pending", icon: "clock.badge.checkmark.fill") {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("招待コードで申請".localized)
-                                    .foregroundColor(Theme.textMain)
-                                Text("Team/MAXユーザーのコードを入力してManagerプランを利用".localized)
+                                if let teamName = teamViewModel.myTeam?.name {
+                                    Text(teamName)
+                                        .font(.headline)
+                                        .foregroundColor(Theme.textMain)
+                                }
+                                Text(localizationManager.language == .japanese ? "承認待ち" : "Pending Approval")
                                     .font(.caption)
-                                    .foregroundColor(Theme.textSecondary)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.orange)
                             }
                             Spacer()
-                            Image(systemName: "chevron.right")
+                            Button(action: {
+                                checkApprovalManually()
+                            }) {
+                                HStack(spacing: 6) {
+                                    if isCheckingApproval {
+                                        ProgressView()
+                                            .tint(Theme.accent)
+                                            .scaleEffect(0.8)
+                                    } else {
+                                        Image(systemName: "arrow.clockwise")
+                                    }
+                                    Text(localizationManager.language == .japanese ? "更新を確認" : "Check Status")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Theme.accent.opacity(0.15))
+                                .foregroundColor(Theme.accent)
+                                .cornerRadius(8)
+                            }
+                            .disabled(isCheckingApproval)
+                        }
+                        
+                        Divider().background(Theme.textSecondary.opacity(0.2))
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(localizationManager.language == .japanese ? "1分おきにチームの承認が通ったか確認します。" : "Checking for team approval periodically.")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                            Text(localizationManager.language == .japanese ? "チームに承認された場合、自動で参加します。" : "You will automatically join the team once approved.")
                                 .font(.caption)
                                 .foregroundColor(Theme.textSecondary)
                         }
@@ -616,6 +702,11 @@ struct SettingView: View {
                     .cornerRadius(12)
             }
             
+            // 開発者モードセクション（有効時のみ表示）
+            if devMode.isEnabled {
+                developerSection
+            }
+
             // アプリ情報
             VStack(spacing: 8) {
                 NavigationLink(destination: AboutRowPilotView()) {
@@ -626,8 +717,35 @@ struct SettingView: View {
                     Text("Credits".localized)
                         .underline()
                 }
-                Text("TestFlight Version 1.0.1(Build 3)")
-                Text("Build from August 5")
+                // バージョン行: 5回タップで開発者モードトグル
+                VStack(spacing: 2) {
+                    Text("TestFlight Version 1.0.1(Build 3)")
+                    Text("Build from August 5")
+                    if devMode.isEnabled {
+                        HStack(spacing: 4) {
+                            Image(systemName: "hammer.fill")
+                                .font(.caption2)
+                            Text("Developer Mode ON")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                        }
+                        .foregroundColor(Theme.accent)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    let event = devMode.handleVersionTap()
+                    switch event {
+                    case .enabled:
+                        showDevToast("Developer mode enabled")
+                    case .disabled:
+                        showDevToast("Developer mode disabled")
+                    case .countdown(let remaining):
+                        if remaining <= 3 {
+                            showDevToast("あと\(remaining)回")
+                        }
+                    }
+                }
             }
             .font(.caption)
             .foregroundColor(Theme.textSecondary)
@@ -636,6 +754,103 @@ struct SettingView: View {
         .navigationDestination(for: String.self) { value in
             if value == "SOSSettings" {
                 SOSSettingsView()
+            }
+        }
+    }
+}
+
+// MARK: - Developer Mode Section & Toast
+extension SettingView {
+    /// 開発者モードが有効な時のみ表示される設定セクション
+    @ViewBuilder
+    var developerSection: some View {
+        SettingsSection(title: "Developer Options", icon: "hammer.fill") {
+            // マネージャーモード最大接続台数
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "personalhotspot")
+                        .foregroundColor(Theme.accent)
+                        .font(.caption)
+                    Text("Manager Max Connections")
+                        .foregroundColor(Theme.textMain)
+                        .font(.subheadline)
+                    Spacer()
+                    Text("\(devMode.maxPM5Connections) devices")
+                        .foregroundColor(Theme.textSecondary)
+                        .font(.caption)
+                        .fontWeight(.bold)
+                }
+
+                HStack(spacing: 12) {
+                    Button {
+                        if devMode.maxPM5Connections > 1 { devMode.maxPM5Connections -= 1 }
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(devMode.maxPM5Connections <= 1 ? .gray : Theme.accent)
+                    }
+                    .disabled(devMode.maxPM5Connections <= 1)
+
+                    Slider(
+                        value: Binding(
+                            get: { Double(devMode.maxPM5Connections) },
+                            set: { devMode.maxPM5Connections = Int($0) }
+                        ),
+                        in: 1...20,
+                        step: 1
+                    )
+                    .tint(Theme.accent)
+
+                    Button {
+                        if devMode.maxPM5Connections < 20 { devMode.maxPM5Connections += 1 }
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(devMode.maxPM5Connections >= 20 ? .gray : Theme.accent)
+                    }
+                    .disabled(devMode.maxPM5Connections >= 20)
+                }
+
+                HStack {
+                    Text("1").font(.caption2).foregroundColor(Theme.textSecondary)
+                    Spacer()
+                    Text("20").font(.caption2).foregroundColor(Theme.textSecondary)
+                }
+
+                Text("⚠️ 20台はBLE実験的制限です。実機での動作保証外。")
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+            }
+
+            Divider().background(Color.white.opacity(0.1))
+
+            // 開発者モードを無効にするボタン（5回タップ相当を内部から呼ぶ）
+            Button {
+                for _ in 0..<5 { _ = devMode.handleVersionTap() }
+            } label: {
+                HStack {
+                    Image(systemName: "xmark.circle")
+                    Text("Disable Developer Mode")
+                }
+                .foregroundColor(.red)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+            }
+        }
+    }
+
+    /// Developer Mode のトーストを表示するヘルパー
+    func showDevToast(_ message: String) {
+        devModeToastTask?.cancel()
+        devModeToastMessage = message
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            showDevModeToast = true
+        }
+        devModeToastTask = Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if Task.isCancelled { return }
+            await MainActor.run {
+                withAnimation { showDevModeToast = false }
             }
         }
     }

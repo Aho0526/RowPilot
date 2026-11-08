@@ -252,7 +252,7 @@ class RecordManager: ObservableObject {
         
         do {
             try context.execute(deleteRequest)
-            saveContext()
+            context.reset()
             fetchRecords() // メモリ上のリストを空にリセット
             print("RecordManager: All records and JSON files deleted successfully.")
         } catch {
@@ -270,6 +270,8 @@ class RecordManager: ObservableObject {
         
         // iCloud Driveからも削除
         ICloudSyncManager.shared.delete(recordId: record.id)
+        // Cloudflare D1 チーム記録からも削除
+        TeamRecordUploader.shared.deleteFromTeam(recordID: record.id)
         
         let request = NSFetchRequest<NSManagedObject>(entityName: "RowingRecordEntity")
         request.predicate = NSPredicate(format: "id == %@", record.id as CVarArg)
@@ -304,6 +306,10 @@ class RecordManager: ObservableObject {
                 }
                 
                 fetchRecords()
+                if let updated = self.records.first(where: { $0.id == id }) {
+                    ICloudSyncManager.shared.upload(record: updated)
+                    TeamRecordUploader.shared.uploadIfNeeded(record: updated)
+                }
             }
         } catch {
             print("Failed to update record: \(error)")
@@ -318,6 +324,10 @@ class RecordManager: ObservableObject {
             deleteCrewInfo(for: id)
         }
         fetchRecords()
+        if let updated = self.records.first(where: { $0.id == id }) {
+            ICloudSyncManager.shared.upload(record: updated)
+            TeamRecordUploader.shared.uploadIfNeeded(record: updated)
+        }
     }
     
     func clearAllRecords() {

@@ -1,6 +1,59 @@
+# Xcode
+build/
+DerivedData/
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+xcuserdata/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+playground.xcworkspace
 
+# Swift Package Manager
+.build/
+Packages/
+.swiftpm/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Node / npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Cloudflare Wrangler
+.wrangler/
+.dev.vars
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+
+# Temporary files (keep tracked reference files)
+tmp/*
+!tmp/csafe.pdf
+!tmp/csafe_text.txt
+!tmp/extract_pdf.scpt
+
+# Project specific ignores
 /code_audit_report.md
 /project.xcworkspace
-.DS_Store
 /RowPilot_Introduction.md
 /worker.js

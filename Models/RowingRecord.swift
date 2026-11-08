@@ -104,6 +104,7 @@ extension RowingRecord {
 
     /// フォーマットされた時間 (HH:MM:SS.S または MM:SS.S)
     var formattedDuration: String {
+        guard duration.isFinite && duration >= 0 else { return "00:00.0" }
         let hours = Int(duration) / 3600
         let minutes = (Int(duration) % 3600) / 60
         let seconds = Int(duration) % 60
@@ -123,6 +124,7 @@ extension RowingRecord {
     
     /// フォーマットされたペース (MM:SS /500m)
     var formattedPace: String {
+        guard averagePace.isFinite && averagePace > 0 else { return "0:00 /500m" }
         let totalSeconds = Int(averagePace)
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60

@@ -250,7 +250,7 @@ struct PracticeWorkoutView: View {
                 }
             }
         }
-        .onChange(of: ergManager.elapsedTime) { _, newValue in
+        .onChange(of: ergManager.elapsedTime) { oldValue, newValue in
             let targetDist = ergManager.targetDistance ?? (ghostTracker?.record.distance ?? 0)
             if targetDist > 0 {
                 if ergManager.distance < targetDist {
@@ -258,6 +258,9 @@ struct PracticeWorkoutView: View {
                 }
             } else {
                 raceElapsedTime = newValue
+            }
+            if newValue == 0 || newValue < oldValue - 1.0 {
+                splits = [WorkoutSplit(number: 1, time: 0, distance: 0, averagePace: 0, spm: 0, heartRate: ergManager.heartRate > 0 ? "\(ergManager.heartRate)" : "-")]
             }
             updateSplits()
         }
@@ -287,6 +290,11 @@ struct PracticeWorkoutView: View {
                 let calories = ergManager.targetCalories
                 let split = dist != nil ? ergManager.targetSplitDistance : (time != nil ? ergManager.targetSplitTime : ergManager.targetSplitCalories)
                 saveCurrentRecord()
+                stopRaceTimer()
+                raceElapsedTime = 0
+                myFinishTime = nil
+                ghostFinishTime = nil
+                splits = []
                 ergManager.resetAndStartWorkout(distance: dist, time: time, calories: calories, split: split)
             }
             Button("Discard and Repeat".localized, role: .destructive) {
@@ -294,6 +302,11 @@ struct PracticeWorkoutView: View {
                 let time = ergManager.targetTime
                 let calories = ergManager.targetCalories
                 let split = dist != nil ? ergManager.targetSplitDistance : (time != nil ? ergManager.targetSplitTime : ergManager.targetSplitCalories)
+                stopRaceTimer()
+                raceElapsedTime = 0
+                myFinishTime = nil
+                ghostFinishTime = nil
+                splits = []
                 ergManager.resetAndStartWorkout(distance: dist, time: time, calories: calories, split: split)
             }
             Button("Cancel".localized, role: .cancel) {}
@@ -1824,22 +1837,24 @@ extension PracticeWorkoutView {
         trackWidth: CGFloat, nameWidth: CGFloat, rightWidth: CGFloat,
         targetDistance: Double, visibleRangeStart: Double, visibleRangeEnd: Double, zoomEnabled: Bool
     ) -> some View {
+        let safeTargetDist = max(targetDistance, 1.0)
         let rangeSpan = visibleRangeEnd - visibleRangeStart
-        let markerStep: Double
+        let rawStep: Double
         if zoomEnabled {
-            if rangeSpan <= 30 { markerStep = 5 }
-            else if rangeSpan <= 60 { markerStep = 10 }
-            else if rangeSpan <= 150 { markerStep = 25 }
-            else if rangeSpan <= 300 { markerStep = 50 }
-            else { markerStep = 100 }
+            if rangeSpan <= 30 { rawStep = 5 }
+            else if rangeSpan <= 60 { rawStep = 10 }
+            else if rangeSpan <= 150 { rawStep = 25 }
+            else if rangeSpan <= 300 { rawStep = 50 }
+            else { rawStep = 100 }
         } else {
-            markerStep = targetDistance / 5.0
+            rawStep = safeTargetDist / 5.0
         }
+        let markerStep = max(rawStep, 1.0)
         
         let firstMarker = ceil(visibleRangeStart / markerStep) * markerStep
         var markers: [Double] = []
         var m = firstMarker
-        while m <= visibleRangeEnd && m <= targetDistance {
+        while m <= visibleRangeEnd && m <= safeTargetDist {
             markers.append(m)
             m += markerStep
         }
@@ -1855,11 +1870,11 @@ extension PracticeWorkoutView {
                 ForEach(Array(markers.enumerated()), id: \.offset) { _, dist in
                     let normalizedProgress: CGFloat = zoomEnabled
                         ? (rangeSpan > 0 ? CGFloat((dist - visibleRangeStart) / rangeSpan) : 0)
-                        : CGFloat(dist / targetDistance)
+                        : CGFloat(dist / safeTargetDist)
                     let xPos = trackWidth * normalizedProgress
                     
                     VStack(spacing: 0) {
-                        Text("\(Int(targetDistance - dist))m")
+                        Text("\(Int(max(safeTargetDist - dist, 0)))m")
                             .font(.system(size: zoomEnabled ? 10 : 8, weight: .medium, design: .monospaced))
                             .foregroundColor(Color.white.opacity(0.5))
                             .padding(.bottom, 2)

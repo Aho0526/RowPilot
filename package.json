@@ -1,0 +1,29 @@
+{
+  "name": "rowpilot",
+  "version": "1.0.0",
+  "description": "**RowPilot** は、iOS向けに構築されたボート競技（ローイング）の選手、コーチ、マネージャーのためのプレミアムなオールインワン・アプリケーションです。",
+  "main": "worker.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Aho0526/RowPilot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Aho0526/RowPilot/issues"
+  },
+  "homepage": "https://github.com/Aho0526/RowPilot#readme",
+  "dependencies": {
+    "@peculiar/x509": "^2.1.0",
+    "jose": "^6.2.12",
+    "reflect-metadata": "^0.2.2"
+  }
+}

@@ -628,25 +628,29 @@ struct ManagerVariableIntervalSetupView: View {
                 isShowingEditor = true
             }
         }
-        .sheet(isPresented: $isShowingEditor) {
+        .sheet(isPresented: $isShowingEditor, onDismiss: { editingIndex = nil }) {
+            let currentEntry = (editingIndex != nil && intervals.indices.contains(editingIndex!)) ? intervals[editingIndex!] : intervals.last
             VariableIntervalEditorView(
-                entry: editingIndex != nil ? intervals[editingIndex!] : intervals.last
+                entry: currentEntry
             ) { newEntry in
-                if let index = editingIndex {
+                if let index = editingIndex, intervals.indices.contains(index) {
                     intervals[index] = newEntry
                 } else {
                     intervals.append(newEntry)
                 }
+                editingIndex = nil
             }
         }
     }
     
     private func copyInterval(at index: Int) {
+        guard intervals.indices.contains(index) else { return }
         let entryToCopy = intervals[index]
         intervals.insert(entryToCopy, at: index + 1)
     }
     
     private func deleteIntervals(at offsets: IndexSet) {
+        editingIndex = nil
         intervals.remove(atOffsets: offsets)
     }
     

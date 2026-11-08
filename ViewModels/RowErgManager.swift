@@ -1173,7 +1173,8 @@ class RowErgManager: NSObject, ObservableObject {
     // MARK: - Data Recording Timer
     private func startDataRecordingTimer() {
         stopDataRecordingTimer()
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.dataRecordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 self?.recordDataPoint()
             }

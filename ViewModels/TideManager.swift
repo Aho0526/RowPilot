@@ -22,6 +22,7 @@ class TideManager: ObservableObject {
     
     @Published var cachedText: String?
     @Published var tideDataCache: [String: TideData] = [:] // Key: "yyyy-MM-dd"
+    private var rawTextCache: [String: String] = [:] // Key: "\(station.id)_\(year)"
     
     // Computed property for formatting dates, thread-safe (returns new instance)
     private var dateFormatter: DateFormatter {
@@ -141,7 +142,7 @@ class TideManager: ObservableObject {
         TideStation(id: "OS", name: "大阪", coordinate: CLLocationCoordinate2D(latitude: 34.6500, longitude: 135.4333)),
         TideStation(id: "KB", name: "神戸", coordinate: CLLocationCoordinate2D(latitude: 34.6833, longitude: 135.2167)),
         TideStation(id: "Q4", name: "尼崎", coordinate: CLLocationCoordinate2D(latitude: 34.7000, longitude: 135.3833)),
-        TideStation(id: "NS", name: "西宮", coordinate: CLLocationCoordinate2D(latitude: 34.7167, longitude: 135.3500)),
+        TideStation(id: "J5", name: "西宮", coordinate: CLLocationCoordinate2D(latitude: 34.7167, longitude: 135.3500)),
         TideStation(id: "AK", name: "明石", coordinate: CLLocationCoordinate2D(latitude: 34.6500, longitude: 134.9833)),
         TideStation(id: "ST", name: "洲本", coordinate: CLLocationCoordinate2D(latitude: 34.3500, longitude: 134.9000)),
         TideStation(id: "EI", name: "江井", coordinate: CLLocationCoordinate2D(latitude: 34.4667, longitude: 134.8333)),
@@ -335,20 +336,35 @@ class TideManager: ObservableObject {
         let calendar = Calendar.current
         let year = calendar.component(.year, from: date)
         
-        // 簡易チェック: その観測所のその年のデータがキャッシュに少しでもあればOKとする
-        let keyPrefix = "\(station.id)_\(year)-"
         let dateKey = self.dateFormatter.string(from: date)
         let fullKey = "\(station.id)_\(dateKey)"
+        let rawKey = "\(station.id)_\(year)"
 
-        if self.tideDataCache.keys.contains(where: { $0.hasPrefix(keyPrefix) }) {
-             // Cache hit logic
-             let data = self.tideDataCache[fullKey]
+        if let data = self.tideDataCache[fullKey] {
              let activeStation = selectedStation ?? nearestStation
              if activeStation?.id == station.id {
                  self.currentTideData = data
              }
              completion?(data)
              return
+        }
+        
+        if let existingRawText = self.rawTextCache[rawKey] {
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else { return }
+                let (cache, current) = self.parseAllJMATextAndGetResult(existingRawText, station: station, targetDate: date)
+                DispatchQueue.main.async {
+                    for (k, v) in cache {
+                        self.tideDataCache[k] = v
+                    }
+                    let activeStation = self.selectedStation ?? self.nearestStation
+                    if activeStation?.id == station.id {
+                        self.currentTideData = current
+                    }
+                    completion?(current)
+                }
+            }
+            return
         }
         
         // Fetch new data
@@ -389,6 +405,7 @@ class TideManager: ObservableObject {
             DispatchQueue.main.async {
                 self?.isLoading = false
                 self?.cachedText = text
+                self?.rawTextCache[rawKey] = text
                 // 既存の他地点のキャッシュとマージ
                 for (k, v) in cache {
                     self?.tideDataCache[k] = v

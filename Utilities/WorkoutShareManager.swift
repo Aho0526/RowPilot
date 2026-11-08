@@ -309,6 +309,7 @@ class WorkoutShareManager {
     }
     
     private func formatPace(_ pace: TimeInterval) -> String {
+        guard pace.isFinite && pace > 0 else { return "0:00" }
         let totalSeconds = Int(pace)
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60

@@ -137,15 +137,11 @@ struct ManagerWorkoutDashboardView: View {
                             }
                         }
                         Button(action: {
-                            if isLocked {
-                                showLockWarning()
-                            } else {
-                                withAnimation {
-                                    isLocked = true
-                                }
+                            withAnimation {
+                                isLocked.toggle()
                             }
                         }) {
-                            Label("Reset Lock".localized, systemImage: isLocked ? "lock.fill" : "lock.open.fill")
+                            Label(isLocked ? "ロック解除".localized : "Reset Lock".localized, systemImage: isLocked ? "lock.fill" : "lock.open.fill")
                         }
                         Button(action: { showModeSettings = true }) {
                             Label("Settings".localized, systemImage: "gearshape.fill")
@@ -220,7 +216,9 @@ struct ManagerWorkoutDashboardView: View {
             Button("Save and Repeat".localized) {
                 viewModel.saveAllRecords(recordManager: appViewModel.recordManager)
                 triggerShareFlowIfEnabled {
-                    if let rest = viewModel.workoutRestTime {
+                    if let intervals = viewModel.workoutVariableIntervals, !intervals.isEmpty {
+                        viewModel.resetAndStartVariableIntervalWorkout(intervals: intervals)
+                    } else if let rest = viewModel.workoutRestTime {
                         viewModel.resetAndStartIntervalWorkout(
                             distance: viewModel.workoutDistance,
                             time: viewModel.workoutTime,
@@ -238,7 +236,9 @@ struct ManagerWorkoutDashboardView: View {
                 }
             }
             Button("Discard and Repeat".localized, role: .destructive) {
-                if let rest = viewModel.workoutRestTime {
+                if let intervals = viewModel.workoutVariableIntervals, !intervals.isEmpty {
+                    viewModel.resetAndStartVariableIntervalWorkout(intervals: intervals)
+                } else if let rest = viewModel.workoutRestTime {
                     viewModel.resetAndStartIntervalWorkout(
                         distance: viewModel.workoutDistance,
                         time: viewModel.workoutTime,
@@ -289,6 +289,11 @@ struct ManagerWorkoutDashboardView: View {
     
     /// 設定に応じてマネージャーモードの共有フローを開始し、完了後にコールバックを実行
     private func triggerShareFlowIfEnabled(completion: @escaping () -> Void) {
+        // Proプランでは共有機能はスキップ（Managerプラン以上で有効）
+        guard SubscriptionManager.shared.currentPlan.hasManagerMode else {
+            completion()
+            return
+        }
         guard SettingsManager.shared.settings.autoShareAfterManagerSave else {
             completion()
             return
@@ -614,6 +619,7 @@ struct PM5MetricsCardView: View {
     let isDisconnected: Bool
     
     @AppStorage("pm5DisplayMode") private var pm5DisplayMode: Int = 1
+    @AppStorage("pm5ShowSPM") private var pm5ShowSPM: Bool = true
     @AppStorage("pm5ShowWatts") private var pm5ShowWatts: Bool = true
     @AppStorage("pm5ShowPredicted") private var pm5ShowPredicted: Bool = true
     @AppStorage("pm5ShowHR") private var pm5ShowHR: Bool = true
@@ -736,7 +742,7 @@ struct PM5MetricsCardView: View {
                         }
                     }
                     
-                    // 常時表示行2: 500mペース（常時）
+                    // 常時表示行2: 500mペース ＆ SPM（ストロークレート）
                     HStack(spacing: 6) {
                         CompactMetricView(
                             label: "Pace".localized,
@@ -748,8 +754,17 @@ struct PM5MetricsCardView: View {
                             valueFontSize: valueFontSize
                         )
                         
-                        // サブスロットの左側は空白かワット
-                        if pm5ShowWatts {
+                        if pm5ShowSPM {
+                            CompactMetricView(
+                                label: "SPM",
+                                value: metrics.strokeRate > 0 ? "\(metrics.strokeRate)" : "-",
+                                icon: "metronome.fill",
+                                color: Color(hex: "00D2FF"),
+                                isDisconnected: isDisconnected,
+                                labelFontSize: baseFontSize - 4,
+                                valueFontSize: valueFontSize
+                            )
+                        } else if pm5ShowWatts {
                             CompactMetricView(
                                 label: "Watts",
                                 value: "\(metrics.power)W",
@@ -764,15 +779,26 @@ struct PM5MetricsCardView: View {
                         }
                     }
                     
-                    // 選択式行: 予測完了時間 + HR
-                    let showPredicted = pm5ShowPredicted && targetDistance != nil && metrics.predictedFinishTime > 0
+                    // 選択式行: Watts（SPM表示時） / 予測完了時間 / HR
+                    let showWattsInRow3 = pm5ShowSPM && pm5ShowWatts
                     let showHR = pm5ShowHR && metrics.heartRate > 0
+                    let showPredicted = pm5ShowPredicted && targetDistance != nil && metrics.predictedFinishTime > 0
                     
-                    if showPredicted || showHR {
+                    if showWattsInRow3 || showHR || showPredicted {
                         HStack(spacing: 6) {
-                            if showPredicted {
+                            if showWattsInRow3 {
                                 CompactMetricView(
-                                    label: "予測時間",
+                                    label: "Watts",
+                                    value: "\(metrics.power)W",
+                                    icon: "bolt.fill",
+                                    color: .yellow,
+                                    isDisconnected: isDisconnected,
+                                    labelFontSize: baseFontSize - 4,
+                                    valueFontSize: valueFontSize
+                                )
+                            } else if showPredicted {
+                                CompactMetricView(
+                                    label: LocalizationManager.shared.language == .japanese ? "予測時間" : "Predicted",
                                     value: formatCompactTime(seconds: Int(metrics.predictedFinishTime)),
                                     icon: "hourglass",
                                     color: .purple,
@@ -794,7 +820,33 @@ struct PM5MetricsCardView: View {
                                     labelFontSize: baseFontSize - 4,
                                     valueFontSize: valueFontSize
                                 )
+                            } else if showWattsInRow3 && showPredicted {
+                                CompactMetricView(
+                                    label: LocalizationManager.shared.language == .japanese ? "予測時間" : "Predicted",
+                                    value: formatCompactTime(seconds: Int(metrics.predictedFinishTime)),
+                                    icon: "hourglass",
+                                    color: .purple,
+                                    isDisconnected: isDisconnected,
+                                    labelFontSize: baseFontSize - 4,
+                                    valueFontSize: valueFontSize
+                                )
                             } else {
+                                Spacer()
+                            }
+                        }
+                        
+                        // Watts, HR, 予測時間がすべて有効な場合、予測時間を2行目に表示
+                        if showWattsInRow3 && showHR && showPredicted {
+                            HStack(spacing: 6) {
+                                CompactMetricView(
+                                    label: LocalizationManager.shared.language == .japanese ? "予測時間" : "Predicted",
+                                    value: formatCompactTime(seconds: Int(metrics.predictedFinishTime)),
+                                    icon: "hourglass",
+                                    color: .purple,
+                                    isDisconnected: isDisconnected,
+                                    labelFontSize: baseFontSize - 4,
+                                    valueFontSize: valueFontSize
+                                )
                                 Spacer()
                             }
                         }
@@ -931,6 +983,7 @@ struct ManagerModeSettingsView: View {
     
     @AppStorage("pm5DisplayMode") private var pm5DisplayMode: Int = 1
     @AppStorage("pm5GridColumns") private var pm5GridColumns: Int = 2
+    @AppStorage("pm5ShowSPM") private var pm5ShowSPM: Bool = true
     @AppStorage("pm5ShowWatts") private var pm5ShowWatts: Bool = true
     @AppStorage("pm5ShowPredicted") private var pm5ShowPredicted: Bool = true
     @AppStorage("pm5ShowHR") private var pm5ShowHR: Bool = true
@@ -992,6 +1045,7 @@ struct ManagerModeSettingsView: View {
                 }
                 
                 Section(header: Text("表示内容のカスタマイズ".localized)) {
+                    Toggle(LocalizationManager.shared.language == .japanese ? "SPM（ストロークレート）を表示" : "Show SPM", isOn: $pm5ShowSPM)
                     Toggle("ワットを表示", isOn: $pm5ShowWatts)
                     Toggle("予測時間を表示", isOn: $pm5ShowPredicted)
                     Toggle("HR（心拍数）を表示", isOn: $pm5ShowHR)

@@ -85,7 +85,7 @@ struct PM5ManagerView: View {
                                             .font(.caption)
                                             .foregroundColor(Theme.accent)
                                     } else {
-                                        let isLimitReached = (viewModel.connectedDevices.count + viewModel.connectingDeviceIDs.count) >= 10
+                                        let isLimitReached = viewModel.isConnectionLimitReached
                                         Button(action: {
                                             viewModel.addDevice(device)
                                         }) {
@@ -111,7 +111,7 @@ struct PM5ManagerView: View {
                     }
                     
                     // MARK: - Connected Devices
-                    PracticeSection(title: "\("Connected PM5") (\(viewModel.connectedDevices.count)\("Devices"))", icon: "checkmark.circle.fill") {
+                    PracticeSection(title: "\("Connected PM5".localized) (\(viewModel.connectedDevices.count) / \(viewModel.effectiveMaxConnections))", icon: "checkmark.circle.fill") {
                         if viewModel.connectedDevices.isEmpty {
                             HStack {
                                 Image(systemName: "info.circle")
@@ -185,6 +185,62 @@ struct PM5ManagerView: View {
                     }
                     .disabled(!viewModel.canProceed)
                     .padding(.top, 8)
+                    
+                    // MARK: - BLE Debug Panel (開発者モード時のみ)
+                    if DeveloperModeManager.shared.isEnabled {
+                        PracticeSection(title: "BLE Debug", icon: "ant.circle.fill") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("接続上限")
+                                        .font(.caption)
+                                        .foregroundColor(Theme.textSecondary)
+                                    Spacer()
+                                    Text("\(viewModel.connectedDevices.count + viewModel.connectingDeviceIDs.count) / \(viewModel.effectiveMaxConnections)")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Theme.accent)
+                                }
+                                
+                                Divider().background(Color.white.opacity(0.1))
+                                
+                                if viewModel.deviceMetrics.isEmpty {
+                                    Text("接続中のデバイスなし")
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.textSecondary)
+                                } else {
+                                    ForEach(viewModel.connectedDevices, id: \.identifier) { device in
+                                        if let metrics = viewModel.deviceMetrics[device.identifier] {
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(device.name ?? "Unknown")
+                                                    .font(.caption)
+                                                    .fontWeight(.bold)
+                                                    .foregroundColor(Theme.textMain)
+                                                
+                                                if !metrics.lastStrokeDataBytes.isEmpty {
+                                                    ScrollView(.horizontal, showsIndicators: false) {
+                                                        Text(metrics.lastStrokeDataBytes)
+                                                            .font(.system(.caption2, design: .monospaced))
+                                                            .foregroundColor(.green)
+                                                    }
+                                                }
+                                                
+                                                HStack(spacing: 12) {
+                                                    Text("State: \(metrics.machineState.description)")
+                                                    Text("SPM: \(metrics.strokeRate)")
+                                                    Text("W: \(metrics.power)W")
+                                                }
+                                                .font(.caption2)
+                                                .foregroundColor(Theme.textSecondary)
+                                            }
+                                            .padding(8)
+                                            .background(Color.white.opacity(0.03))
+                                            .cornerRadius(8)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     
                 }
                 .padding()

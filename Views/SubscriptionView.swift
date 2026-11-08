@@ -30,10 +30,10 @@ private extension SubscriptionPlan {
     var tagline: String {
         switch self {
         case .free: return "まずは基本機能から".localized
-        case .pro:  return "競技力向上をサポート".localized
-        case .manager: return "マネージャー機能とPro機能".localized
-        case .team: return "チーム全員で使える".localized
-        case .max:  return "プロコーチのための最高峰".localized
+        case .pro:  return "選手個人向け上位プラン".localized
+        case .manager: return "個人指導者・コーチ向け".localized
+        case .team: return "高校部活・サークル向け".localized
+        case .max:  return "顧問・監督・強豪校向け最上位".localized
         case .organization: return "中〜大規模チームで共有して使う".localized
         }
     }
@@ -54,43 +54,47 @@ private extension SubscriptionPlan {
             ("リギングの管理".localized,                 [.free, .pro, .team, .max, .manager, .organization]),
             ("iCloudバックアップ".localized,             [.free, .pro, .team, .max, .manager, .organization]),
             ("Force Curve の表示".localized,             [.pro, .team, .max, .manager, .organization]),
+            ("全国潮位の任意選択・確認".localized,         [.pro, .team, .max, .manager, .organization]),
             ("ゴーストレース機能".localized,             [.pro, .team, .max, .manager, .organization]),
             ("Strava同期 (準備中)".localized,            [.pro, .team, .max, .manager, .organization]),
-            ("PM5 複数台同時接続".localized,             [.team, .max, .organization, .manager]),
-            ("リアルタイム一斉トレーニング".localized,    [.team, .max, .organization, .manager]),
+            ("PM5 複数台同時接続 (最大4台)".localized,   [.pro]),
+            ("PM5 複数台同時接続 (最大10台)".localized,  [.team, .max, .organization, .manager]),
+            ("リアルタイム一斉トレーニング".localized,    [.pro, .team, .max, .organization, .manager]),
             ("マネージャープランの共有 (1名)".localized,    [.team]),
-            ("マネージャープランの共有 (3名)".localized,    [.max]),
-            ("マネージャープランの共有 (最大5名)".localized, [.organization]),
-            ("メンバー管理 (最大30名)".localized,         [.team]),
-            ("メンバー管理 (最大50名)".localized,         [.max]),
+            ("マネージャープランの共有 (5名)".localized,    [.max, .organization]),
+            ("メンバー管理 (最大25名)".localized,         [.team]),
+            ("メンバー管理 (最大80名)".localized,         [.max]),
             ("メンバー管理 (最大200名)".localized,        [.organization]),
             ("管理者の指定 (3名)".localized,             [.max]),
             ("管理者の指定 (7名)".localized,             [.organization]),
-            ("AIとテンプレート型の分析機能 (準備中)".localized, [.team]),
-            ("AIと対話型の分析機能 (準備中)".localized,    [.max]),
-            ("AIと対話型の分析機能".localized,            [.organization]),
             ("CSV形式での記録出力".localized,             [.max, .organization]),
-            ("レースビュー (高度な可視化)".localized,     [.max, .organization]),
+            ("レースビュー (エルゴ競走モード)".localized,     [.max, .organization]),
         ]
         return all
             .filter { item in
                 let name = item.0
-                if self == .team {
-                    return !name.contains("共有 (3名)") && !name.contains("共有 (最大5名)") &&
-                           !name.contains("メンバー管理 (最大50名)") && !name.contains("メンバー管理 (最大200名)") &&
-                           !name.contains("管理者の指定") && !name.contains("対話型の分析機能")
+                if self == .pro {
+                    return !name.contains("共有 (") && !name.contains("メンバー管理") && !name.contains("管理者の指定") && !name.contains("(最大10台)")
+                } else if self == .manager {
+                    return !name.contains("共有 (") && !name.contains("メンバー管理") && !name.contains("管理者の指定") && !name.contains("(最大4台)")
+                } else if self == .team {
+                    return !name.contains("共有 (5名)") &&
+                           !name.contains("メンバー管理 (最大80名)") && !name.contains("メンバー管理 (最大200名)") &&
+                           !name.contains("管理者の指定") &&
+                           !name.contains("(最大4台)")
                 } else if self == .max {
-                    return !name.contains("共有 (1名)") && !name.contains("共有 (最大5名)") &&
-                           !name.contains("メンバー管理 (最大30名)") && !name.contains("メンバー管理 (最大200名)") &&
-                           !name.contains("管理者の指定 (7名)") && !name.contains("テンプレート型") &&
-                           name != "AIと対話型の分析機能".localized
+                    return !name.contains("共有 (1名)") &&
+                           !name.contains("メンバー管理 (最大25名)") && !name.contains("メンバー管理 (最大200名)") &&
+                           !name.contains("管理者の指定 (7名)") &&
+                           !name.contains("(最大4台)")
                 } else if self == .organization {
-                    return !name.contains("共有 (1名)") && !name.contains("共有 (3名)") &&
-                           !name.contains("メンバー管理 (最大30名)") && !name.contains("メンバー管理 (最大50名)") &&
-                           !name.contains("管理者の指定 (3名)") && !name.contains("テンプレート型") &&
-                           !name.contains("(準備中)")
+                    return !name.contains("共有 (1名)") &&
+                           !name.contains("メンバー管理 (最大25名)") && !name.contains("メンバー管理 (最大80名)") &&
+                           !name.contains("管理者の指定 (3名)") &&
+                           !name.contains("(準備中)") &&
+                           !name.contains("(最大4台)")
                 } else {
-                    return !name.contains("共有 (") && !name.contains("メンバー管理") && !name.contains("管理者の指定") && !name.contains("分析機能")
+                    return !name.contains("共有 (") && !name.contains("メンバー管理") && !name.contains("管理者の指定") && !name.contains("(最大10台)")
                 }
             }
             .map { ($0.0, $0.1.contains(self)) }
@@ -101,6 +105,23 @@ private extension SubscriptionPlan {
 struct SubscriptionView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var subManager = SubscriptionManager.shared
+    @State private var isRestoring = false
+    @State private var showingRestoreAlert = false
+    @State private var restoreAlertMessage = ""
+
+    /// Organization 廃止案内バナーの表示判定（2026年10月1日 00:00:00 JST まで表示）
+    private var shouldShowOrgSunsetNotice: Bool {
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 10
+        components.day = 1
+        components.hour = 0
+        components.minute = 0
+        components.second = 0
+        components.timeZone = TimeZone(identifier: "Asia/Tokyo") ?? TimeZone(secondsFromGMT: 9 * 3600)
+        let expiryDate = Calendar.current.date(from: components) ?? Date(timeIntervalSince1970: 1790780400)
+        return Date() < expiryDate
+    }
 
     var body: some View {
         ZStack {
@@ -128,16 +149,14 @@ struct SubscriptionView: View {
         .navigationTitle("Subscriptions".localized)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button("Restore".localized) {
-                    Task {
-                        await subManager.restorePurchases()
-                    }
-                }
-            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Done".localized) { dismiss() }
             }
+        }
+        .alert("購入情報の復元".localized, isPresented: $showingRestoreAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(restoreAlertMessage)
         }
         .onAppear {
             subManager.checkSubscriptionStatus()
@@ -234,6 +253,29 @@ struct SubscriptionView: View {
                 .background(Color.orange.opacity(0.12))
             }
 
+            // Organization プラン廃止のお知らせバナー（2026/10/1に自動非表示）
+            if plan == .organization && shouldShowOrgSunsetNotice {
+                Divider().background(Color.white.opacity(0.1))
+                HStack(spacing: 10) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Color.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Organizationプランの廃止について".localized)
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.orange)
+                        Text("Organizationプランは廃止されました。次回更新時に自動的にMAXプランへ移行されます。".localized)
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.75))
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.orange.opacity(0.12))
+            }
+
             if let expDate = subManager.expiresAt {
                 Divider().background(Color.white.opacity(0.1))
 
@@ -265,35 +307,45 @@ struct SubscriptionView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+
+                // 次回更新予定のプラン（ダウングレードやクロスグレード、変更予約がある場合）
+                if let pending = subManager.pendingPlan {
+                    Divider().background(Color.white.opacity(0.1))
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("次回更新予定のプラン".localized)
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.55))
+                            Text(pending.displayName)
+                                .font(.subheadline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.orange)
+                        }
+                        Spacer()
+                        if let pDate = subManager.pendingPlanDate {
+                            Text(pDate, style: .date)
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.orange.opacity(0.08))
+                }
             }
 
             if subManager.currentPlan.hasTeamFeature {
                 Divider().background(Color.white.opacity(0.1))
-                NavigationLink(destination: TeamMaxManagerView()) {
-                    HStack {
-                        Image(systemName: "person.3.sequence.fill")
-                            .foregroundColor(plan.accentColor)
-                        Text("共有メンバーを管理".localized)
-                            .fontWeight(.bold)
-                            .foregroundColor(plan.accentColor)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.3))
-                    }
-                    .font(.subheadline)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
-
-                Divider().background(Color.white.opacity(0.1))
                 NavigationLink(destination: CloudflareTeamListView()) {
                     HStack {
                         Image(systemName: "person.3.fill")
-                            .foregroundColor(.green)
-                        Text("メンバーを管理（D1）".localized)
+                            .foregroundColor(plan.accentColor)
+                        Text("チームメンバー管理".localized)
                             .fontWeight(.bold)
-                            .foregroundColor(.green)
+                            .foregroundColor(plan.accentColor)
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption)
@@ -373,22 +425,18 @@ struct SubscriptionView: View {
                 )
             }
 
-            SectionLabel(text: "Individual")
+            SectionLabel(text: "個人アスリート向け".localized)
             PlanCard(plan: .free, currentPlan: subManager.currentPlan)
             PlanCard(plan: .pro,  currentPlan: subManager.currentPlan)
 
-            SectionLabel(text: "For Manager")
+            SectionLabel(text: "コーチ・マネージャー向け".localized)
                 .padding(.top, 8)
             PlanCard(plan: .manager, currentPlan: subManager.currentPlan)
 
-            SectionLabel(text: "For Team")
+            SectionLabel(text: "部活・チーム・顧問向け".localized)
                 .padding(.top, 8)
             PlanCard(plan: .team, currentPlan: subManager.currentPlan)
             PlanCard(plan: .max,  currentPlan: subManager.currentPlan)
-
-            SectionLabel(text: "For Organization")
-                .padding(.top, 8)
-            PlanCard(plan: .organization, currentPlan: subManager.currentPlan)
         }
     }
 
@@ -403,40 +451,29 @@ struct SubscriptionView: View {
                 .textCase(.uppercase)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text("サブスクリプションは購入確認後、Apple IDアカウントに課金されます。サブスクリプションは現在の期間終了の24時間以上前にキャンセルしない限り自動更新されます。")
+            Text("サブスクリプションは購入確認後、Apple IDアカウントに課金されます。サブスクリプションは現在の期間終了の24時間以上前にキャンセルしない限り自動更新されます。".localized)
                 .font(.caption2)
                 .foregroundColor(.white.opacity(0.4))
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 16) {
-                Link(destination: URL(string: "https://rowpilot.jp/privacy-policy")!) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "lock.shield")
-                            .font(.caption2)
-                        Text("Privacy Policy")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                    }
-                    .foregroundColor(Color(hex: "5B8DEF"))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    privacyPolicyLink
+                    footerDivider
+                    termsOfUseLink
+                    footerDivider
+                    restorePurchasesButton
+                    Spacer()
                 }
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.15))
-                    .frame(width: 1, height: 14)
-
-                Link(destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "doc.text")
-                            .font(.caption2)
-                        Text("Terms of Use")
-                            .font(.caption)
-                            .fontWeight(.semibold)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        privacyPolicyLink
+                        footerDivider
+                        termsOfUseLink
                     }
-                    .foregroundColor(Color(hex: "5B8DEF"))
+                    restorePurchasesButton
                 }
-
-                Spacer()
             }
         }
         .padding(14)
@@ -446,6 +483,81 @@ struct SubscriptionView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color.white.opacity(0.06), lineWidth: 1)
         )
+    }
+
+    private var footerDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.15))
+            .frame(width: 1, height: 14)
+    }
+
+    private var privacyPolicyLink: some View {
+        Link(destination: URL(string: "https://rowpilot.jp/privacy-policy")!) {
+            HStack(spacing: 4) {
+                Image(systemName: "lock.shield")
+                    .font(.caption2)
+                Text("Privacy Policy")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+            }
+            .foregroundColor(Color(hex: "5B8DEF"))
+        }
+    }
+
+    private var termsOfUseLink: some View {
+        Link(destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!) {
+            HStack(spacing: 4) {
+                Image(systemName: "doc.text")
+                    .font(.caption2)
+                Text("Terms of Use")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+            }
+            .foregroundColor(Color(hex: "5B8DEF"))
+        }
+    }
+
+    private var restorePurchasesButton: some View {
+        Button(action: {
+            restorePurchasesAction()
+        }) {
+            HStack(spacing: 4) {
+                if isRestoring {
+                    ProgressView()
+                        .tint(Color(hex: "5B8DEF"))
+                        .scaleEffect(0.7)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption2)
+                }
+                Text("購入情報の復元".localized)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+            }
+            .foregroundColor(Color(hex: "5B8DEF"))
+        }
+        .disabled(isRestoring)
+    }
+
+    private func restorePurchasesAction() {
+        guard !isRestoring else { return }
+        isRestoring = true
+        Task {
+            let success = await subManager.restorePurchases()
+            await MainActor.run {
+                isRestoring = false
+                if success {
+                    if subManager.currentPlan != .free {
+                        restoreAlertMessage = "購入情報を復元しました。現在のプラン: \(subManager.currentPlan.displayName)".localized
+                    } else {
+                        restoreAlertMessage = "復元できる有効な購入情報が見つかりませんでした。".localized
+                    }
+                } else {
+                    restoreAlertMessage = "購入情報の復元に失敗しました。ネットワーク接続を確認してください。".localized
+                }
+                showingRestoreAlert = true
+            }
+        }
     }
 }
 
@@ -498,9 +610,11 @@ private struct PlanCard: View {
 
                 // テキスト
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(plan.displayName)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
+                    HStack(spacing: 6) {
+                        Text(plan.displayName)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                    }
                     Text(plan.tagline)
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.55))
@@ -517,6 +631,10 @@ private struct PlanCard: View {
                         Label("利用中".localized, systemImage: "checkmark.seal.fill")
                             .font(.caption2)
                             .fontWeight(.bold)
+                            .foregroundColor(.green)
+                    } else if plan != .free {
+                        Text("初月無料".localized)
+                            .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.green)
                     } else {
                         Image(systemName: "chevron.right")
@@ -659,6 +777,8 @@ struct SubscriptionDetailView: View {
                 infoRow(label: "期間", value: plan.periodString)
                 if plan != .free {
                     Divider().background(Color.white.opacity(0.08))
+                    infoRow(label: "無料トライアル", value: "初回1ヶ月無料", valueColor: .green)
+                    Divider().background(Color.white.opacity(0.08))
                     // 商品取得中・取得済みで表示を変える
                     if subManager.isLoadingProducts {
                         HStack {
@@ -688,11 +808,11 @@ struct SubscriptionDetailView: View {
 
     private func infoRow(label: String, value: String, valueColor: Color = .white) -> some View {
         HStack {
-            Text(label)
+            Text(label.localized)
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.55))
             Spacer()
-            Text(value)
+            Text(value.localized)
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundColor(valueColor)
@@ -727,15 +847,15 @@ struct SubscriptionDetailView: View {
         case .free:
             return "RowPilotの中核となる基本的な機能を使用できます。潮汐情報の確認やGPSレート計、PM5との1:1接続など、日常のトレーニングに必要な機能を揃えています。".localized
         case .pro:
-            return "ForceCurveの可見化やゴーストレース機能、Stravaとの連携（準備中）など、より深いパフォーマンス分析が可能になります。個人アスリートに最適なプランです。".localized
+            return "ForceCurveの可視化や全国潮位の任意選択、PM5最大4台の同時制御、ゴーストレース機能など、本格的なトレーニングをサポートする上位プランです。".localized
         case .manager:
-            return "Proプランのすべての機能に加え、PM5との複数接続やマネージャーモードといった、管理者・コーチ向けの高度な機能を利用可能にするプランです。".localized
+            return "Proプランの全機能に加え、PM5最大10台の同時接続や記録共有など、指導者向けのモニタリング機能を開放するプランです。".localized
         case .team:
-            return "最大3人に「RowPilot Manager」を共有でき、最大30人のメンバーをまとめて管理できます。さらに、AIとテンプレート型の分析機能（準備中）が利用可能です。".localized
+            return "高校部活やサークル向け。最大25名の部員を一元管理し、マネージャープランを他1名に共有してチーム運営を円滑にします。".localized
         case .max:
-            return "最大5人に「RowPilot Manager」を共有でき、最大3人を管理者として指定、最大50人をメンバーとして追加できます。さらに、AIと対話型の分析機能（準備中）が追加されます。".localized
+            return "顧問・監督・強豪校向け最上位プラン。最大80名の部員管理、複数指導者体制（管理3名/共有5名）、レースビュー、CSV出力など高度な指導・選考をフルサポートします。".localized
         case .organization:
-            return "最大10人に「RowPilot Manager」を共有でき、最大7人の管理者として指定、最大200人をメンバーとして追加できます。さらに、AIと対話型の分析機能が利用可能です。".localized
+            return "最大5人に「RowPilot Manager」を共有でき、最大7人の管理者として指定、最大200人をメンバーとして追加できます。".localized
         }
     }
 
@@ -801,35 +921,43 @@ struct SubscriptionDetailView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     } else if let product = storeProduct {
                         // StoreKit商品が取得できている場合 → 購入ボタン表示
-                        Button(action: { purchase(product: product) }) {
-                            HStack(spacing: 10) {
-                                if subManager.isPurchasing {
-                                    ProgressView()
-                                        .tint(.white)
-                                        .scaleEffect(0.9)
-                                } else {
-                                    Image(systemName: plan.icon)
+                        VStack(spacing: 8) {
+                            Button(action: { purchase(product: product) }) {
+                                HStack(spacing: 10) {
+                                    if subManager.isPurchasing {
+                                        ProgressView()
+                                            .tint(.white)
+                                            .scaleEffect(0.9)
+                                    } else {
+                                        Image(systemName: plan.icon)
+                                            .font(.headline)
+                                    }
+                                    Text(subManager.isPurchasing ? "購入処理中..." : "\(plan.displayName) を購入 — \(priceDisplay)/月")
                                         .font(.headline)
+                                        .fontWeight(.bold)
                                 }
-                                Text(subManager.isPurchasing ? "購入処理中..." : "\(plan.displayName) を購入 — \(priceDisplay)/月")
-                                    .font(.headline)
-                                    .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(
+                                    subManager.isPurchasing
+                                        ? LinearGradient(colors: [Color.gray.opacity(0.5), Color.gray.opacity(0.4)],
+                                                         startPoint: .leading, endPoint: .trailing)
+                                        : LinearGradient(colors: plan.gradientColors,
+                                                         startPoint: .leading, endPoint: .trailing)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .shadow(color: plan.accentColor.opacity(0.4), radius: 12, x: 0, y: 5)
                             }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(
-                                subManager.isPurchasing
-                                    ? LinearGradient(colors: [Color.gray.opacity(0.5), Color.gray.opacity(0.4)],
-                                                     startPoint: .leading, endPoint: .trailing)
-                                    : LinearGradient(colors: plan.gradientColors,
-                                                     startPoint: .leading, endPoint: .trailing)
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .shadow(color: plan.accentColor.opacity(0.4), radius: 12, x: 0, y: 5)
+                            .disabled(subManager.isPurchasing)
+                            .id("purchase_button_\(plan.rawValue)")
+
+                            Text("初回1ヶ月は無料です。トライアル終了の24時間前までにキャンセルすれば請求は発生しません。".localized)
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.5))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 8)
                         }
-                        .disabled(subManager.isPurchasing)
-                        .id("purchase_button_\(plan.rawValue)")
 
                     } else if subManager.productsLoadError != nil {
                         // 商品取得エラー時 → 再試行ボタン

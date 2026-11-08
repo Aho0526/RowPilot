@@ -166,13 +166,15 @@ struct BoatRiggingDiagramView: View {
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
                 
-                // デバッグトグルボタン
-                Button(action: { riggerDebugOverlay.toggle() }) {
-                    Image(systemName: "ant.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(riggerDebugOverlay ? .red : Theme.textSecondary.opacity(0.5))
+                // デバッグトグルボタン（開発者モード時のみ表示）
+                if DeveloperModeManager.shared.isEnabled {
+                    Button(action: { riggerDebugOverlay.toggle() }) {
+                        Image(systemName: "ant.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(riggerDebugOverlay ? .red : Theme.textSecondary.opacity(0.5))
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .buttonStyle(PlainButtonStyle())
             }
             .padding(.top, 4)
             

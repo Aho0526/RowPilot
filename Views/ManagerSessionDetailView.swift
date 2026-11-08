@@ -43,83 +43,11 @@ struct ManagerSessionDetailView: View {
                             .padding(.horizontal, 4)
                         
                         ForEach(records.sorted { ($0.pm5CustomName ?? "") < ($1.pm5CustomName ?? "") }) { record in
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(record.pm5CustomName ?? record.pm5SerialNumber ?? "Unknown PM5")
-                                            .font(.headline)
-                                            .foregroundColor(Theme.textMain)
-                                        if let serial = record.pm5SerialNumber, record.pm5CustomName != nil {
-                                            Text(serial)
-                                                .font(.caption)
-                                                .foregroundColor(Theme.textSecondary)
-                                        }
-                                    }
-                                    Spacer()
-                                    
-                                    HStack(spacing: 4) {
-                                        Menu {
-                                            Button {
-                                                let prepared = WorkoutShareManager.shared.prepareManagerRecord(record)
-                                                WorkoutShareManager.shared.presentShareSheet(for: prepared)
-                                            } label: {
-                                                Label("Share RowPilot Data (.rowpilot)".localized, systemImage: "doc.text")
-                                            }
-                                            
-                                            Button {
-                                                if currentPlan.hasCSVExport {
-                                                    let prepared = WorkoutShareManager.shared.prepareManagerRecord(record)
-                                                    WorkoutShareManager.shared.presentCSVShareSheet(for: prepared)
-                                                } else {
-                                                    showMaxPlanAlert = true
-                                                }
-                                            } label: {
-                                                if currentPlan.hasCSVExport {
-                                                    Label("Export CSV (.csv)".localized, systemImage: "tablecells")
-                                                } else {
-                                                    Label("Export CSV (.csv) 👑".localized, systemImage: "tablecells")
-                                                }
-                                            }
-                                        } label: {
-                                            Image(systemName: "square.and.arrow.up")
-                                                .font(.title3)
-                                                .foregroundColor(Theme.accent)
-                                                .padding(6)
-                                                .contentShape(Rectangle())
-                                        }
-                                        
-                                        Button {
-                                            showingShareHelp = true
-                                        } label: {
-                                            Image(systemName: "questionmark.circle")
-                                                .font(.title3)
-                                                .foregroundColor(Theme.accent)
-                                                .padding(6)
-                                                .contentShape(Rectangle())
-                                        }
-                                    }
-                                }
-                                
-                                Divider()
-                                    .background(Theme.textSecondary.opacity(0.2))
-                                
-                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                                    DetailMetricRow(icon: "clock.fill", label: "Duration", value: record.formattedDuration)
-                                    DetailMetricRow(icon: "ruler.fill", label: "Distance", value: record.formattedDistance)
-                                    DetailMetricRow(icon: "timer", label: "Pace", value: record.formattedPace)
-                                    if let watt = record.averageWatt {
-                                        DetailMetricRow(icon: "bolt.fill", label: "Avg Watt", value: "\(watt) W")
-                                    } else {
-                                        DetailMetricRow(icon: "bolt.fill", label: "Avg Watt", value: "N/A")
-                                    }
-                                }
-                            }
-                            .padding()
-                            .background(Theme.cardBackground)
-                            .cornerRadius(16)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(Theme.accent.opacity(0.2), lineWidth: 1)
+                            ManagerDeviceCardView(
+                                record: record,
+                                currentPlan: currentPlan,
+                                onCSVExportLocked: { showMaxPlanAlert = true },
+                                onShowShareHelp: { showingShareHelp = true }
                             )
                         }
                     }
@@ -145,6 +73,122 @@ struct ManagerSessionDetailView: View {
         .sheet(isPresented: $showingShareHelp) {
             ShareHelpView()
         }
+    }
+}
+
+// MARK: - Manager Device Card View
+struct ManagerDeviceCardView: View {
+    let record: RowingRecord
+    let currentPlan: SubscriptionPlan
+    let onCSVExportLocked: () -> Void
+    let onShowShareHelp: () -> Void
+    
+    private var titleText: String {
+        if let custom = record.pm5CustomName, !custom.isEmpty {
+            return custom
+        }
+        if let serial = record.pm5SerialNumber, !serial.isEmpty {
+            return serial
+        }
+        return "Unknown PM5"
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(titleText)
+                        .font(.headline)
+                        .foregroundColor(Theme.textMain)
+                    if let serial = record.pm5SerialNumber, record.pm5CustomName != nil {
+                        Text(serial)
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                }
+                Spacer()
+                
+                HStack(spacing: 4) {
+                    Menu {
+                        Button {
+                            let prepared = WorkoutShareManager.shared.prepareManagerRecord(record)
+                            WorkoutShareManager.shared.presentShareSheet(for: prepared)
+                        } label: {
+                            Label("Share RowPilot Data (.rowpilot)".localized, systemImage: "doc.text")
+                        }
+                        
+                        Button {
+                            if currentPlan.hasCSVExport {
+                                let prepared = WorkoutShareManager.shared.prepareManagerRecord(record)
+                                WorkoutShareManager.shared.presentCSVShareSheet(for: prepared)
+                            } else {
+                                onCSVExportLocked()
+                            }
+                        } label: {
+                            if currentPlan.hasCSVExport {
+                                Label("Export CSV (.csv)".localized, systemImage: "tablecells")
+                            } else {
+                                Label("Export CSV (.csv) 👑".localized, systemImage: "tablecells")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.title3)
+                            .foregroundColor(Theme.accent)
+                            .padding(6)
+                            .contentShape(Rectangle())
+                    }
+                    
+                    Button {
+                        onShowShareHelp()
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                            .font(.title3)
+                            .foregroundColor(Theme.accent)
+                            .padding(6)
+                            .contentShape(Rectangle())
+                    }
+                }
+            }
+            
+            Divider()
+                .background(Theme.textSecondary.opacity(0.2))
+            
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                DetailMetricRow(icon: "clock.fill", label: "Duration", value: record.formattedDuration)
+                DetailMetricRow(icon: "ruler.fill", label: "Distance", value: record.formattedDistance)
+                DetailMetricRow(icon: "timer", label: "Pace", value: record.formattedPace)
+                DetailMetricRow(icon: "metronome.fill", label: "Avg SPM", value: record.averageSPM > 0 ? "\(record.averageSPM)" : "-")
+                if let watt = record.averageWatt {
+                    DetailMetricRow(icon: "bolt.fill", label: "Avg Watt", value: "\(watt) W")
+                } else {
+                    DetailMetricRow(icon: "bolt.fill", label: "Avg Watt", value: "N/A")
+                }
+            }
+            
+            // 詳細確認リンク
+            NavigationLink {
+                RecordDetailView(record: record)
+            } label: {
+                HStack {
+                    Text("View Details".localized)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                }
+                .foregroundColor(Theme.accent)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.top, 4)
+            }
+        }
+        .padding()
+        .background(Theme.cardBackground)
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Theme.accent.opacity(0.2), lineWidth: 1)
+        )
     }
 }
 

@@ -41,7 +41,7 @@ struct SubscriptionRecord: Codable {
 // MARK: - SubscriptionManager
 
 /// サブスクリプション状態を管理するマネージャー
-class SubscriptionManager: ObservableObject {
+class SubscriptionManager: ObservableObject, @unchecked Sendable {
     static let shared = SubscriptionManager()
 
     // CloudKitを使用するかどうかの制御フラグ
@@ -143,6 +143,19 @@ class SubscriptionManager: ObservableObject {
         }
     }
 
+    var apiToken: String {
+        get { UserDefaults.standard.string(forKey: "apiToken") ?? "" }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "apiToken")
+            objectWillChange.send()
+        }
+    }
+
+    var lastVerifiedJWS: String? {
+        get { UserDefaults.standard.string(forKey: "lastVerifiedJWS") }
+        set { UserDefaults.standard.set(newValue, forKey: "lastVerifiedJWS") }
+    }
+
     // MARK: - CloudKit
 
     private var database: CKDatabase? {
@@ -193,7 +206,7 @@ class SubscriptionManager: ObservableObject {
     func startTransactionListener() {
         print("[StoreKit] Transaction listener started")
         updatesTask = Task {
-            for await update in Transaction.updates {
+            for await update in StoreKit.Transaction.updates {
                 do {
                     let transaction = try checkVerified(update)
                     print("[StoreKit] Transaction update received: productID=\(transaction.productID)")
@@ -286,14 +299,17 @@ class SubscriptionManager: ObservableObject {
         }
     }
 
-    func restorePurchases() async {
+    @discardableResult
+    func restorePurchases() async -> Bool {
         print("[StoreKit] Restore purchases started")
         do {
             try await AppStore.sync()
             await updateSubscriptionStatus()
             print("[StoreKit] ✅ Restore purchases completed")
+            return true
         } catch {
             print("[StoreKit] ❌ Failed to sync App Store: \(error)")
+            return false
         }
     }
 
@@ -324,15 +340,25 @@ class SubscriptionManager: ObservableObject {
         var latestExpirationDate: Date? = nil
         var activeProductId: String? = nil
         var hasActiveSubscription = false
+        var highestJWS: String? = nil
 
         // ダウングレード予定の検出用
         var detectedPendingPlan: SubscriptionPlan? = nil
         var detectedPendingDate: Date? = nil
 
-        for await result in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = result else {
-                print("[StoreKit] Skipping unverified entitlement")
+        for await result in StoreKit.Transaction.currentEntitlements {
+            let transaction: StoreKit.Transaction
+            switch result {
+            case .verified(let t):
+                transaction = t
+            case .unverified(let t, let error):
+                #if DEBUG
+                print("[StoreKit] ⚠️ Using unverified transaction in DEBUG/Sandbox: \(error)")
+                transaction = t
+                #else
+                print("[StoreKit] Skipping unverified entitlement: \(error)")
                 continue
+                #endif
             }
 
             // 失効済み（払い戻し等）はスキップ
@@ -358,11 +384,12 @@ class SubscriptionManager: ObservableObject {
 
             if let plan = plan(for: transaction.productID) {
                 print("[StoreKit] Valid entitlement: \(transaction.productID) → \(plan.displayName), expires: \(transaction.expirationDate?.description ?? "none"), isUpgraded: \(transaction.isUpgraded)")
-                if plan.level > highestPlan.level {
+                if plan.level >= highestPlan.level {
                     highestPlan = plan
                     latestExpirationDate = transaction.expirationDate
                     activeProductId = transaction.productID
                     hasActiveSubscription = true
+                    highestJWS = result.jwsRepresentation
                 }
             }
         }
@@ -375,6 +402,7 @@ class SubscriptionManager: ObservableObject {
         // → アップグレード・ダウングレード両方を検出できる。
         // ※ 同一サブスクグループ内でのアップグレードは StoreKit が即時反映するため、
         //   この pendingPlan 検出は主にダウングレード・クロスグループ変更に有効。
+        var detectedWillAutoRenew: Bool? = nil
         if !productIds.isEmpty {
             do {
                 let storeProducts = try await Product.products(for: productIds)
@@ -382,13 +410,40 @@ class SubscriptionManager: ObservableObject {
                     guard let subInfo = product.subscription else { continue }
                     let statuses = try await subInfo.status
                     for status in statuses {
-                        guard case .verified(let renewalInfo) = status.renewalInfo else { continue }
-                        guard case .verified(let txn) = status.transaction else { continue }
+                        let renewalInfo: Product.SubscriptionInfo.RenewalInfo
+                        switch status.renewalInfo {
+                        case .verified(let r):
+                            renewalInfo = r
+                        case .unverified(let r, let error):
+                            #if DEBUG
+                            print("[StoreKit] ⚠️ Using unverified renewalInfo in DEBUG: \(error)")
+                            renewalInfo = r
+                            #else
+                            continue
+                            #endif
+                        }
+
+                        let txn: StoreKit.Transaction
+                        switch status.transaction {
+                        case .verified(let t):
+                            txn = t
+                        case .unverified(let t, let error):
+                            #if DEBUG
+                            print("[StoreKit] ⚠️ Using unverified transaction in DEBUG: \(error)")
+                            txn = t
+                            #else
+                            continue
+                            #endif
+                        }
+
                         // 失効・期限切れは無視
                         guard txn.revocationDate == nil else { continue }
                         if let exp = txn.expirationDate, exp < Date() { continue }
 
                         let currentProductID = txn.productID
+                        if currentProductID == activeProductId {
+                            detectedWillAutoRenew = renewalInfo.willAutoRenew
+                        }
                         // autoRenewPreference: 次の更新時に適用されるプロダクトID（変更がなければ nil）
                         let autoRenewPreference = renewalInfo.autoRenewPreference
 
@@ -418,19 +473,27 @@ class SubscriptionManager: ObservableObject {
         let expiration = latestExpirationDate
         let prodId = activeProductId
         let isActive = hasActiveSubscription  // Swift 6対応: 変数をローカルにコピー
+        let willAutoRenewValue = isActive ? (detectedWillAutoRenew ?? true) : false
         let pendingPlanValue = detectedPendingPlan
         let pendingDateValue = detectedPendingDate
+        let fetchedJWS = highestJWS
 
         await MainActor.run {
+            if let fetchedJWS = fetchedJWS {
+                self.lastVerifiedJWS = fetchedJWS
+            } else if !isActive {
+                self.lastVerifiedJWS = nil
+            }
+            
             self.currentPlan = planToApply
             self.expiresAt = expiration
-            self.autoRenew = isActive
+            self.autoRenew = willAutoRenewValue
             self.pendingPlan = pendingPlanValue
             self.pendingPlanDate = pendingDateValue
 
             let record = SubscriptionRecord(
                 subscriptionTier: planToApply,
-                autoRenew: isActive,
+                autoRenew: willAutoRenewValue,
                 expiresAtMs: expiration.map { Int64($0.timeIntervalSince1970 * 1000) },
                 productId: prodId
             )
@@ -441,6 +504,14 @@ class SubscriptionManager: ObservableObject {
                 self.uploadShareRecord()
             } else {
                 self.deleteShareRecord()
+            }
+            
+            // JWSの有無にかかわらずトークン取得とD1プラン同期を実行
+            let ownerId = self.myUserRecordId
+            if !ownerId.isEmpty {
+                Task {
+                    await self.syncTeamPlanWithCloudflare(ownerId: ownerId, jws: fetchedJWS)
+                }
             }
         }
     }
@@ -478,9 +549,9 @@ class SubscriptionManager: ObservableObject {
 
         if oldPlan != effective {
             let ownerId = myUserRecordId
-            let planRaw = effective.rawValue
+            let jws = lastVerifiedJWS
             Task {
-                await syncTeamPlanWithCloudflare(ownerId: ownerId, plan: planRaw)
+                await syncTeamPlanWithCloudflare(ownerId: ownerId, jws: jws)
             }
         }
     }
@@ -516,35 +587,53 @@ class SubscriptionManager: ObservableObject {
         }
     }
 
-    func syncTeamPlanWithCloudflare(ownerId: String, plan: String) async {
+    func syncTeamPlanWithCloudflare(ownerId: String, jws: String?) async {
         guard !ownerId.isEmpty else { return }
         
-        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/sync-plan"
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/auth/verify-receipt"
+        let deviceSecret = UserDefaults.standard.string(forKey: "RowPilot_DeviceSecret") ?? {
+            let newSecret = UUID().uuidString + UUID().uuidString
+            UserDefaults.standard.set(newSecret, forKey: "RowPilot_DeviceSecret")
+            return newSecret
+        }()
+        
+        var body: [String: Any] = [
+            "user_id": ownerId,
+            "device_secret": deviceSecret
+        ]
+        if let jws = jws {
+            body["jws"] = jws
+        }
+        
         guard let url = URL(string: urlString) else { return }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = [
-            "owner_id": ownerId,
-            "plan": plan
-        ]
-        
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
             let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
-                print("[SubscriptionManager] D1 plan sync success: \(plan)")
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: NSNotification.Name("D1TeamPlanSynced"), object: nil)
+                print("[SubscriptionManager] Verify receipt success")
+                
+                if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+                   let token = json["token"] as? String {
+                    DispatchQueue.main.async {
+                        self.apiToken = token
+                        NotificationCenter.default.post(name: NSNotification.Name("D1TeamPlanSynced"), object: nil)
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: NSNotification.Name("D1TeamPlanSynced"), object: nil)
+                    }
                 }
             } else {
                 let resStr = String(data: data, encoding: .utf8) ?? ""
-                print("[SubscriptionManager] D1 plan sync error response: \(resStr)")
+                print("[SubscriptionManager] Verify receipt error response: \(resStr)")
             }
         } catch {
-            print("[SubscriptionManager] D1 plan sync network error: \(error.localizedDescription)")
+            print("[SubscriptionManager] Verify receipt network error: \(error.localizedDescription)")
         }
     }
 
@@ -605,7 +694,7 @@ class SubscriptionManager: ObservableObject {
                 
                 if let self = self {
                     Task {
-                        await self.syncTeamPlanWithCloudflare(ownerId: self.myUserRecordId, plan: self.currentPlan.rawValue)
+                        await self.syncTeamPlanWithCloudflare(ownerId: self.myUserRecordId, jws: self.lastVerifiedJWS)
                     }
                 }
             }
@@ -626,19 +715,14 @@ class SubscriptionManager: ObservableObject {
         }
         
         Task {
-            await self.syncTeamPlanWithCloudflare(ownerId: self.myUserRecordId, plan: self.currentPlan.rawValue)
+            await self.syncTeamPlanWithCloudflare(ownerId: self.myUserRecordId, jws: self.lastVerifiedJWS)
         }
     }
 
     // MARK: - 共有上限
 
     var shareLimit: Int {
-        switch currentPlan {
-        case .team: return 1
-        case .max:  return 3
-        case .organization: return 5
-        default:    return 0
-        }
+        return currentPlan.managerShareLimit
     }
 
     // MARK: - Core Sharing Logic
@@ -922,7 +1006,9 @@ class SubscriptionManager: ObservableObject {
     private func downgradeSharedUser() {
         isSharedManagerPlan = false
         sharedFromOwnerId = nil
-        savedRecord = SubscriptionRecord(subscriptionTier: .free, autoRenew: false, expiresAtMs: nil, productId: nil)
+        if savedRecord.productId == nil {
+            savedRecord = SubscriptionRecord(subscriptionTier: .free, autoRenew: false, expiresAtMs: nil, productId: nil)
+        }
         refreshPublishedState()
         print("Sync Shared Plan: Shared plan ended.")
     }

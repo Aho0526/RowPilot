@@ -320,9 +320,14 @@ struct TideContent: View {
 
         return TabView(selection: dateBinding) {
             ForEach(dateList, id: \.self) { date in
-                TideChart(date: date, tideManager: tideManager, isLandscape: isLandscape)
-                    .tag(date)
-                    .padding(.top, isLandscape ? 10 : 20)
+                TideChart(
+                    date: date,
+                    tideManager: tideManager,
+                    isLandscape: isLandscape,
+                    onSelectMap: { showingStationMap = true }
+                )
+                .tag(date)
+                .padding(.top, isLandscape ? 10 : 20)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
@@ -439,7 +444,7 @@ struct TideContent: View {
         }
         
         // 位置情報取得を開始（権限リクエストを含む）
-        app.locationManager.startTracking()
+        app.locationManager.requestPermission()
     }
     
     private func updateLocationInfo(location: CLLocation) {
@@ -483,9 +488,11 @@ struct TideContent: View {
 
 // Chart View
 struct TideChart: View {
+    @EnvironmentObject var app: AppViewModel
     let date: Date
     @ObservedObject var tideManager: TideManager
     let isLandscape: Bool
+    var onSelectMap: (() -> Void)? = nil
     
     @AppStorage("tideThresholdEnabled") private var thresholdEnabled: Bool = false
     @AppStorage("tideThresholdLevel") private var thresholdLevel: Int = 100
@@ -646,8 +653,42 @@ struct TideChart: View {
                     .padding(.bottom, 15)
                     
                 } else {
-                    Text("Loading...")
-                        .foregroundColor(Theme.textSecondary)
+                    VStack(spacing: 12) {
+                        if tideManager.isLoading {
+                            ProgressView()
+                                .tint(Theme.accent)
+                            Text("Loading Tide Data...".localized)
+                                .font(.subheadline)
+                                .foregroundColor(Theme.textSecondary)
+                        } else if app.locationManager.authorizationStatus == .denied || app.locationManager.authorizationStatus == .restricted {
+                            Image(systemName: "location.slash.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(Theme.textSecondary)
+                            Text("Location permission is disabled.".localized)
+                                .font(.subheadline)
+                                .foregroundColor(Theme.textSecondary)
+                            if let onSelectMap = onSelectMap {
+                                Button {
+                                    onSelectMap()
+                                } label: {
+                                    Label("Select from Map".localized, systemImage: "map")
+                                        .font(.subheadline.bold())
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(Theme.accent)
+                                        .foregroundColor(.black)
+                                        .cornerRadius(8)
+                                }
+                            }
+                        } else {
+                            ProgressView()
+                                .tint(Theme.accent)
+                            Text("Acquiring Location...".localized)
+                                .font(.subheadline)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }

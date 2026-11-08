@@ -42,11 +42,27 @@ class AppViewModel: ObservableObject {
     @Published var sessionStartTime: Date?
     @Published var sessionStartLocation: LocationData?
     @Published var elapsedTime: TimeInterval = 0
+    @Published var showingRowModeSaveAlert: Bool = false
     
+    private var accumulatedTime: TimeInterval = 0
+    private var currentSegmentStartTime: Date?
     private var sessionTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     
     init() {
+        // 子ViewModelの変更を親のobjectWillChangeに転送してSwiftUIの再描画を保証
+        locationManager.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+            
+        motionManager.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+            
         // 位置情報の更新を監視して TideManager に伝える
         locationManager.$previousLocation
             .compactMap { $0 }
@@ -56,8 +72,19 @@ class AppViewModel: ObservableObject {
             }
             .store(in: &cancellables)
             
+        // 既に位置情報が許可されている場合は起動時に取得を開始（スプラッシュ表示中にプリフェッチ）
+        if locationManager.authorizationStatus == .authorizedWhenInUse || locationManager.authorizationStatus == .authorizedAlways {
+            locationManager.requestPermission()
+        }
+            
         // バッテリー監視を有効化
         UIDevice.current.isBatteryMonitoringEnabled = true
+    }
+    
+    /// スプラッシュ画面終了時に呼び出される処理
+    func onSplashFinished() {
+        // 未許可/初回起動時などにGPS許可リクエスト・位置取得を開始
+        locationManager.requestPermission()
     }
     
     // MARK: - Landscape Lock
@@ -77,24 +104,34 @@ class AppViewModel: ObservableObject {
     func startSession() {
         guard !isSessionActive else { return }
         
+        let now = Date()
         isSessionActive = true
         isRecording = true
-        sessionStartTime = Date()
+        sessionStartTime = now
         sessionStartLocation = getCurrentLocation()
+        accumulatedTime = 0
+        currentSegmentStartTime = now
         elapsedTime = 0
+        showingRowModeSaveAlert = false
         
         motionManager.startMonitoring()
         locationManager.startTracking()
         
         sessionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.elapsedTime += 0.1
+                guard let self = self, let segStart = self.currentSegmentStartTime else { return }
+                self.elapsedTime = self.accumulatedTime + Date().timeIntervalSince(segStart)
             }
         }
     }
     
     func stopSession() {
         guard isSessionActive else { return }
+        if let segStart = currentSegmentStartTime {
+            accumulatedTime += Date().timeIntervalSince(segStart)
+            elapsedTime = accumulatedTime
+            currentSegmentStartTime = nil
+        }
         isRecording = false
         motionManager.stopMonitoring()
         locationManager.stopTracking()
@@ -113,8 +150,11 @@ class AppViewModel: ObservableObject {
         isSessionActive = false
         isRecording = false
         elapsedTime = 0
+        accumulatedTime = 0
+        currentSegmentStartTime = nil
         sessionStartTime = nil
         sessionStartLocation = nil
+        showingRowModeSaveAlert = false
         motionManager.reset()
         locationManager.reset()
     }
@@ -122,12 +162,14 @@ class AppViewModel: ObservableObject {
     func resumeSession() {
         guard isSessionActive, sessionTimer == nil else { return }
         isRecording = true
+        currentSegmentStartTime = Date()
         motionManager.startMonitoring()
         locationManager.startTracking()
         
         sessionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.elapsedTime += 0.1
+                guard let self = self, let segStart = self.currentSegmentStartTime else { return }
+                self.elapsedTime = self.accumulatedTime + Date().timeIntervalSince(segStart)
             }
         }
     }
@@ -155,8 +197,8 @@ class AppViewModel: ObservableObject {
             if let lastTime = lastBackgroundTime {
                 let diff = Date().timeIntervalSince(lastTime)
                 print("AppViewModel: Returned to active. Stayed in background for \(Int(diff))s")
-                // 15分（900秒）以上経過していたらリセット
-                if diff > 900 {
+                // 15分（900秒）以上経過しており、かつ計測セッション中でない場合のみリセット
+                if diff > 900 && !isSessionActive {
                     print("AppViewModel: Timeout reached (15min+). Triggering full reset.")
                     fullReset()
                 }

@@ -18,11 +18,15 @@ struct HomeView: View {
     // 削除管理
     @State private var showingDeleteConfirm = false
     @State private var itemToDelete: RecordListItem? = nil
+    @State private var sheetShowingDeleteConfirm = false
+    @State private var sheetItemToDelete: RecordListItem? = nil
     @State private var itemIDBeingAnimated: String? = nil
     
     // 遷移管理
     @State private var selectedRecord: RowingRecord? = nil
     @State private var selectedManagerSession: ManagerSessionItem? = nil
+    @State private var sheetSelectedRecord: RowingRecord? = nil
+    @State private var sheetSelectedManagerSession: ManagerSessionItem? = nil
     
     @State private var showingTargetEditAlert = false
     @State private var targetDistanceInput = ""
@@ -134,7 +138,7 @@ struct HomeView: View {
                             }
                             
                             let targetDistance = settingsManager.settings.monthlyTargetDistance
-                            let progress = min(1.0, monthStats.distance / targetDistance)
+                            let progress = targetDistance > 0 ? min(1.0, monthStats.distance / targetDistance) : 0.0
                             
                             VStack(alignment: .leading, spacing: 8) {
                                 GeometryReader { geo in
@@ -363,17 +367,17 @@ struct HomeView: View {
                             .foregroundColor(Theme.accent)
                         }
                     }
-                    .alert("Delete Record".localized, isPresented: $showingDeleteConfirm) {
+                    .alert("Delete Record".localized, isPresented: $sheetShowingDeleteConfirm) {
                         Button("Delete".localized, role: .destructive) {
-                            if let item = itemToDelete {
+                            if let item = sheetItemToDelete {
                                 confirmDelete(item)
                             }
                         }
                         Button("Cancel".localized, role: .cancel) {
-                            itemToDelete = nil
+                            sheetItemToDelete = nil
                         }
                     } message: {
-                        if let item = itemToDelete {
+                        if let item = sheetItemToDelete {
                             switch item {
                             case .single(_):
                                 Text("Delete Record Message".localized)
@@ -382,10 +386,10 @@ struct HomeView: View {
                             }
                         }
                     }
-                    .navigationDestination(item: $selectedRecord) { record in
+                    .navigationDestination(item: $sheetSelectedRecord) { record in
                         RecordDetailView(record: record)
                     }
-                    .navigationDestination(item: $selectedManagerSession) { session in
+                    .navigationDestination(item: $sheetSelectedManagerSession) { session in
                         ManagerSessionDetailView(records: session.records)
                     }
                 }
@@ -735,13 +739,14 @@ struct HomeView: View {
         LazyVStack(spacing: 12) {
             ForEach(sheetGroupedRecords) { item in
                 SwipeToDelete(id: item.id, isAnimatingOut: itemIDBeingAnimated == item.id) {
-                    prepareDelete(item)
+                    sheetItemToDelete = item
+                    sheetShowingDeleteConfirm = true
                 } onTap: {
                     switch item {
                     case .single(let record):
-                        selectedRecord = record
+                        sheetSelectedRecord = record
                     case .managerSession(let sessionId, let records):
-                        selectedManagerSession = ManagerSessionItem(id: sessionId, records: records)
+                        sheetSelectedManagerSession = ManagerSessionItem(id: sessionId, records: records)
                     }
                 } content: {
                     Group {
@@ -861,6 +866,7 @@ struct HomeView: View {
             }
         }
         itemToDelete = nil
+        sheetItemToDelete = nil
     }
     
     // MARK: - Helpers
@@ -1182,7 +1188,7 @@ struct ManagerSessionRowCard: View {
 // MARK: - Date Extensions
 extension Date {
     fileprivate func startOfMonth(using calendar: Calendar = .current) -> Date {
-        calendar.date(from: calendar.dateComponents([.year, .month], from: calendar.startOfDay(for: self)))!
+        calendar.date(from: calendar.dateComponents([.year, .month], from: calendar.startOfDay(for: self))) ?? self
     }
 }
 
