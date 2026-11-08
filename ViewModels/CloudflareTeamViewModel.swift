@@ -25,6 +25,17 @@ class CloudflareTeamViewModel: ObservableObject {
     @Published var myTeam: Team? = nil
     @Published var myRole: String? = nil
     
+    private func ensureValidToken() async -> String {
+        let userID = SubscriptionManager.shared.myUserRecordId
+        if SubscriptionManager.shared.apiToken.isEmpty && !userID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            await SubscriptionManager.shared.syncTeamPlanWithCloudflare(
+                ownerId: userID,
+                jws: SubscriptionManager.shared.lastVerifiedJWS
+            )
+        }
+        return SubscriptionManager.shared.apiToken
+    }
+    
     /// 旧 `GET /teams`（全チーム公開）はサーバー側で廃止済み(H2)。
     /// 互換のため残し、自分のチームの再取得に委譲する。
     func fetchTeams() async {
@@ -38,7 +49,7 @@ class CloudflareTeamViewModel: ObservableObject {
         guard let url = URL(string: urlString) else { return }
         
         var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
+        let token = await ensureValidToken()
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -282,7 +293,7 @@ class CloudflareTeamViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
+        let token = await ensureValidToken()
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -343,7 +354,7 @@ class CloudflareTeamViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
+        let token = await ensureValidToken()
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }

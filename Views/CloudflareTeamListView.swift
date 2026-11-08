@@ -165,20 +165,6 @@ struct CloudflareTeamListView: View {
             } message: {
                 Text("チームの新しい名前を入力してください。")
             }
-            .memberApprovalAlerts(
-                showApproveConfirm: $showApproveConfirm,
-                memberToApprove: $memberToApprove,
-                showRejectConfirm: $showRejectConfirm,
-                memberToReject: $memberToReject,
-                showKickConfirm: $showKickConfirm,
-                memberToKick: $memberToKick,
-                showMemberOptions: $showMemberOptions,
-                selectedMember: $selectedMember,
-                onApprove: approveRequest,
-                onReject: rejectRequest,
-                onKick: kickMember,
-                menuContent: memberMenuContentAsAnyView
-            )
             .sheet(isPresented: $showMembersSheet) {
                 NavigationStack {
                     ZStack {
@@ -201,6 +187,25 @@ struct CloudflareTeamListView: View {
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Button("閉じる") { showMembersSheet = false }
                         }
+                    }
+                    .memberApprovalAlerts(
+                        showApproveConfirm: $showApproveConfirm,
+                        memberToApprove: $memberToApprove,
+                        showRejectConfirm: $showRejectConfirm,
+                        memberToReject: $memberToReject,
+                        showKickConfirm: $showKickConfirm,
+                        memberToKick: $memberToKick,
+                        showMemberOptions: $showMemberOptions,
+                        selectedMember: $selectedMember,
+                        onApprove: approveRequest,
+                        onReject: rejectRequest,
+                        onKick: kickMember,
+                        menuContent: memberMenuContentAsAnyView
+                    )
+                    .alert("エラー", isPresented: $showErrorAlert) {
+                        Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+                    } message: {
+                        Text(viewModel.errorMessage ?? "不明なエラーが発生しました")
                     }
                 }
             }

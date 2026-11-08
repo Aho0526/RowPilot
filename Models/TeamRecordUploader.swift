@@ -28,6 +28,13 @@ class TeamRecordUploader {
             let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/users/\(userID)/team"
             guard let url = URL(string: urlString) else { return }
             
+            if SubscriptionManager.shared.apiToken.isEmpty {
+                await SubscriptionManager.shared.syncTeamPlanWithCloudflare(
+                    ownerId: userID,
+                    jws: SubscriptionManager.shared.lastVerifiedJWS
+                )
+            }
+            
             var teamRequest = URLRequest(url: url)
             let token = SubscriptionManager.shared.apiToken
             if !token.isEmpty {
@@ -41,6 +48,12 @@ class TeamRecordUploader {
                     if responseString == "null" { return }
                     
                     let decodedTeam = try JSONDecoder().decode(Team.self, from: data)
+                    
+                    // 承認待ち状態の場合はアップロードをスキップ
+                    if decodedTeam.my_role == "pending" {
+                        print("TeamRecordUploader: Membership is pending. Skipping upload.")
+                        return
+                    }
                     
                     // アーカイブ状態のチームへのアップロードをスキップ
                     if decodedTeam.isSuspended {
