@@ -55,6 +55,7 @@ private extension SubscriptionPlan {
             ("iCloudバックアップ".localized,             [.free, .pro, .team, .max, .manager, .organization]),
             ("Force Curve の表示".localized,             [.pro, .team, .max, .manager, .organization]),
             ("全国潮位の任意選択・確認".localized,         [.pro, .team, .max, .manager, .organization]),
+            ("複数人クルーの編成・管理".localized,         [.pro, .team, .max, .manager, .organization]),
             ("ゴーストレース機能".localized,             [.pro, .team, .max, .manager, .organization]),
             ("Strava同期 (準備中)".localized,            [.pro, .team, .max, .manager, .organization]),
             ("PM5 複数台同時接続 (最大4台)".localized,   [.pro]),

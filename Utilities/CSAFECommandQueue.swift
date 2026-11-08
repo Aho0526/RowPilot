@@ -164,14 +164,28 @@ class CSAFECommandQueue {
             // Task 2: タイムアウトの時計
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(self.timeoutDuration * 1_000_000_000))
-                throw NSError(domain: "BLETimeoutError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Write operation timed out"])
+                let timeoutError = NSError(domain: "BLETimeoutError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Write operation timed out"])
+                self.lock.lock()
+                let pending = self.continuations.removeValue(forKey: peripheralID)
+                self.lock.unlock()
+                pending?.resume(throwing: timeoutError)
+                throw timeoutError
             }
             
-            // どちらか早い方を待つ（タイムアウトが先ならthrowされる）
-            try await group.next()
-            
-            // 残りのタスク（タイムアウト等）をキャンセル
-            group.cancelAll()
+            do {
+                // どちらか早い方を待つ（タイムアウトが先ならthrowされる）
+                try await group.next()
+                // 残りのタスク（タイムアウト等）をキャンセル
+                group.cancelAll()
+            } catch {
+                // 外部キャンセル等で抜けた場合も保留中のcontinuationを確実に解放する
+                self.lock.lock()
+                let pending = self.continuations.removeValue(forKey: peripheralID)
+                self.lock.unlock()
+                pending?.resume(throwing: error)
+                group.cancelAll()
+                throw error
+            }
         }
         
         // Continuationのクリーンアップ（成功時も念のため）

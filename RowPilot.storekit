@@ -17,7 +17,7 @@
         {
           "adHocOffers" : [ ],
           "codeOffers" : [ ],
-          "displayPrice" : "980",
+          "displayPrice" : "200",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "rowpilot_pro",
@@ -38,7 +38,7 @@
         {
           "adHocOffers" : [ ],
           "codeOffers" : [ ],
-          "displayPrice" : "2980",
+          "displayPrice" : "500",
           "familyShareable" : false,
           "groupNumber" : 2,
           "internalID" : "rowpilot_manager",
@@ -59,7 +59,7 @@
         {
           "adHocOffers" : [ ],
           "codeOffers" : [ ],
-          "displayPrice" : "4980",
+          "displayPrice" : "1000",
           "familyShareable" : false,
           "groupNumber" : 3,
           "internalID" : "rowpilot_team",
@@ -80,7 +80,7 @@
         {
           "adHocOffers" : [ ],
           "codeOffers" : [ ],
-          "displayPrice" : "7500",
+          "displayPrice" : "3000",
           "familyShareable" : false,
           "groupNumber" : 4,
           "internalID" : "rowpilot_max",

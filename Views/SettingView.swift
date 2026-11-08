@@ -425,9 +425,9 @@ struct SettingView: View {
                 }
             }
             
-            // 複数PM5制御設定（Pro以上で表示）
+            // 複数PM5制御 / マネージャーモード設定（Pro以上で表示）
             if currentPlan.hasMultiPM5Control {
-                SettingsSection(title: "Manager Mode".localized, icon: "person.3.sequence.fill") {
+                SettingsSection(title: currentPlan.pm5FeatureTitle, icon: "person.3.sequence.fill") {
                     SettingsToggleRow(title: "Save 0-Record PM5s".localized, isOn: $settingsManager.settings.saveZeroRecordPM5s)
                 }
             }
@@ -507,6 +507,19 @@ struct SettingView: View {
             // ─── チーム機能セクション ───
             if teamViewModel.myTeam != nil && teamViewModel.myRole != "pending" {
                 SettingsSection(title: "チーム管理".localized, icon: "person.3.fill") {
+                    if !currentPlan.hasTeamFeature {
+                        NavigationLink(destination: CloudflareTeamListView()) {
+                            HStack {
+                                Text("チームを見る".localized)
+                                    .foregroundColor(Theme.textMain)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                        }
+                        Divider().background(Theme.textSecondary.opacity(0.3))
+                    }
                     SettingsToggleRow(
                         title: "チームへ自動で記録をアップロードする",
                         isOn: $settingsManager.settings.autoUploadToTeam

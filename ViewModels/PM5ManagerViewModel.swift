@@ -13,6 +13,7 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
     @Published var elapsedTime: Double = 0.0      // 秒
     @Published var pace500m: Double = 0.0          // 秒 (500mペース)
     @Published var power: Int = 0                 // ワット
+    @Published var averagePower: Int = 0          // 平均ワット (0x33 byte 4-5)
     @Published var strokeRate: Int = 0            // SPM
     @Published var workoutState: UInt8 = 0       // index 8 of 0x31
     @Published var heartRate: Int = 0             // BPM（心拍数）
@@ -863,18 +864,37 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         
         let timeoutLimit: TimeInterval = 9.0
         var deadline = Date().addingTimeInterval(timeoutLimit)
+        var lastObservedState = deviceMetrics[deviceID]?.machineState ?? .unknown
         var isReady = false
+        var communicationActive = true
         
         while Date() < deadline {
             do {
                 try await commandQueue.writeAsync(command: pollCmd)
+                communicationActive = true
                 try await Task.sleep(nanoseconds: 20_000_000)
-                if let m = deviceMetrics[deviceID], m.machineState == .ready {
-                    isReady = true; break
+                if let m = deviceMetrics[deviceID] {
+                    let currentState = m.machineState
+                    let isBusy = m.isMachineBusy
+                    if currentState == .ready {
+                        isReady = true
+                        break
+                    }
+                    if currentState != lastObservedState {
+                        deadline = Date().addingTimeInterval(timeoutLimit)
+                        lastObservedState = currentState
+                    } else if isBusy || currentState == .inUse || currentState == .finish || currentState == .pause {
+                        let extensionDate = Date().addingTimeInterval(2.0)
+                        if extensionDate > deadline {
+                            deadline = extensionDate
+                        }
+                    }
                 }
-            } catch {}
+            } catch {
+                communicationActive = false
+                logV4(deviceID: deviceID, phase: "POLLING", retry: 0, state: "NoResponse", message: "BLE write failed. Dead limit: \(Int(deadline.timeIntervalSinceNow))s")
+            }
             try? await Task.sleep(nanoseconds: 250_000_000)
-            deadline = max(deadline, Date().addingTimeInterval(1.0))
         }
         if !isReady { handleV4Failure(deviceID: deviceID, phase: "POLLING"); return }
         
@@ -1023,6 +1043,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                     metrics.elapsedTime = 0
                     metrics.pace500m = 0
                     metrics.power = 0
+                    metrics.averagePower = 0
                     metrics.strokeRate = 0
                     metrics.lastStrokeCount = -1
                     metrics.configStatus = .resetting
@@ -1097,6 +1118,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                     metrics.elapsedTime = 0
                     metrics.pace500m = 0
                     metrics.power = 0
+                    metrics.averagePower = 0
                     metrics.strokeRate = 0
                     metrics.lastStrokeCount = -1
                     metrics.configStatus = .resetting
@@ -1396,10 +1418,35 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 let recordDate: Date = workoutStartTime ?? Date()
                 let recordDuration: TimeInterval = metrics.elapsedTime
                 let recordDistance: Double = metrics.distance
-                let recordSPM: Int = metrics.strokeRate
-                let recordSpeed: Double = (metrics.distance / max(metrics.elapsedTime, 1)) * 3.6
-                let recordPace: TimeInterval = metrics.pace500m
-                let recordPower: Int? = metrics.power > 0 ? metrics.power : nil
+                
+                let validSPMs = metrics.workoutDataPoints.map(\.spm).filter { $0 > 0 }
+                let recordSPM: Int = !validSPMs.isEmpty
+                    ? Int(round(Double(validSPMs.reduce(0, +)) / Double(validSPMs.count)))
+                    : metrics.strokeRate
+                
+                let recordSpeed: Double = recordDuration > 0 ? (recordDistance / recordDuration) * 3.6 : 0.0
+                
+                let validPaces = metrics.workoutDataPoints.map(\.pace).filter { $0 > 0 }
+                let recordPace: TimeInterval
+                if recordDistance > 0 && recordDuration > 0 {
+                    recordPace = (recordDuration / recordDistance) * 500.0
+                } else if !validPaces.isEmpty {
+                    recordPace = validPaces.reduce(0.0, +) / Double(validPaces.count)
+                } else {
+                    recordPace = metrics.pace500m
+                }
+                
+                let validPowers = metrics.workoutDataPoints.map(\.power).filter { $0 > 0 }
+                let computedWatt: Int
+                if metrics.averagePower > 0 {
+                    computedWatt = metrics.averagePower
+                } else if !validPowers.isEmpty {
+                    computedWatt = Int(round(Double(validPowers.reduce(0, +)) / Double(validPowers.count)))
+                } else {
+                    computedWatt = metrics.power
+                }
+                let recordPower: Int? = computedWatt > 0 ? computedWatt : nil
+                
                 let recordType: String = workoutDistance != nil ? "distance" : (workoutTime != nil ? "time" : (workoutCalories != nil ? "calories" : "justRow"))
                 let recordNotes: String = "Indoor Workout (Manager Mode) - \(metrics.name)"
                 let recordTags: [String] = ["ManagerMode", "Indoor"]
@@ -1605,7 +1652,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     }
     
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
-        // コマンドキューに対して書き込み完了を通知
+        // CSAFE Control Point (0x0021) への書き込み完了のみコマンドキューに通知する
+        // 0x0034 (Sample Rate) 等の書き込み完了でCSAFEの待機を誤解除しないようにする
+        guard characteristic.uuid == C2_CHAR_CONTROL_POINT else { return }
         commandQueue.handleWriteComplete(for: peripheral, error: error)
     }
 }
@@ -1697,15 +1746,17 @@ extension PM5ManagerViewModel {
         }
     }
     
-    /// Power Data (0x33): カロリーなどをパース
+    /// Power Data (0x33): 平均ワット数・カロリーなどをパース
     private func parseManagerPowerData(_ data: Data, for deviceID: UUID) {
         // Extra Status 2: avgPower is byte 4-5, totalCalories is byte 6-7
         guard data.count >= 8 else { return }
         
+        let avgPowerRaw = UInt16(data[4]) | (UInt16(data[5]) << 8)
         let totalCalRaw = UInt16(data[6]) | (UInt16(data[7]) << 8)
         
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let metrics = self.deviceMetrics[deviceID] else { return }
+            metrics.averagePower = Int(avgPowerRaw)
             metrics.calories = Double(totalCalRaw)
             self.objectWillChange.send()
         }

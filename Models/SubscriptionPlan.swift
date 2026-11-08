@@ -81,9 +81,24 @@ enum SubscriptionPlan: String, Codable, CaseIterable, Identifiable {
         return isAtLeast(.pro)
     }
 
+    /// Pro以上で全国潮位の任意選択を解放
+    var hasCustomTideStation: Bool {
+        return isAtLeast(.pro)
+    }
+
+    /// Pro以上で複数人クルー（ダブル〜エイト）の管理・編成を解放
+    var hasMultiSeatCrew: Bool {
+        return isAtLeast(.pro)
+    }
+
     /// Pro以上で複数PM5制御（最大4台、Manager以上は最大10台）を解放
     var hasMultiPM5Control: Bool {
         return isAtLeast(.pro)
+    }
+
+    /// 複数台PM5機能の表示名称（Managerプラン以上は「マネージャーモード」、Proプランは「複数PM5制御」）
+    var pm5FeatureTitle: String {
+        return (isAtLeast(.manager) ? "Manager Mode" : "Multi-PM5 Control").localized
     }
 
     /// プランに応じたPM5最大同時接続台数

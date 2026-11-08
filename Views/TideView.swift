@@ -62,17 +62,19 @@ struct TideContent: View {
                     HStack(spacing: 10) {
                         Spacer()
 
-                        // 観測所地図選択ボタン
-                        Button {
-                            showingStationMap = true
-                        } label: {
-                            Image(systemName: "map.fill")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(tideManager.selectedStation != nil ? Theme.secondaryAccent : Theme.accent)
-                                .frame(width: 36, height: 36)
-                                .background(Theme.cardBackground.opacity(0.8))
-                                .clipShape(Circle())
-                                .shadow(radius: 3)
+                        // 観測所地図選択ボタン（Proプラン以上で表示）
+                        if SubscriptionManager.shared.currentPlan.hasCustomTideStation {
+                            Button {
+                                showingStationMap = true
+                            } label: {
+                                Image(systemName: "map.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(tideManager.selectedStation != nil ? Theme.secondaryAccent : Theme.accent)
+                                    .frame(width: 36, height: 36)
+                                    .background(Theme.cardBackground.opacity(0.8))
+                                    .clipShape(Circle())
+                                    .shadow(radius: 3)
+                            }
                         }
 
                         // 基準水位設定ポップオーバーボタン
@@ -667,7 +669,7 @@ struct TideChart: View {
                             Text("Location permission is disabled.".localized)
                                 .font(.subheadline)
                                 .foregroundColor(Theme.textSecondary)
-                            if let onSelectMap = onSelectMap {
+                            if let onSelectMap = onSelectMap, SubscriptionManager.shared.currentPlan.hasCustomTideStation {
                                 Button {
                                     onSelectMap()
                                 } label: {

@@ -427,7 +427,7 @@ struct SearchSheetView: View {
         case .sosSettings:
             SOSSettingsView()
         case .teamMaxManager:
-            TeamMaxManagerView()
+            CloudflareTeamListView()
         }
     }
     

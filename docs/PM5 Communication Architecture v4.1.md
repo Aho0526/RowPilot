@@ -27,7 +27,10 @@ To prevent congestion in the CoreBluetooth internal queue, the number of concurr
 ### Write Timeout
 Individual write operations have a dedicated timeout duration:
 - `writeTimeout = 2.0s`
-If a write does not complete within this window, the operation fails and the device state is updated.
+If a write does not complete within this window, the operation fails and the device state is updated. Pending asynchronous continuations in the queue are guaranteed to be resumed with an error under lock to prevent queue stalls.
+
+### Characteristic Demux (UUID Filtering)
+CoreBluetooth invokes `peripheral(_:didWriteValueFor:error:)` for all `.withResponse` write operations. RowPilot strictly verifies that `characteristic.uuid == C2_CHAR_CONTROL_POINT` (0x0021) before completing CSAFE command promises, preventing Rowing Status Sample Rate (0x0034) write completions from prematurely unlocking the command queue.
 
 ---
 
@@ -130,13 +133,20 @@ Acquire:
 
 ### Power Data (0x33)
 Acquire:
-- Total Calories
+- Average Power (Watts, bytes 4-5)
+- Total Calories (bytes 6-7)
 
 ### Data Point (0x22)
 Acquire:
 - CSAFE responses
 - Machine Status (extracted from Status Byte Bits 3-0)
 - Busy Flag (extracted from Status Byte Bit 5)
+
+### Workout Summary Metrics Calculation
+When saving workout sessions, true session-wide averages are persisted:
+- **Average Pace /500m**: Calculated from total distance and total elapsed time `(elapsedTime / distance) * 500.0`.
+- **Average Stroke Rate (SPM)**: Filtered mean of valid active rowing samples (`spm > 0`).
+- **Average Power (Watts)**: Taken from register `0x33` bytes 4-5, or the arithmetic mean of positive power data points.
 
 ---
 

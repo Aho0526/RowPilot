@@ -539,7 +539,7 @@ struct ManagerModeModule: View {
 
     var body: some View {
         RPModuleCard(
-            title: "Manager Mode".localized,
+            title: currentPlan.pm5FeatureTitle,
             icon: "person.2.fill",
             accentColor: currentPlan.hasMultiPM5Control ? .purple : Theme.textSecondary
         ) {

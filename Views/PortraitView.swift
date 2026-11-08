@@ -147,7 +147,7 @@ struct PortraitView: View {
                             value: app.isSessionActive ? "\(motionManager.spm)" : "0",
                             color: Theme.accent,
                             width: geometry.size.width,
-                            height: geometry.size.height * 0.32
+                            height: geometry.size.height * 0.30
                         )
                         
                         // GPS Indicator (Top Left)
@@ -229,7 +229,7 @@ struct PortraitView: View {
                         value: app.isSessionActive ? formattedPace : "--:--",
                         color: Theme.secondaryAccent,
                         width: geometry.size.width,
-                        height: geometry.size.height * 0.28
+                        height: geometry.size.height * 0.26
                     )
                     
                     Divider().overlay(Theme.textSecondary.opacity(0.3))
@@ -263,58 +263,64 @@ struct PortraitView: View {
                     ZStack {
                         LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.3)], startPoint: .top, endPoint: .bottom)
                         
-                        if isPaused {
-                            HStack(spacing: 16) {
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 8)
+                            
+                            if isPaused {
+                                HStack(spacing: 16) {
+                                    Button(action: {
+                                        app.resumeSession()
+                                    }) {
+                                        Text("Resume".localized)
+                                            .font(Theme.headerFont())
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: 60)
+                                            .background(Theme.accent)
+                                            .foregroundColor(Color.white)
+                                            .cornerRadius(30)
+                                            .shadow(color: Theme.accent.opacity(0.5), radius: 10, x: 0, y: 5)
+                                    }
+                                    
+                                    Button(action: {
+                                        stopSession()
+                                    }) {
+                                        Text("Stop".localized)
+                                            .font(Theme.headerFont())
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: 60)
+                                            .background(Color.red)
+                                            .foregroundColor(Color.white)
+                                            .cornerRadius(30)
+                                            .shadow(color: Color.red.opacity(0.5), radius: 10, x: 0, y: 5)
+                                    }
+                                }
+                                .padding(.horizontal, 24)
+                            } else {
                                 Button(action: {
-                                    app.resumeSession()
+                                    if isRunning {
+                                        stopSession()
+                                    } else {
+                                        checkSOSAndStart()
+                                    }
                                 }) {
-                                    Text("Resume".localized)
+                                    Text(isRunning ? "Stop".localized : "Start Rowing".localized)
                                         .font(Theme.headerFont())
                                         .frame(maxWidth: .infinity)
-                                        .frame(height: 70)
-                                        .background(Theme.accent)
+                                        .frame(height: 60)
+                                        .background(isRunning ? Color.red : Theme.accent)
                                         .foregroundColor(Color.white)
-                                        .cornerRadius(35)
-                                        .shadow(color: Theme.accent.opacity(0.5), radius: 10, x: 0, y: 5)
-                                }
-                                
-                                Button(action: {
-                                    stopSession()
-                                }) {
-                                    Text("Stop".localized)
-                                        .font(Theme.headerFont())
-                                        .frame(maxWidth: .infinity)
-                                        .frame(height: 70)
-                                        .background(Color.red)
-                                        .foregroundColor(Color.white)
-                                        .cornerRadius(35)
-                                        .shadow(color: Color.red.opacity(0.5), radius: 10, x: 0, y: 5)
+                                        .cornerRadius(30)
+                                        .shadow(color: (isRunning ? Color.red : Theme.accent).opacity(0.5), radius: 10, x: 0, y: 5)
+                                        .padding(.horizontal, 40)
+                                        .scaleEffect(isRunning ? 0.98 : 1.0)
+                                        .animation(.spring(response: 0.3), value: isRunning)
                                 }
                             }
-                            .padding(.horizontal, 24)
-                        } else {
-                            Button(action: {
-                                if isRunning {
-                                    stopSession()
-                                } else {
-                                    checkSOSAndStart()
-                                }
-                            }) {
-                                Text(isRunning ? "Stop".localized : "Start Rowing".localized)
-                                    .font(Theme.headerFont())
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 70)
-                                    .background(isRunning ? Color.red : Theme.accent)
-                                    .foregroundColor(Color.white)
-                                    .cornerRadius(35)
-                                    .shadow(color: (isRunning ? Color.red : Theme.accent).opacity(0.5), radius: 10, x: 0, y: 5)
-                                    .padding(.horizontal, 40)
-                                    .scaleEffect(isRunning ? 0.98 : 1.0)
-                                    .animation(.spring(response: 0.3), value: isRunning)
-                            }
+                            
+                            Spacer(minLength: 32)
                         }
                     }
-                    .frame(height: geometry.size.height * 0.22) // Increased slightly
+                    .frame(height: geometry.size.height * 0.24)
                     .background(Theme.cardBackground)
                     .ignoresSafeArea(edges: .bottom)
                 }
@@ -506,18 +512,26 @@ struct PortraitView: View {
 
     private func stopSession() {
         app.stopSession()
-        app.showingRowModeSaveAlert = true
+        if elapsedTime <= 10.0 {
+            discardSession()
+        } else {
+            app.showingRowModeSaveAlert = true
+        }
     }
     
     private func saveRecord() {
         guard let startTime = app.sessionStartTime else { return }
         
+        let avgSpeed = elapsedTime > 0
+            ? (locationManager.totalDistance / elapsedTime) * LocationConstants.metersPerSecondToKmPerHour
+            : 0.0
+        
         let record = RowingRecord(
             date: startTime,
             duration: elapsedTime,
             distance: locationManager.totalDistance,
-            averageSPM: motionManager.spm,
-            averageSpeed: locationManager.currentSpeed,
+            averageSPM: motionManager.averageSPM,
+            averageSpeed: avgSpeed,
             averagePace: calculateAveragePace(),
             startLocation: app.sessionStartLocation,
             endLocation: getCurrentLocation(),
@@ -541,9 +555,8 @@ struct PortraitView: View {
     }
     
     private func calculateAveragePace() -> TimeInterval {
-        guard locationManager.currentSpeed > 0 else { return 0 }
-        let speedMps = locationManager.currentSpeed / LocationConstants.metersPerSecondToKmPerHour
-        return LocationConstants.paceReferenceDistance / speedMps
+        guard locationManager.totalDistance > 0 && elapsedTime > 0 else { return 0 }
+        return (elapsedTime / locationManager.totalDistance) * LocationConstants.paceReferenceDistance
     }
     
     private func batteryIcon(level: Float) -> String {

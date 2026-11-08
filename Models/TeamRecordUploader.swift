@@ -48,6 +48,29 @@ class TeamRecordUploader {
                         return
                     }
                     
+                    // 表示名がローカルに設定されている場合は事前にusersテーブルへ同期
+                    let sharingName = SettingsManager.shared.settings.sharingName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !sharingName.isEmpty,
+                       let userUrl = URL(string: "https://rowpilot-api.rowpilot-jp.workers.dev/users") {
+                        var userReq = URLRequest(url: userUrl)
+                        if !token.isEmpty {
+                            userReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                        }
+                        userReq.httpMethod = "POST"
+                        userReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                        let userBody: [String: Any] = [
+                            "id": userID,
+                            "display_name": sharingName,
+                            "is_ghost": 0,
+                            "entitlement": SubscriptionManager.shared.currentPlan.rawValue,
+                            "created_at": Int(Date().timeIntervalSince1970)
+                        ]
+                        if let userData = try? JSONSerialization.data(withJSONObject: userBody, options: []) {
+                            userReq.httpBody = userData
+                            _ = try? await URLSession.shared.data(for: userReq)
+                        }
+                    }
+                    
                     // 2. 所属チームがあれば CloudflareWorkoutRecord を作成してアップロード
                     let formatter = ISO8601DateFormatter()
                     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

@@ -125,12 +125,16 @@ For example, when setting and transmitting a total of five variable intervals, t
 Frame 1: Interval 1 (including initialization) + Interval 2
 Frame 2: Interval 3 + Interval 4
 Frame 3: Interval 5 (including confirmation)
-Transmission Control (sendCSAFEChunkedSequence):
-Divide Frame 1 into 20-byte chunks (sendCSAFEChunked) and transmit them at 100 ms intervals.
-Once Frame 1 has been fully transmitted, insert a 100 ms delay.
-Similarly, split Frame 2 into 20-byte chunks and transmit them at 100 ms intervals.
-Once Frame 2 has been fully transmitted, insert a 100 ms delay.
-Similarly, split Frame 3 into 20-byte chunks and transmit them at 100 ms intervals.
+
+Framing & Transmission Control (sendCSAFEChunkedSequence):
+• Logical payloads are wrapped into valid CSAFE frames:
+  - 1:1 Mode: 0xF1 + byteStuff(payload + checksum) + 0xF2 (Standard Frame)
+  - 1:N Mode: 0xF0 [Dest] [Src] + byteStuff(payload + checksum) + 0xF2 (Extended Frame)
+• Divide Frame 1 into 20-byte BLE MTU chunks (sendCSAFEChunked) and transmit them at 100 ms intervals.
+• Once Frame 1 has been fully transmitted, insert a 100 ms delay.
+• Similarly, split Frame 2 into 20-byte chunks and transmit at 100 ms intervals.
+• Once Frame 2 has been fully transmitted, insert a 100 ms delay.
+• Similarly, split Frame 3 into 20-byte chunks and transmit at 100 ms intervals.
 ```
 
 ---

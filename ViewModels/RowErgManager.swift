@@ -377,13 +377,30 @@ class RowErgManager: NSObject, ObservableObject {
     
     /// Chunk and send a CSAFE payload in 20-byte BLE-compliant frames
     func sendCSAFEChunked(payload: Data, completion: (() -> Void)? = nil) {
-        // Split the payload into 20-byte chunks (BLE MTU)
+        let frame: Data
+        if let first = payload.first, (first == 0xF1 || first == 0xF0), payload.last == 0xF2 {
+            frame = payload
+        } else {
+            let checksum = calculateCSAFEChecksum(for: payload)
+            var checksummedPayload = Data()
+            checksummedPayload.append(payload)
+            checksummedPayload.append(checksum)
+            let stuffed = byteStuff(checksummedPayload)
+            
+            var built = Data()
+            built.append(0xF1)
+            built.append(stuffed)
+            built.append(0xF2)
+            frame = built
+        }
+        
+        // Split the CSAFE frame into 20-byte chunks (BLE MTU)
         var chunks: [Data] = []
         let mtu = 20
         var idx = 0
-        while idx < payload.count {
-            let end = min(idx + mtu, payload.count)
-            chunks.append(payload.subdata(in: idx..<end))
+        while idx < frame.count {
+            let end = min(idx + mtu, frame.count)
+            chunks.append(frame.subdata(in: idx..<end))
             idx += mtu
         }
         // Use the recursive sender
@@ -803,6 +820,22 @@ class RowErgManager: NSObject, ObservableObject {
         return fullCommand
     }
 
+    /// ワークアウト開始時に前回の集計メトリクスをクリアする
+    private func clearSessionMetricsForNewWorkout() {
+        self.distance = 0
+        self.elapsedTime = 0
+        self.pace500m = 0
+        self.strokeRate = 0
+        self.power = 0
+        self.totalCalories = 0.0
+        self.averagePower = 0.0
+        self.projectedWorkTime = 0.0
+        self.projectedWorkDistance = 0.0
+        self.lastStrokeCount = -1
+        self.completedForceCurve = []
+        self.workoutDataPoints = []
+    }
+
     func setWorkoutDistance(meters: Int, split: Int? = nil) {
         let limitedMeters = min(max(meters, 100), 60000)
         let minSplit = max(100, Int(ceil(Double(limitedMeters) / 50.0)))
@@ -817,8 +850,7 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetCalories = nil
             self.targetSplitCalories = nil
             self.showingWorkoutExecution = true
-            self.completedForceCurve = [] // 新しいワークアウト開始時に前回のデータを消去
-            self.workoutDataPoints = []
+            self.clearSessionMetricsForNewWorkout()
         }
         
         startDataRecordingTimer()
@@ -849,8 +881,7 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetCalories = nil
             self.targetSplitCalories = nil
             self.showingWorkoutExecution = true
-            self.completedForceCurve = [] // 新しいワークアウト開始時に前回のデータを消去
-            self.workoutDataPoints = []
+            self.clearSessionMetricsForNewWorkout()
         }
         
         startDataRecordingTimer()
@@ -885,8 +916,7 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetTime = nil
             self.targetSplitTime = nil
             self.showingWorkoutExecution = true
-            self.completedForceCurve = []
-            self.workoutDataPoints = []
+            self.clearSessionMetricsForNewWorkout()
         }
         
         startDataRecordingTimer()
@@ -973,8 +1003,7 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetTime = nil
             self.targetCalories = nil
             self.showingWorkoutExecution = true
-            self.completedForceCurve = []
-            self.workoutDataPoints = []
+            self.clearSessionMetricsForNewWorkout()
         }
         
         startDataRecordingTimer()
@@ -995,8 +1024,7 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetDistance = nil
             self.targetCalories = nil
             self.showingWorkoutExecution = true
-            self.completedForceCurve = []
-            self.workoutDataPoints = []
+            self.clearSessionMetricsForNewWorkout()
         }
         
         startDataRecordingTimer()
@@ -1017,8 +1045,7 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetDistance = nil
             self.targetTime = nil
             self.showingWorkoutExecution = true
-            self.completedForceCurve = []
-            self.workoutDataPoints = []
+            self.clearSessionMetricsForNewWorkout()
         }
         
         startDataRecordingTimer()
@@ -1113,9 +1140,9 @@ class RowErgManager: NSObject, ObservableObject {
         DispatchQueue.main.async {
             self.targetDistance = nil
             self.targetTime = nil
+            self.targetCalories = nil
             self.showingWorkoutExecution = true
-            self.completedForceCurve = []
-            self.workoutDataPoints = []
+            self.clearSessionMetricsForNewWorkout()
         }
         
         startDataRecordingTimer()

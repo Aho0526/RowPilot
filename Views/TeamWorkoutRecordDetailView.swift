@@ -5,6 +5,16 @@ struct TeamWorkoutRecordDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var teamViewModel: CloudflareTeamViewModel
     @State private var showingDeleteConfirmation = false
+    @State private var showingErrorAlert = false
+    
+    private var canDeleteRecord: Bool {
+        let myID = SubscriptionManager.shared.myUserRecordId
+        if !myID.isEmpty && (record.athlete_id == myID || record.recorded_by_id == myID) {
+            return true
+        }
+        let role = (teamViewModel.myRole ?? "").lowercased()
+        return ["owner", "admin", "manager"].contains(role)
+    }
     
     private var decodedCrewInfo: CrewInfo? {
         guard let jsonString = record.crew_info,
@@ -105,27 +115,29 @@ struct TeamWorkoutRecordDetailView: View {
                     .padding()
                     .glassCardStyle(glowColor: .white, opacity: 0.05, cornerRadius: 16)
                     
-                    Divider()
-                        .padding(.vertical, 10)
-                    
-                    // チーム記録を削除するボタン
-                    Button(role: .destructive) {
-                        showingDeleteConfirmation = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "trash")
-                            Text("チームの共有記録から削除".localized)
+                    if canDeleteRecord {
+                        Divider()
+                            .padding(.vertical, 10)
+                        
+                        // チーム記録を削除するボタン
+                        Button(role: .destructive) {
+                            showingDeleteConfirmation = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "trash")
+                                Text("チームの共有記録から削除".localized)
+                            }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red.opacity(0.15))
+                            .foregroundColor(.red)
+                            .cornerRadius(14)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                            )
                         }
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red.opacity(0.15))
-                        .foregroundColor(.red)
-                        .cornerRadius(14)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(Color.red.opacity(0.3), lineWidth: 1)
-                        )
                     }
                 }
                 .padding()
@@ -151,12 +163,21 @@ struct TeamWorkoutRecordDetailView: View {
                     let success = await teamViewModel.deleteWorkout(recordID: record.id, teamID: record.team_id)
                     if success {
                         dismiss()
+                    } else {
+                        showingErrorAlert = true
                     }
                 }
             }
             Button("キャンセル".localized, role: .cancel) { }
         } message: {
             Text("この記録をチームの共有記録から削除しますか？本人のローカルの記録は削除されません。".localized)
+        }
+        .alert("エラー".localized, isPresented: $showingErrorAlert) {
+            Button("OK", role: .cancel) {
+                teamViewModel.errorMessage = nil
+            }
+        } message: {
+            Text(teamViewModel.errorMessage ?? "記録の削除に失敗しました。")
         }
     }
     

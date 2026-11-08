@@ -59,6 +59,11 @@ enum BoatType: String, Codable, CaseIterable, Identifiable {
     var totalSeats: Int {
         rowerCount + (hasCoxswain ? 1 : 0)
     }
+
+    /// 複数人クルーかどうか（Pro限定対象）
+    var isMultiSeat: Bool {
+        totalSeats > 1
+    }
     
     /// スカル艇かどうか
     var isScull: Bool {

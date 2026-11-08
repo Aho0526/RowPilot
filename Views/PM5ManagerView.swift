@@ -246,7 +246,7 @@ struct PM5ManagerView: View {
                 .padding()
             }
         }
-        .navigationTitle("PM5 Manager".localized)
+        .navigationTitle(SubscriptionManager.shared.currentPlan.pm5FeatureTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .animation(.easeInOut(duration: 0.3), value: viewModel.errorMessage)

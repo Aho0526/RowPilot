@@ -81,6 +81,7 @@ class CloudflareTeamViewModel: ObservableObject {
     
     func deleteTeam(teamID: String) async {
         isLoading = true
+        defer { isLoading = false }
         errorMessage = nil
         
         // 削除エンドポイント。/teams/delete に変更してみるか、元のままか。
@@ -89,7 +90,6 @@ class CloudflareTeamViewModel: ObservableObject {
         let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams?id=\(teamID)&requester_id=\(ownerID)"
         guard let url = URL(string: urlString) else {
             errorMessage = "Invalid URL"
-            isLoading = false
             return
         }
         
@@ -106,18 +106,18 @@ class CloudflareTeamViewModel: ObservableObject {
             if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
                 let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
                 errorMessage = "Delete Error (\(httpResponse.statusCode)): \(errStr)"
-                isLoading = false
                 return
             }
             
             self.myTeam = nil
             self.myRole = nil
+            self.members = []
+            self.teamWorkouts = []
             SubscriptionManager.shared.setCloudflareManager(false)
             // Re-fetch after delete
             await fetchTeams()
         } catch {
             self.errorMessage = error.localizedDescription
-            isLoading = false
         }
     }
     
@@ -168,12 +168,12 @@ class CloudflareTeamViewModel: ObservableObject {
     
     func createTeam(name: String) async {
         isLoading = true
+        defer { isLoading = false }
         errorMessage = nil
         
         let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/create"
         guard let url = URL(string: urlString) else {
             errorMessage = "Invalid URL"
-            isLoading = false
             return
         }
         
@@ -188,7 +188,6 @@ class CloudflareTeamViewModel: ObservableObject {
         let ownerID = SubscriptionManager.shared.myUserRecordId
         guard !ownerID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "ユーザー情報の取得中です。少し待ってから再度お試しください。"
-            isLoading = false
             return
         }
         var plan = SubscriptionManager.shared.currentPlan.rawValue
@@ -197,6 +196,18 @@ class CloudflareTeamViewModel: ObservableObject {
            let p2 = SubscriptionPlan(rawValue: stored),
            p2.level > p1.level {
             plan = stored
+        }
+        
+        let displayName = SettingsManager.shared.settings.sharingName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !displayName.isEmpty {
+            _ = await createUser(
+                userID: ownerID,
+                displayName: displayName,
+                email: nil,
+                isGhost: 0,
+                entitlement: plan
+            )
+            errorMessage = nil
         }
         
         let body: [String: Any] = [
@@ -230,7 +241,6 @@ class CloudflareTeamViewModel: ObservableObject {
             if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
                 let errStr = cleanErrorMessage(from: data, fallback: responseString)
                 errorMessage = errStr
-                isLoading = false
                 return
             }
             
@@ -238,7 +248,6 @@ class CloudflareTeamViewModel: ObservableObject {
             await fetchTeams()
         } catch {
             self.errorMessage = error.localizedDescription
-            isLoading = false
         }
     }
     
@@ -377,9 +386,12 @@ class CloudflareTeamViewModel: ObservableObject {
         }
     }
     
-    func deleteMember(userID: String, teamID: String) async -> Bool {
+    func deleteMember(userID: String, teamID: String, deleteRecords: Bool = false) async -> Bool {
         let requesterId = SubscriptionManager.shared.myUserRecordId
-        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/members/\(userID)?requester_id=\(requesterId)"
+        var urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/members/\(userID)?requester_id=\(requesterId)"
+        if deleteRecords {
+            urlString += "&delete_records=1"
+        }
         guard let url = URL(string: urlString) else {
             self.errorMessage = "Invalid URL"
             return false
@@ -396,6 +408,9 @@ class CloudflareTeamViewModel: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 await fetchMembers(teamID: teamID)
+                if deleteRecords {
+                    await fetchTeamWorkouts(teamID: teamID)
+                }
                 return true
             } else {
                 let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
@@ -406,6 +421,22 @@ class CloudflareTeamViewModel: ObservableObject {
             self.errorMessage = error.localizedDescription
             return false
         }
+    }
+    
+    func leaveTeam(teamID: String) async -> Bool {
+        isLoading = true
+        defer { isLoading = false }
+        let myID = SubscriptionManager.shared.myUserRecordId
+        let success = await deleteMember(userID: myID, teamID: teamID, deleteRecords: false)
+        if success {
+            self.myTeam = nil
+            self.myRole = nil
+            self.members = []
+            self.teamWorkouts = []
+            SubscriptionManager.shared.setCloudflareManager(false)
+            NotificationCenter.default.post(name: NSNotification.Name("TeamJoinStatusChanged"), object: nil)
+        }
+        return success
     }
     
     func updateMemberRole(userID: String, role: String, teamID: String) async -> Bool {

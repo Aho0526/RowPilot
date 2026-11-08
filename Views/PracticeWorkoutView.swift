@@ -177,7 +177,13 @@ struct PracticeWorkoutView: View {
                                         showingActionMenu = false
                                     }
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
-                                        showSaveAlert = true
+                                        if raceElapsedTime <= 10.0 {
+                                            ergManager.resetWorkout()
+                                            ergManager.showingWorkoutExecution = false
+                                            dismiss()
+                                        } else {
+                                            showSaveAlert = true
+                                        }
                                     }
                                 }) {
                                     HStack(spacing: 12) {
@@ -783,17 +789,44 @@ struct PracticeWorkoutView: View {
 
     private func saveCurrentRecord() {
         let workoutType = ergManager.targetDistance != nil ? "distance" : (ergManager.targetTime != nil ? "time" : (ergManager.targetCalories != nil ? "calories" : "justRow"))
-        let powerStr = ergManager.power > 0 ? "\(ergManager.power)W" : "N/A"
+        
+        let validSPMs = ergManager.workoutDataPoints.map(\.spm).filter { $0 > 0 }
+        let avgSPM: Int = !validSPMs.isEmpty
+            ? Int(round(Double(validSPMs.reduce(0, +)) / Double(validSPMs.count)))
+            : ergManager.strokeRate
+        
+        let validPaces = ergManager.workoutDataPoints.map(\.pace).filter { $0 > 0 }
+        let avgPace: TimeInterval
+        if ergManager.distance > 0 && ergManager.elapsedTime > 0 {
+            avgPace = (ergManager.elapsedTime / ergManager.distance) * 500.0
+        } else if !validPaces.isEmpty {
+            avgPace = validPaces.reduce(0.0, +) / Double(validPaces.count)
+        } else {
+            avgPace = ergManager.pace500m
+        }
+        
+        let validPowers = ergManager.workoutDataPoints.map(\.power).filter { $0 > 0 }
+        let avgWatt: Int
+        if ergManager.averagePower > 0 {
+            avgWatt = Int(round(ergManager.averagePower))
+        } else if !validPowers.isEmpty {
+            avgWatt = Int(round(Double(validPowers.reduce(0, +)) / Double(validPowers.count)))
+        } else {
+            avgWatt = ergManager.power
+        }
+        
+        let avgSpeed = ergManager.elapsedTime > 0 ? (ergManager.distance / ergManager.elapsedTime) * 3.6 : 0.0
+        let powerStr = avgWatt > 0 ? "\(avgWatt)W" : "N/A"
         let record = RowingRecord(
             date: Date(),
             duration: ergManager.elapsedTime,
             distance: ergManager.distance,
-            averageSPM: ergManager.strokeRate,
-            averageSpeed: (ergManager.distance / max(ergManager.elapsedTime, 1)) * 3.6,
-            averagePace: ergManager.pace500m,
+            averageSPM: avgSPM,
+            averageSpeed: avgSpeed,
+            averagePace: avgPace,
             notes: "Indoor Workout (Practice Mode) | Type: \(workoutType) | Power: \(powerStr)",
             tags: ["PracticeMode", "Indoor"],
-            averageWatt: ergManager.power,
+            averageWatt: avgWatt > 0 ? avgWatt : nil,
             dataPoints: ergManager.workoutDataPoints
         )
         appViewModel.recordManager.addRecord(record)

@@ -486,7 +486,11 @@ struct LandscapeView: View {
     private func exitSession() {
         app.stopSession()
         app.lockLandscape()
-        app.showingRowModeSaveAlert = true
+        if elapsedTime <= 10.0 {
+            discardSession()
+        } else {
+            app.showingRowModeSaveAlert = true
+        }
     }
 
     private func resetSession() {
@@ -495,12 +499,17 @@ struct LandscapeView: View {
     
     private func saveRecord() {
         guard let startTime = app.sessionStartTime else { return }
+        
+        let avgSpeed = elapsedTime > 0
+            ? (locationManager.totalDistance / elapsedTime) * LocationConstants.metersPerSecondToKmPerHour
+            : 0.0
+        
         let record = RowingRecord(
             date: startTime,
             duration: elapsedTime,
             distance: locationManager.totalDistance,
-            averageSPM: motionManager.spm,
-            averageSpeed: locationManager.currentSpeed,
+            averageSPM: motionManager.averageSPM,
+            averageSpeed: avgSpeed,
             averagePace: calculateAveragePace(),
             startLocation: app.sessionStartLocation,
             endLocation: getCurrentLocation(),
@@ -520,9 +529,8 @@ struct LandscapeView: View {
     }
     
     private func calculateAveragePace() -> TimeInterval {
-        guard locationManager.currentSpeed > 0 else { return 0 }
-        let speedMps = locationManager.currentSpeed / LocationConstants.metersPerSecondToKmPerHour
-        return LocationConstants.paceReferenceDistance / speedMps
+        guard locationManager.totalDistance > 0 && elapsedTime > 0 else { return 0 }
+        return (elapsedTime / locationManager.totalDistance) * LocationConstants.paceReferenceDistance
     }
     
     // MARK: - Helper Functions

@@ -12,6 +12,7 @@ struct CrewEditSheet: View {
     @State private var selectedBoatType: BoatType
     @State private var memberNames: [String]
     @State private var showDeleteConfirmation = false
+    @State private var showingSubscription = false
     
     init(recordId: UUID, existingCrewInfo: CrewInfo?, onSave: @escaping (CrewInfo) -> Void, onDelete: @escaping () -> Void) {
         self.recordId = recordId
@@ -19,9 +20,9 @@ struct CrewEditSheet: View {
         self.onSave = onSave
         self.onDelete = onDelete
         
-        let boatType = existingCrewInfo?.boatType ?? .eight
-        _selectedBoatType = State(initialValue: boatType)
-        _memberNames = State(initialValue: existingCrewInfo?.members ?? Array(repeating: "", count: boatType.totalSeats))
+        let defaultType: BoatType = (SubscriptionManager.shared.currentPlan.hasMultiSeatCrew || existingCrewInfo != nil) ? (existingCrewInfo?.boatType ?? .eight) : .singleSculls
+        _selectedBoatType = State(initialValue: defaultType)
+        _memberNames = State(initialValue: existingCrewInfo?.members ?? Array(repeating: "", count: defaultType.totalSeats))
     }
     
     var body: some View {
@@ -60,6 +61,10 @@ struct CrewEditSheet: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save".localized) {
+                        if selectedBoatType.isMultiSeat && !SubscriptionManager.shared.currentPlan.hasMultiSeatCrew {
+                            showingSubscription = true
+                            return
+                        }
                         let crewInfo = CrewInfo(boatType: selectedBoatType, members: memberNames)
                         onSave(crewInfo)
                         dismiss()
@@ -74,6 +79,9 @@ struct CrewEditSheet: View {
                     dismiss()
                 }
                 Button("Cancel".localized, role: .cancel) {}
+            }
+            .sheet(isPresented: $showingSubscription) {
+                SubscriptionView()
             }
         }
     }
@@ -103,16 +111,21 @@ struct CrewEditSheet: View {
     
     private func boatTypeButton(_ boatType: BoatType) -> some View {
         let isSelected = selectedBoatType == boatType
+        let isLocked = boatType.isMultiSeat && !SubscriptionManager.shared.currentPlan.hasMultiSeatCrew
         
         return Button(action: {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                selectedBoatType = boatType
-                // 座席数が変わるのでメンバー配列を調整
-                adjustMemberNames(for: boatType)
+            if isLocked {
+                showingSubscription = true
+            } else {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    selectedBoatType = boatType
+                    // 座席数が変わるのでメンバー配列を調整
+                    adjustMemberNames(for: boatType)
+                }
             }
         }) {
             VStack(spacing: 6) {
-                ZStack {
+                ZStack(alignment: .topTrailing) {
                     Circle()
                         .fill(isSelected ? Theme.accent : Theme.accent.opacity(0.15))
                         .frame(width: 44, height: 44)
@@ -120,6 +133,18 @@ struct CrewEditSheet: View {
                     Image(systemName: boatType.iconName)
                         .font(.system(size: 18))
                         .foregroundColor(isSelected ? .white : Theme.accent)
+                        .frame(width: 44, height: 44)
+                    
+                    if isLocked {
+                        Text("PRO")
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Theme.accent)
+                            .clipShape(Capsule())
+                            .offset(x: 6, y: -4)
+                    }
                 }
                 
                 Text(boatType.rawValue)

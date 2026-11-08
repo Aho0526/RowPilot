@@ -5,6 +5,8 @@ struct CloudflareTeamListView: View {
     @ObservedObject private var subManager = SubscriptionManager.shared
     @State private var teamToDelete: Team?
     @State private var showDeleteConfirm = false
+    @State private var teamToLeave: Team?
+    @State private var showLeaveConfirm = false
     @State private var showCreateAlert = false
     @State private var newTeamName = ""
     @State private var showUpgradeRequiredAlert = false
@@ -15,11 +17,13 @@ struct CloudflareTeamListView: View {
     @State private var showMemberOptions = false
     @State private var showMembersSheet = false
     
-    // Approve/Reject
+    // Approve/Reject/Kick
     @State private var memberToApprove: CloudflareUser?
     @State private var showApproveConfirm = false
     @State private var memberToReject: CloudflareUser?
     @State private var showRejectConfirm = false
+    @State private var memberToKick: CloudflareUser?
+    @State private var showKickConfirm = false
     
     // Polling
     @State private var pollingTimer: Timer?
@@ -117,6 +121,16 @@ struct CloudflareTeamListView: View {
             } message: { team in
                 Text("チーム「\(team.name)」を本当に解散しますか？\nこの操作は取り消せません。")
             }
+            .alert("チームからの脱退", isPresented: $showLeaveConfirm, presenting: teamToLeave) { team in
+                Button("脱退する", role: .destructive) {
+                    Task {
+                        _ = await viewModel.leaveTeam(teamID: team.id)
+                    }
+                }
+                Button("キャンセル", role: .cancel) {}
+            } message: { team in
+                Text("チーム「\(team.name)」から脱退しますか？")
+            }
             .alert("チーム作成", isPresented: $showCreateAlert) {
                 TextField("チーム名を入力", text: $newTeamName)
                 Button("作成") { handleCreateTeam() }
@@ -156,10 +170,13 @@ struct CloudflareTeamListView: View {
                 memberToApprove: $memberToApprove,
                 showRejectConfirm: $showRejectConfirm,
                 memberToReject: $memberToReject,
+                showKickConfirm: $showKickConfirm,
+                memberToKick: $memberToKick,
                 showMemberOptions: $showMemberOptions,
                 selectedMember: $selectedMember,
                 onApprove: approveRequest,
                 onReject: rejectRequest,
+                onKick: kickMember,
                 menuContent: memberMenuContentAsAnyView
             )
             .sheet(isPresented: $showMembersSheet) {
@@ -307,9 +324,9 @@ struct CloudflareTeamListView: View {
                 Button("Manager権限を解除") {
                     Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "athlete", teamID: teamID) }
                 }
-            } else if !hasPersonalManagerPlan(entitlement: member.entitlement) {
-                let teamPlan = viewModel.myTeam?.plan ?? ""
-                if usedManagerSlots() < managerLimit(for: teamPlan) {
+            } else {
+                let currentTeamPlan = effectivePlan(for: viewModel.myTeam)
+                if hasPersonalManagerPlan(entitlement: member.entitlement) || usedManagerSlots() < managerLimit(for: currentTeamPlan) {
                     Button("Manager権限を付与") {
                         Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "manager", teamID: teamID) }
                     }
@@ -329,14 +346,15 @@ struct CloudflareTeamListView: View {
             }
             
             Button("チームから追放する", role: .destructive) {
-                Task { _ = await viewModel.deleteMember(userID: member.id, teamID: teamID) }
+                memberToKick = member
+                showKickConfirm = true
             }
         } else {
             Text("権限がありません").font(.caption).foregroundColor(.white.opacity(0.4))
         }
     }
 
-    
+
     // MARK: - Action Handlers
     
     private func handleCreateTeam() {
@@ -364,6 +382,13 @@ struct CloudflareTeamListView: View {
         guard let teamID = viewModel.myTeam?.id else { return }
         Task {
             _ = await viewModel.deleteMember(userID: member.id, teamID: teamID)
+        }
+    }
+    
+    private func kickMember(member: CloudflareUser, deleteRecords: Bool) {
+        guard let teamID = viewModel.myTeam?.id else { return }
+        Task {
+            _ = await viewModel.deleteMember(userID: member.id, teamID: teamID, deleteRecords: deleteRecords)
         }
     }
     
@@ -659,6 +684,8 @@ struct CloudflareTeamListView: View {
             recordFeedSection
             if viewModel.myRole == "owner" {
                 disbandButton(team: team)
+            } else if viewModel.myRole != nil && viewModel.myRole != "pending" {
+                leaveButton(team: team)
             }
         }
     }
@@ -680,11 +707,29 @@ struct CloudflareTeamListView: View {
         }
     }
     
+    private func leaveButton(team: Team) -> some View {
+        Button(role: .destructive) {
+            teamToLeave = team
+            showLeaveConfirm = true
+        } label: {
+            HStack {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                Text("チームから脱退する").fontWeight(.semibold)
+            }
+            .foregroundColor(.red)
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(Color.red.opacity(0.1))
+            .cornerRadius(16)
+        }
+    }
+    
     // MARK: - Team Info Card
     
     private func teamSummaryCard(team: Team) -> some View {
         let activeCount = viewModel.members.filter { $0.role != "pending" }.count
-        let limit = memberLimit(for: team.plan)
+        let currentEffectivePlan = effectivePlan(for: team)
+        let limit = memberLimit(for: currentEffectivePlan)
         let isEditable = viewModel.myRole == "owner" || viewModel.myRole == "admin"
         
         return VStack(alignment: .leading, spacing: 16) {
@@ -708,18 +753,18 @@ struct CloudflareTeamListView: View {
                     }
                 }
                 Spacer()
-                Text(team.plan.uppercased())
+                Text(currentEffectivePlan.uppercased())
                     .font(.caption).fontWeight(.bold)
                     .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(planColor(for: team.plan).opacity(0.2))
-                    .foregroundColor(planColor(for: team.plan))
+                    .background(planColor(for: currentEffectivePlan).opacity(0.2))
+                    .foregroundColor(planColor(for: currentEffectivePlan))
                     .clipShape(Capsule())
             }
             
             HStack(spacing: 16) {
                 statBadge(value: "\(activeCount) / \(limit)", label: "メンバー", icon: "person.2.fill", color: Theme.accent)
-                if hasManagerShareFeature(for: team.plan) {
-                    statBadge(value: "\(usedManagerSlots()) / \(managerLimit(for: team.plan))", label: "Manager", icon: "star.fill", color: .blue)
+                if hasManagerShareFeature(for: currentEffectivePlan) {
+                    statBadge(value: "\(usedManagerSlots()) / \(managerLimit(for: currentEffectivePlan))", label: "Manager", icon: "star.fill", color: .blue)
                 }
             }
         }
@@ -1087,6 +1132,15 @@ struct CloudflareTeamListView: View {
     
     // MARK: - Helpers
     
+    private func effectivePlan(for team: Team?) -> String {
+        guard let team = team else { return "team" }
+        if let owner = viewModel.members.first(where: { $0.role == "owner" }),
+           ["team", "max", "organization", "enterprise"].contains(owner.entitlement.lowercased()) {
+            return owner.entitlement
+        }
+        return team.plan
+    }
+    
     private func usedManagerSlots() -> Int {
         viewModel.members.filter { $0.role == "manager" && !hasPersonalManagerPlan(entitlement: $0.entitlement) }.count
     }
@@ -1203,10 +1257,13 @@ private struct MemberApprovalAlertsModifier: ViewModifier {
     @Binding var memberToApprove: CloudflareUser?
     @Binding var showRejectConfirm: Bool
     @Binding var memberToReject: CloudflareUser?
+    @Binding var showKickConfirm: Bool
+    @Binding var memberToKick: CloudflareUser?
     @Binding var showMemberOptions: Bool
     @Binding var selectedMember: CloudflareUser?
     let onApprove: (CloudflareUser) -> Void
     let onReject: (CloudflareUser) -> Void
+    let onKick: (CloudflareUser, Bool) -> Void
     let menuContent: (CloudflareUser) -> AnyView
     
     func body(content: Content) -> some View {
@@ -1223,6 +1280,13 @@ private struct MemberApprovalAlertsModifier: ViewModifier {
             } message: { member in
                 Text("「\(member.display_name)」の参加申請を拒否しますか？")
             }
+            .alert("メンバーの追放", isPresented: $showKickConfirm, presenting: memberToKick) { member in
+                Button("記録を残して追放", role: .destructive) { onKick(member, false) }
+                Button("過去の記録も削除して追放", role: .destructive) { onKick(member, true) }
+                Button("キャンセル", role: .cancel) {}
+            } message: { member in
+                Text("「\(member.display_name)」をチームから追放しますか？\n過去に共有されたトレーニング記録の扱いを選択してください。")
+            }
             .confirmationDialog("メンバー設定", isPresented: $showMemberOptions, titleVisibility: .visible, presenting: selectedMember) { member in
                 menuContent(member)
             } message: { member in
@@ -1237,10 +1301,13 @@ extension View {
         memberToApprove: Binding<CloudflareUser?>,
         showRejectConfirm: Binding<Bool>,
         memberToReject: Binding<CloudflareUser?>,
+        showKickConfirm: Binding<Bool>,
+        memberToKick: Binding<CloudflareUser?>,
         showMemberOptions: Binding<Bool>,
         selectedMember: Binding<CloudflareUser?>,
         onApprove: @escaping (CloudflareUser) -> Void,
         onReject: @escaping (CloudflareUser) -> Void,
+        onKick: @escaping (CloudflareUser, Bool) -> Void,
         menuContent: @escaping (CloudflareUser) -> AnyView
     ) -> some View {
         modifier(MemberApprovalAlertsModifier(
@@ -1248,10 +1315,13 @@ extension View {
             memberToApprove: memberToApprove,
             showRejectConfirm: showRejectConfirm,
             memberToReject: memberToReject,
+            showKickConfirm: showKickConfirm,
+            memberToKick: memberToKick,
             showMemberOptions: showMemberOptions,
             selectedMember: selectedMember,
             onApprove: onApprove,
             onReject: onReject,
+            onKick: onKick,
             menuContent: menuContent
         ))
     }

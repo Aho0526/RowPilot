@@ -279,7 +279,7 @@ struct TeamInviteCodeInputView: View {
                 if success {
                     resultSuccess = true
                     let teamName = viewModel.myTeam?.name ?? "チーム"
-                    resultMessage = "\(teamName)への参加が完了しました！"
+                    resultMessage = "「\(teamName)」への参加申請を送信しました。管理者の承認をお待ちください。"
                     // チーム参加状態の変更を通知
                     NotificationCenter.default.post(name: NSNotification.Name("TeamJoinStatusChanged"), object: nil)
                 } else {

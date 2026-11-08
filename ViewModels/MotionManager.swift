@@ -25,6 +25,7 @@ class MotionManager: ObservableObject {
 
     // MARK: - ストロークタイムスタンプ履歴
     private var strokeTimestamps: [Date] = []
+    private var spmSamples: [Int] = []
 
     // MARK: - 2次Butterworthローパスフィルタ (カットオフ約3Hz@50Hz)
     // デジタルButterworth LPF: カットオフ 3Hz / サンプリング 50Hz
@@ -64,6 +65,13 @@ class MotionManager: ObservableObject {
 
     @Published var spm: Int = 0
     @Published var strokeCount: Int = 0
+
+    /// セッション中の有効なSPMサンプルの平均値
+    var averageSPM: Int {
+        guard !spmSamples.isEmpty else { return spm }
+        let total = spmSamples.reduce(0, +)
+        return Int(round(Double(total) / Double(spmSamples.count)))
+    }
 
     // MARK: - Monitoring
 
@@ -256,6 +264,10 @@ class MotionManager: ObservableObject {
             let smoothed = 0.6 * rawSpm + 0.4 * Double(spm)
             spm = Int(round(smoothed))
         }
+
+        if spm > 0 {
+            spmSamples.append(spm)
+        }
     }
 
     // MARK: - Public API
@@ -266,6 +278,7 @@ class MotionManager: ObservableObject {
 
     func reset() {
         strokeTimestamps.removeAll()
+        spmSamples.removeAll()
         spm = 0
         strokeCount = 0
         // フィルタ状態リセット
