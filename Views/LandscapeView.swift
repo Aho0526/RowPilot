@@ -66,7 +66,7 @@ struct LandscapeView: View {
     }
 
     private var formattedDistance: String {
-        return String(format: "%.1f m", app.isSessionActive ? locationManager.totalDistance : 0.0)
+        return settingsManager.settings.distanceUnit.format(app.isSessionActive ? locationManager.totalDistance : 0.0, decimalsForMeters: 1)
     }
 
     private var formattedAveragePace: String {
@@ -97,7 +97,7 @@ struct LandscapeView: View {
         guard app.isSessionActive else {
             switch metric {
             case .chrono: return "00:00.0"
-            case .distance: return "0.0 m"
+            case .distance: return settingsManager.settings.distanceUnit.format(0.0, decimalsForMeters: 1)
             case .averagePace: return "--:--"
             case .strokeCount: return "0"
             case .distPerStroke: return "0.00 m"
@@ -162,13 +162,15 @@ struct LandscapeView: View {
                                 }
                                 
                                 // バッテリー残量
-                                HStack(spacing: 4) {
-                                    Image(systemName: batteryIcon(level: batteryLevel))
-                                        .foregroundColor(batteryColor(level: batteryLevel))
-                                    
-                                    Text("\(Int(batteryLevel * 100))%")
-                                        .font(.system(size: 14, weight: .medium, design: .monospaced))
-                                        .foregroundColor(Theme.textMain)
+                                if settingsManager.settings.showBatteryStatus && batteryLevel >= 0 {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: batteryIcon(level: batteryLevel))
+                                            .foregroundColor(batteryColor(level: batteryLevel))
+                                        
+                                        Text("\(Int(batteryLevel * 100))%")
+                                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                            .foregroundColor(Theme.textMain)
+                                    }
                                 }
                                 
                                 // Help Button
@@ -359,10 +361,13 @@ struct LandscapeView: View {
                     updateStatusInfo()
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
+                batteryLevel = UIDevice.current.batteryLevel
+            }
             .onDisappear {
                 statusTimer?.invalidate()
                 statusTimer = nil
-                SoundManager.shared.stopSOS() // Safety
+                // 回転によるView破棄時にSOS警報を勝手に止めない (M-8)
             }
             .id(themeManager.currentPreset)
             .sheet(isPresented: $showingHelp) {

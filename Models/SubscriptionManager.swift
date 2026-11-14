@@ -44,12 +44,14 @@ struct SubscriptionRecord: Codable {
 class SubscriptionManager: ObservableObject, @unchecked Sendable {
     static let shared = SubscriptionManager()
 
-    // CloudKitを使用するかどうかの制御フラグ
-    let useCloudKit = true
+    // CloudKitの旧SubscriptionShare共有は無効化（D1側で一元管理）
+    let useCloudKit = false
 
     // MARK: - Persisted State（UserDefaults）
 
     private let recordKey = "RowPilot_SubscriptionRecord"
+    private let stableUserIdKey = "RowPilot_StableUserId"
+    private let deviceSecretKey = "RowPilot_DeviceSecret"
 
     /// 保存されている生のサブスクリプションレコード
     private var savedRecord: SubscriptionRecord {
@@ -69,12 +71,16 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
 
     // MARK: - Published State
 
-    /// 現在の有効プラン（期限切れなら .free）
+    /// 現在の有効プラン（個人契約＋チーム共有プラン統合後の実効値）
     @Published var currentPlan: SubscriptionPlan = .free
+    /// 個人でStoreKitから契約しているプラン（チーム作成権限等の判定に使用）
+    @Published var ownPlan: SubscriptionPlan = .free
     /// 自動更新が有効かどうか
     @Published var autoRenew: Bool = false
     /// 有効期限（App Store の値）
     @Published var expiresAt: Date? = nil
+    /// 端末認証エラーメッセージ（別端末で同一IDが使われている場合等）
+    @Published var authErrorMessage: String? = nil
 
     /// 次の更新期間から適用される予定のプラン（ダウングレード等）
     @Published var pendingPlan: SubscriptionPlan? = nil
@@ -105,7 +111,6 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
 
     @Published var sharedMembers: [String] = []
     @Published var sharedMemberNames: [String: String] = [:]
-    @Published var pendingRequests: [ShareRequest] = []
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
     @Published var myUserRecordId: String = ""
@@ -119,7 +124,25 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
         }
     }
 
-    // Cloudflare D1側でManagerロールに任命されているか
+    // Cloudflare D1側でManager/Adminロールから付与されるチーム共有プラン
+    var cloudflareSharedPlan: SubscriptionPlan? {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: "cloudflareSharedPlanRaw") else { return nil }
+            return SubscriptionPlan(rawValue: raw)
+        }
+        set {
+            UserDefaults.standard.set(newValue?.rawValue, forKey: "cloudflareSharedPlanRaw")
+            objectWillChange.send()
+        }
+    }
+
+    var isSharedTeamBenefitActive: Bool {
+        if isSharedManagerPlan { return true }
+        guard let shared = cloudflareSharedPlan else { return false }
+        return shared.level > ownPlan.level
+    }
+
+    // Cloudflare D1側でManagerロールに任命されているか（後方互換維持）
     var isCloudflareManager: Bool {
         get { UserDefaults.standard.bool(forKey: "isCloudflareManager") }
         set {
@@ -131,6 +154,31 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
     func setCloudflareManager(_ isManager: Bool) {
         DispatchQueue.main.async {
             self.isCloudflareManager = isManager
+            if !isManager {
+                self.cloudflareSharedPlan = nil
+            }
+            self.refreshPublishedState()
+        }
+    }
+
+    func setCloudflareTeamRole(role: String?, teamPlan: SubscriptionPlan?, isSuspended: Bool) {
+        DispatchQueue.main.async {
+            var grantedPlan: SubscriptionPlan? = nil
+            if !isSuspended, let role = role {
+                if role == "manager" || role == "admin" {
+                    if let tPlan = teamPlan {
+                        if tPlan.level >= SubscriptionPlan.max.level {
+                            grantedPlan = .max
+                        } else if tPlan.level >= SubscriptionPlan.team.level {
+                            grantedPlan = .manager
+                        }
+                    } else {
+                        grantedPlan = .manager
+                    }
+                }
+            }
+            self.cloudflareSharedPlan = grantedPlan
+            self.isCloudflareManager = (grantedPlan != nil)
             self.refreshPublishedState()
         }
     }
@@ -485,6 +533,7 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
                 self.lastVerifiedJWS = nil
             }
             
+            self.ownPlan = planToApply
             self.currentPlan = planToApply
             self.expiresAt = expiration
             self.autoRenew = willAutoRenewValue
@@ -499,12 +548,6 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
             )
             self.savedRecord = record
             self.refreshPublishedState()
-
-            if planToApply == .team || planToApply == .max || planToApply == .organization {
-                self.uploadShareRecord()
-            } else {
-                self.deleteShareRecord()
-            }
             
             // JWSの有無にかかわらずトークン取得とD1プラン同期を実行
             let ownerId = self.myUserRecordId
@@ -520,26 +563,32 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
 
     private func refreshPublishedState() {
         let record = savedRecord
-        var effective = record.effectivePlan
+        let oldOwnPlan = ownPlan
+        let personalPlan = record.effectivePlan
+        ownPlan = personalPlan
 
-        // Cloudflare D1側でmanagerロールになっている場合はmanager権限を解放
-        if isCloudflareManager {
+        var effective = personalPlan
+
+        // Cloudflare D1側で付与されたチーム権限（Team→manager, MAX/Org→max）を統合
+        if let shared = cloudflareSharedPlan {
+            if effective.level < shared.level {
+                effective = shared
+            }
+        } else if isCloudflareManager {
             if effective.level < SubscriptionPlan.manager.level {
                 effective = .manager
             }
         }
 
-        let oldPlan = currentPlan
-
         currentPlan = effective
-        autoRenew   = effective == .free ? false : record.autoRenew
-        expiresAt   = effective == .free ? nil   : record.expiresAt
+        autoRenew   = personalPlan == .free ? false : record.autoRenew
+        expiresAt   = personalPlan == .free ? nil   : record.expiresAt
 
         // 全ビューの @AppStorage("userSubscriptionPlan") と互換性のあるキーにも同期書き込み
         UserDefaults.standard.set(effective.rawValue, forKey: "userSubscriptionPlan")
 
         // 期限切れで降格した場合はレコードも更新
-        if effective == .free && record.subscriptionTier != .free {
+        if personalPlan == .free && record.subscriptionTier != .free {
             var updated = record
             updated.subscriptionTier = .free
             updated.autoRenew = false
@@ -547,7 +596,7 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
             print("[StoreKit] Subscription expired. Downgraded to Free.")
         }
 
-        if oldPlan != effective {
+        if oldOwnPlan != personalPlan {
             let ownerId = myUserRecordId
             let jws = lastVerifiedJWS
             Task {
@@ -560,10 +609,6 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
 
     func checkSubscriptionStatus() {
         refreshPublishedState()
-
-        if isSharedManagerPlan {
-            syncSharedPlan()
-        }
     }
 
     // MARK: - 購入（互換性のために残す、内部からは呼ばれない）
@@ -579,23 +624,72 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
         refreshPublishedState()
 
         print("[StoreKit] Purchase applied: \(plan.displayName), expires: \(record.expiresAt?.description ?? "nil")")
-
-        if plan == .team || plan == .max || plan == .organization {
-            uploadShareRecord()
-        } else {
-            deleteShareRecord()
-        }
     }
 
-    func syncTeamPlanWithCloudflare(ownerId: String, jws: String?) async {
-        guard !ownerId.isEmpty else { return }
+    func getOrCreateDeviceSecret() -> String {
+        if let keychainSecret = KeychainHelper.read(key: deviceSecretKey), keychainSecret.count >= 32 {
+            if UserDefaults.standard.string(forKey: deviceSecretKey) != keychainSecret {
+                UserDefaults.standard.set(keychainSecret, forKey: deviceSecretKey)
+            }
+            return keychainSecret
+        }
+        if let udSecret = UserDefaults.standard.string(forKey: deviceSecretKey), udSecret.count >= 32 {
+            KeychainHelper.save(key: deviceSecretKey, value: udSecret)
+            return udSecret
+        }
+        let newSecret = UUID().uuidString + UUID().uuidString
+        KeychainHelper.save(key: deviceSecretKey, value: newSecret)
+        UserDefaults.standard.set(newSecret, forKey: deviceSecretKey)
+        return newSecret
+    }
+
+    var isApiTokenExpiredOrMissing: Bool {
+        let token = apiToken
+        guard !token.isEmpty else { return true }
+        let segments = token.split(separator: ".")
+        guard segments.count == 3 else { return true }
+        var base64 = String(segments[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = base64.count % 4
+        if remainder > 0 {
+            base64 += String(repeating: "=", count: 4 - remainder)
+        }
+        guard let data = Data(base64Encoded: base64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let exp = json["exp"] as? TimeInterval else {
+            return true
+        }
+        return Date().timeIntervalSince1970 + 60 >= exp
+    }
+
+    @discardableResult
+    func ensureValidApiToken() async -> Bool {
+        if !isApiTokenExpiredOrMissing {
+            return true
+        }
+        if myUserRecordId.isEmpty {
+            await fetchMyUserRecordIDAsync()
+        }
+        guard !myUserRecordId.isEmpty else { return false }
+        return await syncTeamPlanWithCloudflare(ownerId: myUserRecordId, jws: lastVerifiedJWS)
+    }
+
+    @discardableResult
+    func refreshApiToken() async -> Bool {
+        if myUserRecordId.isEmpty {
+            await fetchMyUserRecordIDAsync()
+        }
+        guard !myUserRecordId.isEmpty else { return false }
+        return await syncTeamPlanWithCloudflare(ownerId: myUserRecordId, jws: lastVerifiedJWS)
+    }
+
+    @discardableResult
+    func syncTeamPlanWithCloudflare(ownerId: String, jws: String?) async -> Bool {
+        guard !ownerId.isEmpty else { return false }
         
         let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/auth/verify-receipt"
-        let deviceSecret = UserDefaults.standard.string(forKey: "RowPilot_DeviceSecret") ?? {
-            let newSecret = UUID().uuidString + UUID().uuidString
-            UserDefaults.standard.set(newSecret, forKey: "RowPilot_DeviceSecret")
-            return newSecret
-        }()
+        let deviceSecret = getOrCreateDeviceSecret()
         
         var body: [String: Any] = [
             "user_id": ownerId,
@@ -605,7 +699,7 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
             body["jws"] = jws
         }
         
-        guard let url = URL(string: urlString) else { return }
+        guard let url = URL(string: urlString) else { return false }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -619,21 +713,34 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
                 
                 if let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
                    let token = json["token"] as? String {
-                    DispatchQueue.main.async {
+                    await MainActor.run {
                         self.apiToken = token
+                        self.authErrorMessage = nil
                         NotificationCenter.default.post(name: NSNotification.Name("D1TeamPlanSynced"), object: nil)
                     }
+                    return true
                 } else {
-                    DispatchQueue.main.async {
+                    await MainActor.run {
+                        self.authErrorMessage = nil
                         NotificationCenter.default.post(name: NSNotification.Name("D1TeamPlanSynced"), object: nil)
                     }
+                    return !self.apiToken.isEmpty
                 }
             } else {
                 let resStr = String(data: data, encoding: .utf8) ?? ""
                 print("[SubscriptionManager] Verify receipt error response: \(resStr)")
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 403 {
+                    let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+                        ?? "このユーザーIDは別の端末で登録されています。チーム管理者に認証リセットを依頼してください。"
+                    await MainActor.run {
+                        self.authErrorMessage = msg
+                    }
+                }
+                return false
             }
         } catch {
             print("[SubscriptionManager] Verify receipt network error: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -675,48 +782,47 @@ class SubscriptionManager: ObservableObject, @unchecked Sendable {
     // MARK: - ユーザーID
 
     func fetchMyUserRecordID() {
-        guard useCloudKit else {
-            loadOrCreateLocalUserRecordId()
-            return
-        }
-
-        CKContainer.default().fetchUserRecordID { [weak self] recordID, error in
-            DispatchQueue.main.async {
-                if let recordID = recordID {
-                    self?.myUserRecordId = recordID.recordName
-                } else {
-                    self?.loadOrCreateLocalUserRecordId()
-                }
-                print("[StoreKit] My User Record ID: \(self?.myUserRecordId ?? "")")
-                if self?.currentPlan == .team || self?.currentPlan == .max || self?.currentPlan == .organization {
-                    self?.loadSharedMembers()
-                }
-                
-                if let self = self {
-                    Task {
-                        await self.syncTeamPlanWithCloudflare(ownerId: self.myUserRecordId, jws: self.lastVerifiedJWS)
-                    }
-                }
-            }
+        Task {
+            await fetchMyUserRecordIDAsync()
         }
     }
 
-    private func loadOrCreateLocalUserRecordId() {
-        if let savedId = UserDefaults.standard.string(forKey: "RowPilot_LocalUserRecordId") {
-            self.myUserRecordId = savedId
-        } else {
-            let newId = "User_" + UUID().uuidString.prefix(8)
-            UserDefaults.standard.set(newId, forKey: "RowPilot_LocalUserRecordId")
-            self.myUserRecordId = newId
+    func fetchMyUserRecordIDAsync() async {
+        // 既に確定済みのユーザーIDがある場合は維持（iCloudオン/オフ切替時のID分裂を防止）
+        if let stable = KeychainHelper.read(key: stableUserIdKey) ?? UserDefaults.standard.string(forKey: stableUserIdKey),
+           !stable.isEmpty {
+            KeychainHelper.save(key: stableUserIdKey, value: stable)
+            UserDefaults.standard.set(stable, forKey: stableUserIdKey)
+            await MainActor.run {
+                self.myUserRecordId = stable
+            }
+            print("[StoreKit] My Stable User Record ID: \(stable)")
+            await self.syncTeamPlanWithCloudflare(ownerId: stable, jws: self.lastVerifiedJWS)
+            return
         }
-        print("[StoreKit] My Local User Record ID: \(self.myUserRecordId)")
-        if self.currentPlan == .team || self.currentPlan == .max || self.currentPlan == .organization {
-            self.loadSharedMembers()
+
+        // 初回確定: CloudKitのiCloudレコードIDが取れればそれを採用、不可ならローカルUUIDを発行して永続化
+        let resolvedId: String = await withCheckedContinuation { continuation in
+            CKContainer.default().fetchUserRecordID { recordID, _ in
+                if let recordID = recordID {
+                    continuation.resume(returning: recordID.recordName)
+                } else if let legacyLocal = UserDefaults.standard.string(forKey: "RowPilot_LocalUserRecordId"), !legacyLocal.isEmpty {
+                    continuation.resume(returning: legacyLocal)
+                } else {
+                    let newId = "User_" + UUID().uuidString.prefix(8)
+                    UserDefaults.standard.set(newId, forKey: "RowPilot_LocalUserRecordId")
+                    continuation.resume(returning: newId)
+                }
+            }
         }
-        
-        Task {
-            await self.syncTeamPlanWithCloudflare(ownerId: self.myUserRecordId, jws: self.lastVerifiedJWS)
+
+        KeychainHelper.save(key: stableUserIdKey, value: resolvedId)
+        UserDefaults.standard.set(resolvedId, forKey: stableUserIdKey)
+        await MainActor.run {
+            self.myUserRecordId = resolvedId
         }
+        print("[StoreKit] Resolved & pinned User Record ID: \(resolvedId)")
+        await self.syncTeamPlanWithCloudflare(ownerId: resolvedId, jws: self.lastVerifiedJWS)
     }
 
     // MARK: - 共有上限

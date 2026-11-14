@@ -177,12 +177,60 @@ enum DistanceUnit: String, Codable, CaseIterable {
     case meters = "メートル"
     case kilometers = "キロメートル"
     case miles = "マイル"
+
+    var shortLabel: String {
+        switch self {
+        case .meters: return "m"
+        case .kilometers: return "km"
+        case .miles: return "mi"
+        }
+    }
+
+    func convert(fromMeters meters: Double) -> Double {
+        switch self {
+        case .meters: return meters
+        case .kilometers: return meters / 1000.0
+        case .miles: return meters / 1609.344
+        }
+    }
+
+    func formatValue(_ meters: Double, decimalsForMeters: Int = 0) -> String {
+        let converted = convert(fromMeters: meters)
+        switch self {
+        case .meters:
+            return String(format: "%.\(decimalsForMeters)f", converted)
+        case .kilometers, .miles:
+            return String(format: "%.2f", converted)
+        }
+    }
+
+    func format(_ meters: Double, decimalsForMeters: Int = 0) -> String {
+        return "\(formatValue(meters, decimalsForMeters: decimalsForMeters)) \(shortLabel)"
+    }
 }
 
 enum SpeedUnit: String, Codable, CaseIterable {
     case kilometersPerHour = "km/h"
     case milesPerHour = "mph"
     case metersPerSecond = "m/s"
+
+    func convert(fromKmPerHour kmh: Double) -> Double {
+        switch self {
+        case .kilometersPerHour: return kmh
+        case .milesPerHour: return kmh * 0.621371
+        case .metersPerSecond: return kmh / 3.6
+        }
+    }
+
+    func format(_ kmh: Double) -> String {
+        let converted = convert(fromKmPerHour: kmh)
+        switch self {
+        case .kilometersPerHour, .milesPerHour:
+            return String(format: "%.1f %@", converted, rawValue)
+        case .metersPerSecond:
+            return String(format: "%.2f %@", converted, rawValue)
+        }
+    }
 }
 
 // MARK: - UserDefaults Integration

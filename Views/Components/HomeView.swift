@@ -872,14 +872,21 @@ struct HomeView: View {
     // MARK: - Helpers
     
     private func formatDistance(_ meters: Double) -> String {
-        return String(format: "%.0f m", meters)
+        return settingsManager.settings.distanceUnit.format(meters, decimalsForMeters: 0)
     }
     
     private func formatDistanceKm(_ meters: Double) -> String {
-        if meters >= 1000 {
-            return String(format: "%.1f km", meters / 1000.0)
-        } else {
-            return String(format: "%.0f m", meters)
+        switch settingsManager.settings.distanceUnit {
+        case .miles:
+            return settingsManager.settings.distanceUnit.format(meters)
+        case .kilometers:
+            return String(format: "%.2f km", meters / 1000.0)
+        case .meters:
+            if meters >= 1000 {
+                return String(format: "%.1f km", meters / 1000.0)
+            } else {
+                return String(format: "%.0f m", meters)
+            }
         }
     }
     
@@ -1089,6 +1096,16 @@ struct RecordRowCard: View {
                 HStack(spacing: 16) {
                     Text("\(record.averageSPM) SPM")
                     Text(record.formattedPace)
+                    if record.isManagerMode {
+                        Label("Manager Mode", systemImage: "person.2.badge.gearshape.fill")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.purple.opacity(0.2))
+                            .foregroundColor(.purple)
+                            .cornerRadius(6)
+                    }
                 }
                 .font(.caption)
                 .foregroundColor(Theme.textSecondary)

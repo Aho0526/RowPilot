@@ -73,12 +73,16 @@ struct RowPilotApp: App {
             .preferredColorScheme(getPreferredColorScheme())
             .onChange(of: scenePhase) { _, newPhase in
                 app.handleScenePhaseChange(newPhase)
+                if newPhase == .active {
+                    TeamRecordUploader.shared.flushPendingOperations()
+                }
             }
             .onChange(of: app.isSplashVisible) { _, isVisible in
                 // スプラッシュ終了後（起動時）にGPS権限リクエストおよびiCloud同期を実行
                 if !isVisible {
                     app.onSplashFinished()
                     importFromICloudOnLaunch()
+                    TeamRecordUploader.shared.flushPendingOperations()
                 }
             }
             .onOpenURL { url in

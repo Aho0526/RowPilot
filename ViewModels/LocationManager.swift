@@ -21,13 +21,17 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     override init() {
         super.init()
         locationManager.delegate = self
-        locationManager.desiredAccuracy = LocationConstants.defaultAccuracy
-        locationManager.distanceFilter = LocationConstants.distanceFilterMeters
+        // 非計測時は省電力設定で潮汐・天気用の位置のみ取得 (M-7)
+        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        locationManager.distanceFilter = 500
         locationManager.allowsBackgroundLocationUpdates = false
+        locationManager.pausesLocationUpdatesAutomatically = true
         authorizationStatus = locationManager.authorizationStatus
     }
 
     private var isFirstUpdateAfterStart = false
+    /// GPSスパイク除外用の最大許容速度 (m/s): ボートの現実的上界 + 余裕 = 12 m/s (43.2 km/h)
+    private let maxPlausibleSpeedMps: Double = 12.0
 
     /// 位置情報の権限をリクエストし、許可済みであれば位置情報の更新を開始する
     func requestPermission() {
@@ -51,6 +55,21 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
+    private func configureAccuracy(forTracking active: Bool) {
+        if active {
+            locationManager.desiredAccuracy = LocationConstants.defaultAccuracy
+            locationManager.distanceFilter = LocationConstants.distanceFilterMeters
+            locationManager.pausesLocationUpdatesAutomatically = false
+            // UIBackgroundModes に location が定義されている環境で計測中のみバックグラウンド更新を有効化 (C-7)
+            locationManager.allowsBackgroundLocationUpdates = true
+        } else {
+            locationManager.allowsBackgroundLocationUpdates = false
+            locationManager.pausesLocationUpdatesAutomatically = true
+            locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            locationManager.distanceFilter = 500
+        }
+    }
+
     /// ワークアウト計測中のトラッキングを開始する
     func startTracking() {
         guard !isPreview else {
@@ -64,13 +83,31 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         isFirstUpdateAfterStart = true
         wasGpsLost = false
         lastRecordedPointTime = nil
+        configureAccuracy(forTracking: true)
 
+        requestPermission()
+    }
+    
+    /// 一時停止から距離・航跡を保持したままトラッキングを再開する (C-6)
+    func resumeTracking() {
+        guard !isPreview else {
+            print("Previewモードでは位置情報を使用しません。")
+            return
+        }
+        
+        isTracking = true
+        isFirstUpdateAfterStart = true
+        wasGpsLost = false
+        configureAccuracy(forTracking: true)
+        
         requestPermission()
     }
     
     /// ワークアウト計測中のトラッキングを停止する
     func stopTracking() {
         isTracking = false
+        currentSpeed = 0.0
+        configureAccuracy(forTracking: false)
     }
     
     // 許可変更時に呼ばれる（iOS 14+）
@@ -113,51 +150,68 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             let prevLocation = self.previousLocation
 
             // ワークアウト計測中のみ距離計算・ルートポイント蓄積を行う
+            var didRecordValidTrackingPoint = false
             if self.isTracking {
                 let isAccuracyOkForTraining = newLocation.horizontalAccuracy <= 20
                 
                 if !self.isFirstUpdateAfterStart, let previous = prevLocation {
-                    if isAccuracyOkForTraining {
+                    let timeDelta = newLocation.timestamp.timeIntervalSince(previous.timestamp)
+                    if isAccuracyOkForTraining && timeDelta > 0 {
                         let distance = newLocation.distance(from: previous)
-                        self.totalDistance += distance
+                        let impliedSpeed = distance / timeDelta
                         
-                        var isGap = self.wasGpsLost
-                        if let lastTime = self.lastRecordedPointTime {
-                            let timeDiff = newLocation.timestamp.timeIntervalSince(lastTime)
-                            if timeDiff > 15 {
-                                isGap = true
+                        // 非現実的なGPSジャンプを除外 (M-7)
+                        if impliedSpeed <= self.maxPlausibleSpeedMps {
+                            self.totalDistance += distance
+                            
+                            var isGap = self.wasGpsLost
+                            if let lastTime = self.lastRecordedPointTime {
+                                let timeDiff = newLocation.timestamp.timeIntervalSince(lastTime)
+                                if timeDiff > 15 {
+                                    isGap = true
+                                }
                             }
+                            
+                            self.routePoints.append(LocationData(
+                                latitude: newLocation.coordinate.latitude,
+                                longitude: newLocation.coordinate.longitude,
+                                isPostGap: isGap
+                            ))
+                            
+                            self.lastRecordedPointTime = newLocation.timestamp
+                            self.wasGpsLost = false
+                            didRecordValidTrackingPoint = true
+                        } else {
+                            self.wasGpsLost = true
                         }
-                        
-                        self.routePoints.append(LocationData(
-                            latitude: newLocation.coordinate.latitude,
-                            longitude: newLocation.coordinate.longitude,
-                            isPostGap: isGap
-                        ))
-                        
-                        self.lastRecordedPointTime = newLocation.timestamp
-                        self.wasGpsLost = false
-                    } else {
+                    } else if !isAccuracyOkForTraining {
                         self.wasGpsLost = true
                     }
                 } else {
                     if isAccuracyOkForTraining {
-                        // 初回更新
+                        // 初回・再開直後の開始点も航跡に記録する (M-7, C-6)
+                        let isResumeGap = !self.routePoints.isEmpty
+                        self.routePoints.append(LocationData(
+                            latitude: newLocation.coordinate.latitude,
+                            longitude: newLocation.coordinate.longitude,
+                            isPostGap: isResumeGap ? true : false
+                        ))
                         self.isFirstUpdateAfterStart = false
                         self.lastRecordedPointTime = newLocation.timestamp
                         self.wasGpsLost = false
+                        didRecordValidTrackingPoint = true
                     } else {
                         self.wasGpsLost = true
                     }
                 }
             }
             
-            // 速度計算
+            // 速度計算（計測停止中は0）
             let speed = newLocation.speed
-            self.currentSpeed = (speed >= 0) ? speed * LocationConstants.metersPerSecondToKmPerHour : 0.0 // km/h へ変換
+            self.currentSpeed = (self.isTracking && speed >= 0) ? speed * LocationConstants.metersPerSecondToKmPerHour : 0.0 // km/h へ変換
 
-            // 位置更新（ワークアウト中は高精度ポイントのみ更新し、低精度ポイント混入時の距離ジャンプを防止）
-            if !self.isTracking || newLocation.horizontalAccuracy <= 20 || self.previousLocation == nil {
+            // 位置更新（ワークアウト中は有効ポイントのみ更新し、低精度・スパイク混入時の距離ジャンプを防止）
+            if !self.isTracking || didRecordValidTrackingPoint || self.previousLocation == nil {
                 self.previousLocation = newLocation
             }
         }
@@ -176,5 +230,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         isFirstUpdateAfterStart = true 
         wasGpsLost = false
         lastRecordedPointTime = nil
+        configureAccuracy(forTracking: false)
     }
 }

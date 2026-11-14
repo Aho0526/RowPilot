@@ -110,6 +110,16 @@ struct RecordRow: View {
             HStack {
                 Text(record.formattedDate)
                     .font(.headline)
+                if record.isManagerMode {
+                    Label("Manager Mode", systemImage: "person.2.badge.gearshape.fill")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.purple.opacity(0.2))
+                        .foregroundColor(.purple)
+                        .cornerRadius(6)
+                }
                 Spacer()
                 if let tags = record.tags, !tags.isEmpty {
                     HStack(spacing: 4) {
@@ -176,6 +186,8 @@ struct RecordDetailView: View {
     @State private var showingSaveConfirmation = false
     @State private var showCrewSheet = false
     @State private var currentCrewInfo: CrewInfo? = nil
+    @State private var loadedDataPoints: [WorkoutDataPoint] = []
+    @State private var loadedRoutePoints: [LocationData] = []
     @State private var showingExpandedMap = false
     @State private var showingDeleteConfirmation = false
     
@@ -209,9 +221,9 @@ struct RecordDetailView: View {
                     }
                     
                     // Workout Details Graph Button
-                    if let dataPoints = record.dataPoints, !dataPoints.isEmpty {
+                    if !loadedDataPoints.isEmpty {
                         NavigationLink {
-                            WorkoutGraphView(dataPoints: dataPoints)
+                            WorkoutGraphView(dataPoints: loadedDataPoints)
                         } label: {
                             HStack {
                                 Image(systemName: "chart.xyaxis.line")
@@ -295,16 +307,14 @@ struct RecordDetailView: View {
                                 }
                             }
                             
-                            if !SettingsManager.shared.settings.autoUploadToTeam {
-                                Button {
-                                    var recordToUpload = record
-                                    recordToUpload.notes = editedNotes
-                                    recordToUpload.tags = editedTags
-                                    recordToUpload.crewInfo = currentCrewInfo
-                                    TeamRecordUploader.shared.uploadManual(record: recordToUpload)
-                                } label: {
-                                    Label("チームに共有".localized, systemImage: "person.3.fill")
-                                }
+                            Button {
+                                var recordToUpload = app.recordManager.resolvedRecord(record)
+                                recordToUpload.notes = editedNotes
+                                recordToUpload.tags = editedTags
+                                recordToUpload.crewInfo = currentCrewInfo
+                                TeamRecordUploader.shared.uploadManual(record: recordToUpload)
+                            } label: {
+                                Label("チームに共有".localized, systemImage: "person.3.fill")
                             }
                         } label: {
                             Image(systemName: "square.and.arrow.up")
@@ -334,6 +344,9 @@ struct RecordDetailView: View {
             editedNotes = record.notes ?? ""
             editedTags = record.tags ?? []
             currentCrewInfo = record.crewInfo
+            let resolved = app.recordManager.resolvedRecord(record)
+            loadedDataPoints = resolved.dataPoints ?? []
+            loadedRoutePoints = resolved.routePoints ?? []
         }
         .sheet(isPresented: $showCrewSheet) {
             CrewEditSheet(
@@ -342,27 +355,15 @@ struct RecordDetailView: View {
                 onSave: { crewInfo in
                     currentCrewInfo = crewInfo
                     app.recordManager.updateCrewInfo(for: record.id, crewInfo: crewInfo)
-                    
-                    if SettingsManager.shared.settings.autoUploadToTeam {
-                        var recordToUpload = record
-                        recordToUpload.crewInfo = crewInfo
-                        TeamRecordUploader.shared.uploadManual(record: recordToUpload)
-                    }
                 },
                 onDelete: {
                     currentCrewInfo = nil
                     app.recordManager.updateCrewInfo(for: record.id, crewInfo: nil)
-                    
-                    if SettingsManager.shared.settings.autoUploadToTeam {
-                        var recordToUpload = record
-                        recordToUpload.crewInfo = nil
-                        TeamRecordUploader.shared.uploadManual(record: recordToUpload)
-                    }
                 }
             )
         }
         .sheet(isPresented: $showingExpandedMap) {
-            ExpandedMapView(record: record)
+            ExpandedMapView(record: record, routePoints: loadedRoutePoints)
         }
         .alert("RowPilot MAX Exclusive".localized, isPresented: $showMaxPlanAlert) {
             Button("Cancel".localized, role: .cancel) { }
@@ -382,9 +383,7 @@ struct RecordDetailView: View {
         }
         .alert("記録の削除".localized, isPresented: $showingDeleteConfirmation) {
             Button("削除".localized, role: .destructive) {
-                // D1から削除
-                TeamRecordUploader.shared.deleteFromTeam(recordID: record.id)
-                // ローカルから削除
+                // ローカルおよびクラウド(iCloud/D1)から削除 (RecordManager.deleteRecord内で一括処理)
                 app.recordManager.deleteRecord(record)
                 dismiss()
             }
@@ -404,6 +403,17 @@ struct RecordDetailView: View {
             Text(record.formattedDate)
                 .font(Theme.headerFont())
                 .foregroundColor(Theme.textMain)
+
+            if record.isManagerMode {
+                Label("Manager Mode", systemImage: "person.2.badge.gearshape.fill")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.purple.opacity(0.2))
+                    .foregroundColor(.purple)
+                    .clipShape(Capsule())
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
@@ -417,7 +427,7 @@ struct RecordDetailView: View {
                 .font(Theme.subHeaderFont())
                 .foregroundColor(Theme.textMain)
             
-            RecordMapView(startLocation: record.startLocation, endLocation: record.endLocation, routePoints: record.routePoints)
+            RecordMapView(startLocation: record.startLocation, endLocation: record.endLocation, routePoints: loadedRoutePoints.isEmpty ? record.routePoints : loadedRoutePoints)
                 .frame(height: 200)
                 .cornerRadius(16)
                 .overlay(
@@ -445,7 +455,7 @@ struct RecordDetailView: View {
                 MetricCard(icon: "ruler.fill", label: "Distance".localized, value: record.formattedDistance)
                 MetricCard(icon: "metronome.fill", label: "Avg SPM", value: "\(record.averageSPM)")
                 if !(record.pm5SerialNumber != nil || record.isManagerMode || (record.tags?.contains("Indoor") == true)) {
-                    MetricCard(icon: "speedometer", label: "Avg Speed".localized, value: String(format: "%.1f km/h", record.averageSpeed))
+                    MetricCard(icon: "speedometer", label: "Avg Speed".localized, value: record.formattedSpeed)
                 }
                 MetricCard(icon: "timer", label: "Pace".localized, value: record.formattedPace)
             }
@@ -702,6 +712,7 @@ struct RecordMapView: View {
 // MARK: - Expanded Map View
 struct ExpandedMapView: View {
     let record: RowingRecord
+    var routePoints: [LocationData]? = nil
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -709,7 +720,7 @@ struct ExpandedMapView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
                 
-                RecordMapView(startLocation: record.startLocation, endLocation: record.endLocation, routePoints: record.routePoints)
+                RecordMapView(startLocation: record.startLocation, endLocation: record.endLocation, routePoints: routePoints ?? record.routePoints)
                     .ignoresSafeArea(edges: [.bottom, .horizontal])
             }
             .navigationTitle("Route".localized)

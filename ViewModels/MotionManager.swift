@@ -28,22 +28,39 @@ class MotionManager: ObservableObject {
     private var spmSamples: [Int] = []
 
     // MARK: - 2次Butterworthローパスフィルタ (カットオフ約3Hz@50Hz)
-    // デジタルButterworth LPF: カットオフ 3Hz / サンプリング 50Hz
-    // Wc = 2*pi*3/50 = 0.3770, 事前計算済み係数
-    private var bw_x1: Double = 0.0  // 入力遅延1
-    private var bw_x2: Double = 0.0  // 入力遅延2
-    private var bw_y1: Double = 0.0  // 出力遅延1
-    private var bw_y2: Double = 0.0  // 出力遅延2
+    private struct AxisFilterState {
+        var x1: Double = 0.0
+        var x2: Double = 0.0
+        var y1: Double = 0.0
+        var y2: Double = 0.0
+        var cur: Double = 0.0
+        var prev: Double = 0.0
+        
+        mutating func apply(raw: Double, b0: Double, b1: Double, b2: Double, a1: Double, a2: Double) -> (prev: Double, cur: Double) {
+            let y = b0 * raw + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+            x2 = x1
+            x1 = raw
+            y2 = y1
+            y1 = y
+            prev = cur
+            cur = y
+            return (prev, cur)
+        }
+    }
+    
+    // X, Y, Z 各軸に独立したフィルタ状態を保持 (M-7)
+    private var axisFilters: [AxisFilterState] = [AxisFilterState(), AxisFilterState(), AxisFilterState()]
+    private var activeAxisIndex: Int = 1
+    private var varianceX: Double = 0.0
+    private var varianceY: Double = 0.0
+    private var varianceZ: Double = 0.0
+    
     // 2次Butterworth, fc=3Hz, fs=50Hz の係数 (bilinear transform)
     private let bwB0: Double = 0.02008337
     private let bwB1: Double = 0.04016673
     private let bwB2: Double = 0.02008337
     private let bwA1: Double = -1.56101808
     private let bwA2: Double =  0.64135154
-
-    // フィルタ後の現在値・前値（ゼロクロッシング検出用）
-    private var filteredCur: Double = 0.0
-    private var filteredPrev: Double = 0.0
 
     // MARK: - 負ピーク検出用（キャッチ候補の谷を探す）
     // NK SpeedCoach / CrewNerd 方式:
@@ -59,12 +76,18 @@ class MotionManager: ObservableObject {
     private var troughMinValue: Double = 0.0  // 谷の最小値（最も負の値）
     private var troughTimestamp: Date = Date() // 谷の最小値が現れた時刻
     private var strokePolarity: Double = 0.0  // ストローク（キャッチ）時の加速度極性（+1.0 または -1.0）
+    private var polarityCandidateSign: Double = 0.0
+    private var polarityCandidateStreak: Int = 0
+    private var polaritySetAt: Date? = nil
+    private var isPolarityConfirmed: Bool = false
 
     // MARK: - 固定のキャッチ感度閾値
     private let fixedThreshold: Double = 0.06
+    private let spmInactivityTimeout: TimeInterval = 6.5
 
     @Published var spm: Int = 0
     @Published var strokeCount: Int = 0
+    var onStrokeDetected: (() -> Void)?
 
     /// セッション中の有効なSPMサンプルの平均値
     var averageSPM: Int {
@@ -81,66 +104,97 @@ class MotionManager: ObservableObject {
             return
         }
 
-        // 起動時に極性を初期化
+        // 起動時に極性・分散・フィルタ状態を初期化
         strokePolarity = 0.0
+        polarityCandidateSign = 0.0
+        polarityCandidateStreak = 0
+        polaritySetAt = nil
+        isPolarityConfirmed = false
+        varianceX = 0.0
+        varianceY = 0.0
+        varianceZ = 0.0
 
-        // 動的軸選択用の変数
-        var varianceX = 0.0
-        var varianceY = 0.0
-        var varianceZ = 0.0
         let alpha = 0.01 // 50Hzで約2秒の時定数
 
         motionManager.deviceMotionUpdateInterval = updateInterval
         motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, error in
             guard let self = self, let motion = motion else { return }
             
-            // 各軸の振幅（絶対値）の指数移動平均を計算
-            varianceX = varianceX * (1 - alpha) + abs(motion.userAcceleration.x) * alpha
-            varianceY = varianceY * (1 - alpha) + abs(motion.userAcceleration.y) * alpha
-            varianceZ = varianceZ * (1 - alpha) + abs(motion.userAcceleration.z) * alpha
+            let ax = motion.userAcceleration.x
+            let ay = motion.userAcceleration.y
+            let az = motion.userAcceleration.z
             
-            // 最も動きが大きい（振幅が大きい）軸を進行方向として動的に選択
-            let maxVar = max(varianceX, max(varianceY, varianceZ))
-            let activeAcceleration: Double
-            if maxVar == varianceX {
-                activeAcceleration = motion.userAcceleration.x
-            } else if maxVar == varianceY {
-                activeAcceleration = motion.userAcceleration.y
-            } else {
-                activeAcceleration = motion.userAcceleration.z
+            // 全軸を独立したButterworthフィルタで常時平滑化 (M-7)
+            let fx = self.axisFilters[0].apply(raw: ax, b0: self.bwB0, b1: self.bwB1, b2: self.bwB2, a1: self.bwA1, a2: self.bwA2)
+            let fy = self.axisFilters[1].apply(raw: ay, b0: self.bwB0, b1: self.bwB1, b2: self.bwB2, a1: self.bwA1, a2: self.bwA2)
+            let fz = self.axisFilters[2].apply(raw: az, b0: self.bwB0, b1: self.bwB1, b2: self.bwB2, a1: self.bwA1, a2: self.bwA2)
+            let filteredAxes = [fx, fy, fz]
+            
+            // 各軸の振幅の指数移動平均を更新
+            self.varianceX = self.varianceX * (1 - alpha) + abs(ax) * alpha
+            self.varianceY = self.varianceY * (1 - alpha) + abs(ay) * alpha
+            self.varianceZ = self.varianceZ * (1 - alpha) + abs(az) * alpha
+            let variances = [self.varianceX, self.varianceY, self.varianceZ]
+            
+            // ヒステリシス付き動的軸選択
+            if let bestIdx = variances.enumerated().max(by: { $0.element < $1.element })?.offset {
+                let currentVar = variances[self.activeAxisIndex]
+                if bestIdx != self.activeAxisIndex && variances[bestIdx] > currentVar * 1.15 {
+                    self.activeAxisIndex = bestIdx
+                }
             }
             
-            // スマホがどの向きに固定されても、一番大きく揺れている軸の加速度を使用
-            self.processAccelerometerData(activeAcceleration)
+            let active = filteredAxes[self.activeAxisIndex]
+            self.processFilteredAcceleration(prev: active.prev, cur: active.cur)
         }
     }
 
     // MARK: - センサーデータ処理
 
-    private func processAccelerometerData(_ rawY: Double) {
-        // 1. 2次Butterworthローパスフィルタ適用（ノイズ除去、ストローク周波数は通過）
-        let filtered = applyButterworthLPF(rawY)
-
-        // 前サンプルを保存して更新
-        filteredPrev = filteredCur
-        filteredCur = filtered
-
-        // キャッチ感度閾値: 固定値 (0.05G)
+    private func processFilteredAcceleration(prev: Double, cur: Double) {
+        let now = Date()
+        
+        // 停止時はタイムアウトでSPMを0に戻す (M-7)
+        if spm > 0, let lastCatch = strokeTimestamps.last, now.timeIntervalSince(lastCatch) > spmInactivityTimeout {
+            spm = 0
+            strokePhase = .idle
+        }
+        
         let threshold = fixedThreshold
 
-        // 初回の閾値超過時に、キャッチの加速度極性を自動決定
+        // 極性決定: 1サンプルのノイズで誤固定しないよう、3サンプル連続の閾値超過で仮決定し、
+        // ストロークが確定するまでは3秒経過でリセット可能とする (M-7)
         if strokePolarity == 0.0 {
-            if abs(filteredCur) > threshold {
-                strokePolarity = filteredCur >= 0 ? 1.0 : -1.0
+            if abs(cur) > threshold {
+                let sign = cur >= 0 ? 1.0 : -1.0
+                if sign == polarityCandidateSign {
+                    polarityCandidateStreak += 1
+                } else {
+                    polarityCandidateSign = sign
+                    polarityCandidateStreak = 1
+                }
+                if polarityCandidateStreak >= 3 {
+                    strokePolarity = sign
+                    polaritySetAt = now
+                }
             } else {
-                // 極性が未定かつ閾値以下の場合は処理をスキップ
-                return
+                polarityCandidateStreak = 0
+                polarityCandidateSign = 0.0
             }
+            if strokePolarity == 0.0 { return }
+        } else if !isPolarityConfirmed, let setAt = polaritySetAt, now.timeIntervalSince(setAt) > 3.0 {
+            // 仮決定後3秒以内に有効なストロークが確定しなかった場合はノイズ誤判定とみなし再判定
+            strokePolarity = 0.0
+            polarityCandidateSign = 0.0
+            polarityCandidateStreak = 0
+            polaritySetAt = nil
+            strokePhase = .idle
+            return
         }
 
         // スマホの向きに関わらず「ドライブ時に正、キャッチ時に負」になるよう極性を適用
-        let polarizedCur = filteredCur * strokePolarity
-        let polarizedPrev = filteredPrev * strokePolarity
+        let polarizedCur = cur * strokePolarity
+        let polarizedPrev = prev * strokePolarity
 
         // ゼロクロッシング解除のヒステリシス（感度の15% = ゼロライン付近のチャタリング防止）
         let zeroCrossHysteresis = threshold * 0.15
@@ -152,7 +206,7 @@ class MotionManager: ObservableObject {
             if polarizedCur < -threshold {
                 strokePhase = .inTrough
                 troughMinValue = polarizedCur
-                troughTimestamp = Date()
+                troughTimestamp = now
             }
             // 閾値を上回る正の値を検出 → ドライブ中
             else if polarizedCur > threshold {
@@ -163,7 +217,7 @@ class MotionManager: ObservableObject {
             // 谷の最小値を追跡
             if polarizedCur < troughMinValue {
                 troughMinValue = polarizedCur
-                troughTimestamp = Date()
+                troughTimestamp = now
             }
 
             // ゼロクロッシング (負→正): 谷を過ぎてキャッチが始まった瞬間
@@ -184,19 +238,6 @@ class MotionManager: ObservableObject {
                 strokePhase = .idle
             }
         }
-    }
-
-    // MARK: - 2次Butterworthローパスフィルタ（差分方程式実装）
-    // カットオフ周波数 3Hz, サンプリング 50Hz
-    // y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
-    private func applyButterworthLPF(_ x: Double) -> Double {
-        let y = bwB0 * x + bwB1 * bw_x1 + bwB2 * bw_x2
-                         - bwA1 * bw_y1 - bwA2 * bw_y2
-        bw_x2 = bw_x1
-        bw_x1 = x
-        bw_y2 = bw_y1
-        bw_y1 = y
-        return y
     }
 
     // MARK: - ストローク登録 & SPM計算
@@ -220,6 +261,9 @@ class MotionManager: ObservableObject {
 
         strokeTimestamps.append(catchTime)
         strokeCount += 1
+        if strokeCount >= 2 {
+            isPolarityConfirmed = true
+        }
 
         // SPM計算: Rowing in Motion / 研究論文方式
         // 直近4ストロークのキャッチ間隔の中央値を使用
@@ -228,6 +272,8 @@ class MotionManager: ObservableObject {
         // 30秒以上前の古いタイムスタンプを削除
         let cutoff = catchTime.addingTimeInterval(-30)
         strokeTimestamps = strokeTimestamps.filter { $0 >= cutoff }
+
+        onStrokeDetected?()
     }
 
     private func updateSPM() {
@@ -281,14 +327,19 @@ class MotionManager: ObservableObject {
         spmSamples.removeAll()
         spm = 0
         strokeCount = 0
-        // フィルタ状態リセット
-        bw_x1 = 0.0; bw_x2 = 0.0
-        bw_y1 = 0.0; bw_y2 = 0.0
-        filteredCur = 0.0
-        filteredPrev = 0.0
+        // 全軸フィルタ状態リセット
+        axisFilters = [AxisFilterState(), AxisFilterState(), AxisFilterState()]
+        activeAxisIndex = 1
+        varianceX = 0.0
+        varianceY = 0.0
+        varianceZ = 0.0
         // 位相リセット
         strokePhase = .idle
         troughMinValue = 0.0
         strokePolarity = 0.0
+        polarityCandidateSign = 0.0
+        polarityCandidateStreak = 0
+        polaritySetAt = nil
+        isPolarityConfirmed = false
     }
 }

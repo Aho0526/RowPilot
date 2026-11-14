@@ -101,12 +101,17 @@ class WeatherManager: ObservableObject {
                 self.weatherCode = currentWeather["weathercode"] as? Int
                 self.temperature = currentWeather["temperature"] as? Double
                 
-                // 現在時刻に最も近い降水確率を取得
+                // 現在時刻(yyyy-MM-ddTHH)に一致する時間の降水確率を取得 (M-8)
                 if let hourly = json["hourly"] as? [String: Any],
                    let times = hourly["time"] as? [String],
                    let probs = hourly["precipitation_probability"] as? [Int] {
                     let currentTimeStr = currentWeather["time"] as? String ?? ""
-                    if let idx = times.firstIndex(where: { $0 == currentTimeStr }) {
+                    let hourPrefix = String(currentTimeStr.prefix(13))
+                    if !hourPrefix.isEmpty,
+                       let idx = times.firstIndex(where: { $0.hasPrefix(hourPrefix) }),
+                       idx < probs.count {
+                        self.precipitationProbability = probs[idx]
+                    } else if let idx = times.firstIndex(where: { $0 == currentTimeStr }), idx < probs.count {
                         self.precipitationProbability = probs[idx]
                     } else if !probs.isEmpty {
                         self.precipitationProbability = probs[0]

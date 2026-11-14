@@ -295,25 +295,43 @@ struct PracticeWorkoutView: View {
                 let time = ergManager.targetTime
                 let calories = ergManager.targetCalories
                 let split = dist != nil ? ergManager.targetSplitDistance : (time != nil ? ergManager.targetSplitTime : ergManager.targetSplitCalories)
+                let rest = ergManager.targetRestSeconds
+                let varIntervals = ergManager.targetVariableIntervals
                 saveCurrentRecord()
                 stopRaceTimer()
                 raceElapsedTime = 0
                 myFinishTime = nil
                 ghostFinishTime = nil
                 splits = []
-                ergManager.resetAndStartWorkout(distance: dist, time: time, calories: calories, split: split)
+                ergManager.resetAndStartWorkout(
+                    distance: dist,
+                    time: time,
+                    calories: calories,
+                    split: split,
+                    restSeconds: rest,
+                    variableIntervals: varIntervals
+                )
             }
             Button("Discard and Repeat".localized, role: .destructive) {
                 let dist = ergManager.targetDistance
                 let time = ergManager.targetTime
                 let calories = ergManager.targetCalories
                 let split = dist != nil ? ergManager.targetSplitDistance : (time != nil ? ergManager.targetSplitTime : ergManager.targetSplitCalories)
+                let rest = ergManager.targetRestSeconds
+                let varIntervals = ergManager.targetVariableIntervals
                 stopRaceTimer()
                 raceElapsedTime = 0
                 myFinishTime = nil
                 ghostFinishTime = nil
                 splits = []
-                ergManager.resetAndStartWorkout(distance: dist, time: time, calories: calories, split: split)
+                ergManager.resetAndStartWorkout(
+                    distance: dist,
+                    time: time,
+                    calories: calories,
+                    split: split,
+                    restSeconds: rest,
+                    variableIntervals: varIntervals
+                )
             }
             Button("Cancel".localized, role: .cancel) {}
         } message: {
@@ -651,6 +669,8 @@ struct PracticeWorkoutView: View {
         let projectedDist: Double = {
             if let targetDist = ergManager.targetDistance {
                 return targetDist
+            } else if ergManager.projectedWorkDistance > 0 {
+                return ergManager.projectedWorkDistance
             } else if let targetTime = ergManager.targetTime {
                 return speed > 0 ? (ergManager.distance + speed * max(targetTime - ergManager.elapsedTime, 0)) : ergManager.distance
             }
@@ -727,20 +747,46 @@ struct PracticeWorkoutView: View {
     private func updateSplits() {
         let dist = ergManager.distance
         let time = ergManager.elapsedTime
-
-        let isDistance = ergManager.targetDistance != nil
-        let splitSize = isDistance
-            ? Double(ergManager.targetSplitDistance ?? 500)
-            : Double(ergManager.targetSplitTime ?? 120)
-
-        guard splitSize > 0 else { return }
-
-        let currentInterval = isDistance
-            ? Int(dist / splitSize)
-            : Int(time / splitSize)
+        guard dist > 0 || time > 0 else { return }
 
         if splits.isEmpty {
             splits = [WorkoutSplit(number: 1, time: 0, distance: 0, averagePace: 0, spm: 0, heartRate: ergManager.heartRate > 0 ? "\(ergManager.heartRate)" : "-")]
+        }
+
+        // インターバル時は完了インターバル数を基準にスプリット境界を管理 (C-8)
+        let currentInterval: Int
+        let isIntervalMode = ergManager.isIntervalWorkout
+        if isIntervalMode {
+            let activeIdx = ergManager.currentMachineState == .finished
+                ? max(ergManager.completedIntervalCount - 1, 0)
+                : ergManager.completedIntervalCount
+            currentInterval = activeIdx
+        } else {
+            let isDistance = ergManager.targetDistance != nil
+            let splitSize = isDistance
+                ? Double(ergManager.targetSplitDistance ?? 500)
+                : Double(ergManager.targetSplitTime ?? 120)
+            guard splitSize > 0 else { return }
+
+            let rawInterval: Int
+            let maxIntervals: Int
+            if isDistance {
+                rawInterval = Int(dist / splitSize)
+                if let targetDist = ergManager.targetDistance, targetDist > 0 {
+                    maxIntervals = max(Int(ceil(targetDist / splitSize)), 1)
+                } else {
+                    maxIntervals = Int.max
+                }
+            } else {
+                rawInterval = Int(time / splitSize)
+                if let targetTime = ergManager.targetTime, targetTime > 0 {
+                    maxIntervals = max(Int(ceil(targetTime / splitSize)), 1)
+                } else {
+                    maxIntervals = Int.max
+                }
+            }
+            // ゴール到達時に余分な空スプリット行を追加しない (M-6)
+            currentInterval = min(rawInterval, maxIntervals - 1)
         }
 
         while splits.count <= currentInterval {
@@ -749,14 +795,33 @@ struct PracticeWorkoutView: View {
                 let prevTotalTime = splits.prefix(prevIdx).reduce(0.0) { $0 + $1.time }
                 let prevTotalDist = splits.prefix(prevIdx).reduce(0.0) { $0 + $1.distance }
 
-                if isDistance {
-                    splits[prevIdx].distance = splitSize
+                if isIntervalMode {
                     splits[prevIdx].time = max(time - prevTotalTime, 0)
-                } else {
-                    splits[prevIdx].time = splitSize
                     splits[prevIdx].distance = max(dist - prevTotalDist, 0)
+                } else {
+                    let isDistance = ergManager.targetDistance != nil
+                    let splitSize = isDistance
+                        ? Double(ergManager.targetSplitDistance ?? 500)
+                        : Double(ergManager.targetSplitTime ?? 120)
+                    if isDistance {
+                        let rawDeltaDist = max(dist - prevTotalDist, 0)
+                        let rawDeltaTime = max(time - prevTotalTime, 0)
+                        let clampedDist = min(splitSize, rawDeltaDist)
+                        let ratio = rawDeltaDist > 0 ? min(clampedDist / rawDeltaDist, 1.0) : 1.0
+                        splits[prevIdx].distance = clampedDist
+                        splits[prevIdx].time = rawDeltaTime * ratio
+                    } else {
+                        let rawDeltaDist = max(dist - prevTotalDist, 0)
+                        let rawDeltaTime = max(time - prevTotalTime, 0)
+                        let clampedTime = min(splitSize, rawDeltaTime)
+                        let ratio = rawDeltaTime > 0 ? min(clampedTime / rawDeltaTime, 1.0) : 1.0
+                        splits[prevIdx].time = clampedTime
+                        splits[prevIdx].distance = rawDeltaDist * ratio
+                    }
                 }
-                splits[prevIdx].averagePace = splits[prevIdx].distance > 0 ? (500.0 / (splits[prevIdx].distance / splits[prevIdx].time)) : 0
+                let pDist = splits[prevIdx].distance
+                let pTime = splits[prevIdx].time
+                splits[prevIdx].averagePace = (pDist > 0 && pTime > 0) ? (500.0 / (pDist / pTime)) : 0
                 splits[prevIdx].spm = ergManager.strokeRate
                 splits[prevIdx].heartRate = ergManager.heartRate > 0 ? "\(ergManager.heartRate)" : "-"
             }
@@ -781,7 +846,7 @@ struct PracticeWorkoutView: View {
 
             splits[curIdx].time = curTime
             splits[curIdx].distance = curDist
-            splits[curIdx].averagePace = curDist > 0 ? (500.0 / (curDist / curTime)) : 0
+            splits[curIdx].averagePace = (curDist > 0 && curTime > 0) ? (500.0 / (curDist / curTime)) : 0
             splits[curIdx].spm = ergManager.strokeRate
             splits[curIdx].heartRate = ergManager.heartRate > 0 ? "\(ergManager.heartRate)" : "-"
         }
@@ -841,23 +906,26 @@ struct PracticeWorkoutView: View {
     }
 
     private func formatDuration(_ seconds: Double) -> String {
-        let minutes = Int(seconds) / 60
-        let remainingSeconds = seconds.truncatingRemainder(dividingBy: 60)
-        return String(format: "%02d:%04.1f", minutes, remainingSeconds)
+        let totalTenths = max(0, Int((seconds * 10.0).rounded()))
+        let minutes = totalTenths / 600
+        let wholeSeconds = (totalTenths % 600) / 10
+        let tenths = totalTenths % 10
+        return String(format: "%02d:%02d.%d", minutes, wholeSeconds, tenths)
     }
 
     private func formatDurationNoMs(_ seconds: Double) -> String {
-        let totalSeconds = Int(seconds)
+        let totalSeconds = max(0, Int(seconds.rounded()))
         let minutes = totalSeconds / 60
         let remainingSeconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, remainingSeconds)
     }
 
     private func formatDurationSplits(_ seconds: Double) -> String {
-        let totalSeconds = Int(seconds)
-        let minutes = totalSeconds / 60
-        let remainingSeconds = seconds.truncatingRemainder(dividingBy: 60)
-        return String(format: "%d:%04.1f", minutes, remainingSeconds)
+        let totalTenths = max(0, Int((seconds * 10.0).rounded()))
+        let minutes = totalTenths / 600
+        let wholeSeconds = (totalTenths % 600) / 10
+        let tenths = totalTenths % 10
+        return String(format: "%d:%02d.%d", minutes, wholeSeconds, tenths)
     }
 
     private func formatPaceSplits(_ seconds: Double) -> String {
@@ -1776,7 +1844,7 @@ extension PracticeWorkoutView {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(Theme.textSecondary)
                     
-                    Text(String(format: "%@%.1fs (%.1fm)", isYouLeading ? "+" : "-", timeDiff, absDist))
+                    Text(String(format: "%@%.1fs (%.1fm)", isYouLeading ? "-" : "+", timeDiff, absDist))
                         .font(.system(size: 13, weight: .black, design: .monospaced))
                         .foregroundColor(isYouLeading ? .green : .red)
                 }
@@ -1950,9 +2018,10 @@ extension PracticeWorkoutView {
     }
 
     private func selectGhostRecord(_ record: RowingRecord) {
+        let resolved = appViewModel.recordManager.resolvedRecord(record)
         withAnimation {
-            self.selectedGhostRecord = record
-            self.ghostTracker = GhostRaceTracker(record: record)
+            self.selectedGhostRecord = resolved
+            self.ghostTracker = GhostRaceTracker(record: resolved)
             self.raceElapsedTime = 0
             self.myFinishTime = nil
             self.ghostFinishTime = nil

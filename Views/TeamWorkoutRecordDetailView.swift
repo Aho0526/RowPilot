@@ -41,6 +41,17 @@ struct TeamWorkoutRecordDetailView: View {
                             .font(.title2)
                             .fontWeight(.bold)
                             .foregroundColor(.white)
+
+                        if record.isManagerModeRecord {
+                            Label("Manager Mode", systemImage: "person.2.badge.gearshape.fill")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.purple.opacity(0.25))
+                                .foregroundColor(.purple)
+                                .clipShape(Capsule())
+                        }
                         
                         if let date = record.recordedDate {
                             Text(date, style: .date)
@@ -67,8 +78,31 @@ struct TeamWorkoutRecordDetailView: View {
                             statCard(title: "距離".localized, value: record.formattedDistance, icon: "ruler", color: Theme.accent)
                             statCard(title: "時間".localized, value: record.formattedDurationShort, icon: "timer", color: .blue)
                             statCard(title: "500m ペース".localized, value: record.formattedSplit, icon: "speedometer", color: .purple)
-                            statCard(title: "ストロープレート".localized, value: record.stroke_rate.map { "\($0) spm" } ?? "- spm", icon: "waveform.path", color: .orange)
+                            statCard(title: "ストロープレート".localized, value: record.stroke_rate.map { "\(Int($0.rounded())) spm" } ?? "- spm", icon: "waveform.path", color: .orange)
+                            if let watt = record.average_watt {
+                                statCard(title: "平均パワー".localized, value: "\(Int(watt.rounded())) W", icon: "bolt.fill", color: .yellow)
+                            }
+                            if let cal = record.calories, cal > 0 {
+                                statCard(title: "消費カロリー".localized, value: "\(Int(cal.rounded())) kcal", icon: "flame.fill", color: .red)
+                            }
                         }
+                    }
+
+                    if let notes = record.notes, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("メモ".localized)
+                                .font(.headline)
+                                .foregroundColor(.white.opacity(0.8))
+                            Text(notes)
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.85))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                                .background(Color.white.opacity(0.04))
+                                .cornerRadius(12)
+                        }
+                        .padding()
+                        .glassCardStyle(glowColor: .white, opacity: 0.05, cornerRadius: 16)
                     }
                     
                     // Crew Card

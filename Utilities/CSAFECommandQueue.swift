@@ -72,10 +72,31 @@ class CSAFECommandQueue {
     actor DeviceQueue {
         let peripheral: CBPeripheral
         private weak var manager: CSAFECommandQueue?
+        private var isBusy: Bool = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
         
         init(peripheral: CBPeripheral, manager: CSAFECommandQueue) {
             self.peripheral = peripheral
             self.manager = manager
+        }
+        
+        func acquire() async {
+            if !isBusy {
+                isBusy = true
+                return
+            }
+            await withCheckedContinuation { continuation in
+                waiters.append(continuation)
+            }
+        }
+        
+        func release() {
+            if !waiters.isEmpty {
+                let next = waiters.removeFirst()
+                next.resume()
+            } else {
+                isBusy = false
+            }
         }
         
         func enqueue(command: Command) async {
@@ -123,41 +144,75 @@ class CSAFECommandQueue {
         return q
     }
     
+    /// デバイス切断・削除時に保留中のContinuationや状態を解放する
+    func removeDevice(for uuid: UUID) {
+        lock.lock()
+        let pending = continuations.removeValue(forKey: uuid)
+        deviceStates.removeValue(forKey: uuid)
+        deviceQueues.removeValue(forKey: uuid)
+        lock.unlock()
+        pending?.resume(throwing: CancellationError())
+    }
+    
     private func saveContinuation(_ continuation: CheckedContinuation<Void, Error>, for uuid: UUID) {
         lock.lock()
+        let existing = continuations.removeValue(forKey: uuid)
         continuations[uuid] = continuation
         lock.unlock()
+        // 万一既存の未解決Continuationがあればリークを防ぐためキャンセルで解放
+        existing?.resume(throwing: CancellationError())
     }
     
     private func cleanupContinuation(for uuid: UUID) {
         lock.lock()
-        continuations.removeValue(forKey: uuid)
+        let pending = continuations.removeValue(forKey: uuid)
         lock.unlock()
+        pending?.resume(throwing: CancellationError())
     }
     
     /// 非同期でBLE Writeを実行し、タイムアウトと競合させる
-    /// Global write limiter により同時書き込み数を制限
+    /// デバイス単位の直列化 + Global write limiter により同時書き込み数を制限
     func writeAsync(command: Command) async throws {
         let peripheralID = command.peripheral.identifier
+        let deviceQueue = getQueue(for: command.peripheral)
+        
+        // 同一デバイスへの並行書き込みによるContinuation上書きを防止
+        await deviceQueue.acquire()
+        defer { Task { await deviceQueue.release() } }
+        
+        try Task.checkCancellation()
         
         // Global write limiter: 同時 BLE write 数を制限
         await writeLimiter.acquire()
         defer { Task { await writeLimiter.release() } }
+        
+        try Task.checkCancellation()
         
         // タイムアウト付きのタスクグループ
         try await withThrowingTaskGroup(of: Void.self) { group in
             
             // Task 1: 実際のBLE Write待機
             group.addTask {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    self.saveContinuation(continuation, for: peripheralID)
-                    
-                    if command.label != "POLL_STATUS" {
-                        let hex = command.frame.map { String(format: "%02X", $0) }.joined(separator: " ")
-                        print("CSAFEQueue: TX → \(command.peripheral.name ?? "?") [\(command.label)]: \(hex)")
+                try await withTaskCancellationHandler {
+                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                        if Task.isCancelled {
+                            continuation.resume(throwing: CancellationError())
+                            return
+                        }
+                        self.saveContinuation(continuation, for: peripheralID)
+                        
+                        if command.label != "POLL_STATUS" {
+                            let hex = command.frame.map { String(format: "%02X", $0) }.joined(separator: " ")
+                            print("CSAFEQueue: TX → \(command.peripheral.name ?? "?") [\(command.label)]: \(hex)")
+                        }
+                        
+                        command.peripheral.writeValue(command.frame, for: command.characteristic, type: .withResponse)
                     }
-                    
-                    command.peripheral.writeValue(command.frame, for: command.characteristic, type: .withResponse)
+                } onCancel: {
+                    self.lock.lock()
+                    let pending = self.continuations.removeValue(forKey: peripheralID)
+                    self.lock.unlock()
+                    pending?.resume(throwing: CancellationError())
                 }
             }
             
@@ -243,11 +298,14 @@ class CSAFECommandQueue {
     /// キュー内の全コマンドをクリアする
     func cancelAll() {
         lock.lock()
-        for cont in continuations.values {
+        let pendingList = Array(continuations.values)
+        continuations.removeAll()
+        deviceStates.removeAll()
+        deviceQueues.removeAll()
+        lock.unlock()
+        for cont in pendingList {
             cont.resume(throwing: CancellationError())
         }
-        continuations.removeAll()
-        lock.unlock()
         print("CSAFEQueue: ⚠️ All pending commands cancelled")
     }
     

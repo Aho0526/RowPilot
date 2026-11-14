@@ -65,7 +65,32 @@ class RowErgManager: NSObject, ObservableObject {
     @Published var targetSplitDistance: Int? = nil
     @Published var targetSplitTime: Int? = nil
     @Published var targetSplitCalories: Int? = nil
+    @Published var targetRestSeconds: Int? = nil
+    @Published var targetVariableIntervals: [VariableIntervalEntry]? = nil
     @Published var showingWorkoutExecution: Bool = false
+    
+    // Interval & Recording Tracking State (C-8, H-6)
+    @Published var currentWorkoutState: UInt8 = 0
+    @Published var currentIntervalType: UInt8 = 255
+    @Published var isIntervalRest: Bool = false
+    @Published var completedIntervalCount: Int = 0
+    private var accumulatedWorkTime: Double = 0.0
+    private var accumulatedWorkDistance: Double = 0.0
+    private var currentIntervalWorkTime: Double = 0.0
+    private var currentIntervalWorkDistance: Double = 0.0
+    private var isInWorkInterval: Bool = false
+    private var lastRecordedTimeOffset: Double = -1.0
+    private var lastRecordedDistance: Double = -1.0
+    private var lastActiveStrokeAt: Date? = nil
+    private static let inactiveOrRestWorkoutStates: Set<UInt8> = [0, 2, 3, 8, 9, 10, 11, 12, 13]
+    
+    var isIntervalWorkout: Bool {
+        targetRestSeconds != nil
+            || targetVariableIntervals != nil
+            || currentIntervalType != 255
+            || (currentWorkoutState >= 3 && currentWorkoutState <= 9)
+            || completedIntervalCount > 0
+    }
     
     // High-frequency workout data logging
     @Published var workoutDataPoints: [WorkoutDataPoint] = []
@@ -103,7 +128,7 @@ class RowErgManager: NSObject, ObservableObject {
     
     // Force Curve State
     @Published var completedForceCurve: [ForcePoint] = []
-    private var forceCurveBuffer: [UInt8] = []
+    private var forceCurveBuffer: [UInt16] = []
     private var endOfStrokeWorkItem: DispatchWorkItem?
     
     // BLE Research Sandbox
@@ -189,14 +214,16 @@ class RowErgManager: NSObject, ObservableObject {
     }
     
     enum PM5MachineState: UInt8 {
-        case error = 0
-        case ready = 1
-        case idle = 2
-        case service = 3
-        case rowing = 4 // Matches PM5 "In Use"
-        case pause = 5
-        case finished = 6
-        case manual = 7
+        case error = 0x00
+        case ready = 0x01
+        case idle = 0x02
+        case service = 0x03     // HaveID
+        case unassigned = 0x04
+        case rowing = 0x05      // InUse
+        case pause = 0x06
+        case finished = 0x07    // Finish
+        case manual = 0x08
+        case offline = 0x09
         case unknown = 0xFF
         
         var description: String {
@@ -205,10 +232,12 @@ class RowErgManager: NSObject, ObservableObject {
             case .ready: return "Ready"
             case .idle: return "Idle"
             case .service: return "Service"
+            case .unassigned: return "Unassigned"
             case .rowing: return "Rowing"
             case .pause: return "Pause"
             case .finished: return "Finished"
             case .manual: return "Manual"
+            case .offline: return "Offline"
             case .unknown: return "Unknown"
             }
         }
@@ -303,59 +332,9 @@ class RowErgManager: NSObject, ObservableObject {
     /// Note: Checksum includes the 00 Status Byte.
     /// CSAFEフレームを構築し、分割せずに一括で送信する（バイトスタッフィング付き）
     /// Structure: F1 | Stuffed(Payload + Checksum) | F2
+    /// BLE GATT MTU 20バイト制限に対応するため常にチャンク分割送信する
     func sendCSAFESingle(payload: Data, completion: (() -> Void)? = nil) {
-        let checksum = calculateCSAFEChecksum(for: payload)
-        
-        var checksummedPayload = Data()
-        checksummedPayload.append(payload)
-        checksummedPayload.append(checksum)
-        
-        // ペイロード内の特殊バイト (0xF0-0xF3) をエスケープ
-        let stuffed = byteStuff(checksummedPayload)
-        
-        var frame = Data()
-        frame.append(0xF1) // Start Flag
-        frame.append(stuffed)
-        frame.append(0xF2) // Stop Flag
-        
-        let hexFull = frame.map { String(format: "%02X", $0) }.joined(separator: " ")
-        print("RowErgManager: [CSAFE] Single Frame: \(hexFull)")
-        
-        // Check for byte stuffing activity
-        let payloadBytes = [UInt8](payload)
-        let specialBytes = payloadBytes.enumerated().filter { [0xF0, 0xF1, 0xF2, 0xF3].contains($0.element) }
-        if !specialBytes.isEmpty {
-            print("RowErgManager: [CSAFE] ⚠️ Byte stuffing applied for special bytes:")
-            for (idx, byte) in specialBytes {
-                print("  Offset \(idx): 0x\(String(format: "%02X", byte))")
-            }
-        }
-        
-        // Log the TX attempt
-        let logEntry = ResearchLogEntry(
-            timestamp: Date(),
-            type: .tx,
-            content: "[SINGLE] \(hexFull)",
-            machineState: currentMachineState.description
-        )
-        DispatchQueue.main.async {
-            self.researchLogs.insert(logEntry, at: 0)
-        }
-        
-        guard let peripheral = connectedPeripheral,
-              let char = controlCharacteristic else {
-            print("RowErgManager: [CSAFE] Abort - BLE not ready")
-            return
-        }
-        
-        isResearchWriteBusy = true
-        peripheral.writeValue(frame, for: char, type: .withoutResponse)
-        
-        // Cooldown managed for UI/Interaction safety
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.isResearchWriteBusy = false
-            completion?()
-        }
+        sendCSAFEChunked(payload: payload, completion: completion)
     }
     
     /// CSAFEフレームを構築し、20バイトごとに分割して送信する
@@ -429,7 +408,8 @@ class RowErgManager: NSObject, ObservableObject {
         // Busy flag managed by caller usually, but we ensure it here
         isResearchWriteBusy = true
         
-        peripheral.writeValue(chunk, for: char, type: .withoutResponse)
+        let writeType: CBCharacteristicWriteType = char.properties.contains(.write) ? .withResponse : .withoutResponse
+        peripheral.writeValue(chunk, for: char, type: writeType)
         
         // Small delay between chunks to ensure order and processing
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
@@ -625,14 +605,38 @@ class RowErgManager: NSObject, ObservableObject {
     }
     
     private func parseCSAFEStatus(data: Data) {
-        // The instruction implies stripping all CSAFE framing and sending bare minimum [80, 00]
-        // This means the response might just be the status byte directly.
-        // Assuming the first byte is the status byte.
-        guard let statusByte = data.first else {
+        guard !data.isEmpty else {
             print("RowErgManager: parseCSAFEStatus: No data received.")
             return
         }
         print("RowErgManager: parseCSAFEStatus Data Content: \(data.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        
+        // Concept2 CSAFE レスポンスのバイトアンスタッフィングとフレーム剥離
+        let rawBytes = [UInt8](data)
+        var unstuffed: [UInt8] = []
+        var i = 0
+        while i < rawBytes.count {
+            let b = rawBytes[i]
+            if b == 0xF3 && i + 1 < rawBytes.count {
+                unstuffed.append(0xF0 | rawBytes[i + 1])
+                i += 2
+            } else {
+                unstuffed.append(b)
+                i += 1
+            }
+        }
+        guard !unstuffed.isEmpty else { return }
+        
+        let statusByte: UInt8
+        if unstuffed[0] == 0xF0 && unstuffed.count >= 4 {
+            // Extended frame response: F0 [Src] [Dest] [Status] ...
+            statusByte = unstuffed[3]
+        } else if unstuffed[0] == 0xF1 && unstuffed.count >= 2 {
+            // Standard frame response: F1 [Status] ...
+            statusByte = unstuffed[1]
+        } else {
+            statusByte = unstuffed[0]
+        }
         
         let stateValue = statusByte & 0x0F
         print("RowErgManager: Candidate StatusByte=\(String(format: "%02X", statusByte)) -> StateValue=\(stateValue)")
@@ -658,23 +662,39 @@ class RowErgManager: NSObject, ObservableObject {
         let hex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
         print("RowErgManager: [ForceCurve RAW Chunk] \(hex)")
         
-        // ヘッダー情報(1バイト目)とシーケンス番号(2バイト目)を除外
-        guard data.count > 2 else { return }
-        let body = data.dropFirst(2)
+        // Concept2 0x003D 仕様:
+        // byte[0]: upper nibble = total notifications, lower nibble = point count in this packet
+        // byte[1]: sequence number (0-indexed)
+        // byte[2..<2+2*pointCount]: uint16 Little-Endian force samples
+        guard data.count >= 2 else { return }
+        let header = data[0]
+        let totalNotifications = Int((header >> 4) & 0x0F)
+        let pointCount = Int(header & 0x0F)
+        let sequence = Int(data[1])
         
-        // BLEパケットの余白埋め(0x00)や異常値によるデータ間の0を排除し、有効なデータのみ抽出
-        let bytes = [UInt8](body).filter { $0 > 0 }
-        forceCurveBuffer.append(contentsOf: bytes)
+        if sequence == 0 {
+            forceCurveBuffer.removeAll(keepingCapacity: true)
+        }
         
-        // 2. Detect Stroke Completion via Timeout (Debouncing)
+        for i in 0..<pointCount {
+            let offset = 2 + (i * 2)
+            guard offset + 1 < data.count else { break }
+            let sample = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+            forceCurveBuffer.append(sample)
+        }
+        
         endOfStrokeWorkItem?.cancel()
         
+        if totalNotifications > 0 && sequence + 1 >= totalNotifications {
+            processCompletedStroke()
+            return
+        }
+        
+        // パケット欠損等に備えたタイムアウトフォールバック
         let workItem = DispatchWorkItem { [weak self] in
             self?.processCompletedStroke()
         }
         endOfStrokeWorkItem = workItem
-        
-        // If 100ms pass without another packet, assume burst/stroke is complete
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
     }
     
@@ -682,7 +702,7 @@ class RowErgManager: NSObject, ObservableObject {
         guard !forceCurveBuffer.isEmpty else { return }
         
         let finalBuffer = forceCurveBuffer
-        print("RowErgManager: [ForceCurve Full Stroke] Bytes count: \(finalBuffer.count)")
+        print("RowErgManager: [ForceCurve Full Stroke] Samples count: \(finalBuffer.count)")
         forceCurveBuffer.removeAll(keepingCapacity: true)
         
         let curvePoints = convertBufferToForcePoints(buffer: finalBuffer)
@@ -692,7 +712,7 @@ class RowErgManager: NSObject, ObservableObject {
         }
     }
     
-    private func convertBufferToForcePoints(buffer: [UInt8]) -> [ForcePoint] {
+    private func convertBufferToForcePoints(buffer: [UInt16]) -> [ForcePoint] {
         let timeIncrement = 0.015625
         guard !buffer.isEmpty else { return [] }
         
@@ -832,6 +852,19 @@ class RowErgManager: NSObject, ObservableObject {
         self.projectedWorkTime = 0.0
         self.projectedWorkDistance = 0.0
         self.lastStrokeCount = -1
+        self.currentWorkoutState = 0
+        self.currentIntervalType = 255
+        self.isIntervalRest = false
+        self.completedIntervalCount = 0
+        self.accumulatedWorkTime = 0.0
+        self.accumulatedWorkDistance = 0.0
+        self.currentIntervalWorkTime = 0.0
+        self.currentIntervalWorkDistance = 0.0
+        self.isInWorkInterval = false
+        self.lastRecordedTimeOffset = -1.0
+        self.lastRecordedDistance = -1.0
+        self.lastActiveStrokeAt = nil
+        self.forceCurveBuffer.removeAll(keepingCapacity: true)
         self.completedForceCurve = []
         self.workoutDataPoints = []
     }
@@ -849,6 +882,8 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetSplitTime = nil
             self.targetCalories = nil
             self.targetSplitCalories = nil
+            self.targetRestSeconds = nil
+            self.targetVariableIntervals = nil
             self.showingWorkoutExecution = true
             self.clearSessionMetricsForNewWorkout()
         }
@@ -880,6 +915,8 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetSplitDistance = nil
             self.targetCalories = nil
             self.targetSplitCalories = nil
+            self.targetRestSeconds = nil
+            self.targetVariableIntervals = nil
             self.showingWorkoutExecution = true
             self.clearSessionMetricsForNewWorkout()
         }
@@ -915,6 +952,8 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetSplitDistance = nil
             self.targetTime = nil
             self.targetSplitTime = nil
+            self.targetRestSeconds = nil
+            self.targetVariableIntervals = nil
             self.showingWorkoutExecution = true
             self.clearSessionMetricsForNewWorkout()
         }
@@ -1002,6 +1041,8 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetDistance = Double(limitedMeters)
             self.targetTime = nil
             self.targetCalories = nil
+            self.targetRestSeconds = limitedRest
+            self.targetVariableIntervals = nil
             self.showingWorkoutExecution = true
             self.clearSessionMetricsForNewWorkout()
         }
@@ -1023,6 +1064,8 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetTime = Double(limitedSeconds)
             self.targetDistance = nil
             self.targetCalories = nil
+            self.targetRestSeconds = limitedRest
+            self.targetVariableIntervals = nil
             self.showingWorkoutExecution = true
             self.clearSessionMetricsForNewWorkout()
         }
@@ -1044,6 +1087,8 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetCalories = Double(limitedCalories)
             self.targetDistance = nil
             self.targetTime = nil
+            self.targetRestSeconds = limitedRest
+            self.targetVariableIntervals = nil
             self.showingWorkoutExecution = true
             self.clearSessionMetricsForNewWorkout()
         }
@@ -1141,6 +1186,8 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetDistance = nil
             self.targetTime = nil
             self.targetCalories = nil
+            self.targetRestSeconds = nil
+            self.targetVariableIntervals = intervals
             self.showingWorkoutExecution = true
             self.clearSessionMetricsForNewWorkout()
         }
@@ -1154,16 +1201,37 @@ class RowErgManager: NSObject, ObservableObject {
         }
     }
 
-    /// ワークアウトを保存/破棄後に同じ設定で再開する
-    func resetAndStartWorkout(distance: Double?, time: Double?, calories: Double?, split: Int? = nil) {
+    /// ワークアウトを保存/破棄後に同じ設定で再開する（固定・可変インターバルにも対応）
+    func resetAndStartWorkout(
+        distance: Double?,
+        time: Double?,
+        calories: Double?,
+        split: Int? = nil,
+        restSeconds: Int? = nil,
+        variableIntervals: [VariableIntervalEntry]? = nil
+    ) {
         print("RowErgManager: Resetting and queuing new workout with 1s delay")
+        
+        // リセット送信前に現在のインターバル設定も退避
+        let savedRest = restSeconds ?? targetRestSeconds
+        let savedVarIntervals = variableIntervals ?? targetVariableIntervals
         
         // リセット送信し、数値をゼロに戻す (targetDistance/Time/Caloriesは一旦nilになる)
         resetWorkout()
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self = self else { return }
-            if let dist = distance {
+            if let intervals = savedVarIntervals, !intervals.isEmpty {
+                self.setVariableIntervalWorkout(intervals: intervals)
+            } else if let rest = savedRest {
+                if let dist = distance {
+                    self.setFixedIntervalDistance(meters: Int(dist), rest: rest)
+                } else if let t = time {
+                    self.setFixedIntervalTime(seconds: Int(t), rest: rest)
+                } else if let c = calories {
+                    self.setFixedIntervalCalories(calories: Int(c), rest: rest)
+                }
+            } else if let dist = distance {
                 self.setWorkoutDistance(meters: Int(dist), split: split)
             } else if let t = time {
                 self.setWorkoutTime(seconds: Int(t), split: split)
@@ -1183,17 +1251,9 @@ class RowErgManager: NSObject, ObservableObject {
             self.targetTime = nil
             self.targetCalories = nil
             self.targetSplitCalories = nil
-            self.distance = 0
-            self.elapsedTime = 0
-            self.strokeRate = 0
-            self.power = 0
-            self.dragFactor = 0
-            self.heartRate = 0
-            self.totalCalories = 0.0
-            self.averagePower = 0.0
-            self.projectedWorkTime = 0.0
-            self.projectedWorkDistance = 0.0
-            self.lastStrokeCount = -1
+            self.targetRestSeconds = nil
+            self.targetVariableIntervals = nil
+            self.clearSessionMetricsForNewWorkout()
         }
     }
     
@@ -1216,18 +1276,39 @@ class RowErgManager: NSObject, ObservableObject {
     }
     
     private func recordDataPoint() {
-        // Record only when actively rowing (or when time is advancing)
-        guard currentMachineState == .rowing || currentMachineState == .ready || currentMachineState == .idle else { return }
-        
-        let point = WorkoutDataPoint(
-            timeOffset: elapsedTime,
-            pace: pace500m,
-            spm: strokeRate,
-            power: power,
-            distance: distance
-        )
-        
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            let isInactiveWorkout = Self.inactiveOrRestWorkoutStates.contains(self.currentWorkoutState)
+            let isMachineStopped = isInactiveWorkout || self.currentMachineState == .pause || self.currentMachineState == .finished || self.currentMachineState == .ready || self.currentMachineState == .idle
+            
+            // 停止・レスト・終了時は張り付きSPM/Powerを0にリセット (H-6)
+            if isMachineStopped {
+                if self.strokeRate != 0 { self.strokeRate = 0 }
+                if self.power != 0 { self.power = 0 }
+                if isInactiveWorkout && self.pace500m != 0 { self.pace500m = 0 }
+                return
+            }
+            if let lastStroke = self.lastActiveStrokeAt, Date().timeIntervalSince(lastStroke) > 5.0 {
+                if self.strokeRate != 0 { self.strokeRate = 0 }
+                if self.power != 0 { self.power = 0 }
+            }
+            
+            // 実際にローイング中で時間または距離が進んでいる場合のみ記録 (H-6, C-8)
+            guard self.currentMachineState == .rowing else { return }
+            guard self.elapsedTime > 0 || self.distance > 0 else { return }
+            guard self.elapsedTime > self.lastRecordedTimeOffset || self.distance > self.lastRecordedDistance else { return }
+            
+            self.lastRecordedTimeOffset = self.elapsedTime
+            self.lastRecordedDistance = self.distance
+            
+            let point = WorkoutDataPoint(
+                timeOffset: self.elapsedTime,
+                pace: self.pace500m,
+                spm: self.strokeRate,
+                power: self.power,
+                distance: self.distance
+            )
             self.workoutDataPoints.append(point)
         }
     }
@@ -1578,48 +1659,139 @@ extension RowErgManager: CBPeripheralDelegate {
             let distRaw = UInt32(b3) | (UInt32(b4) << 8) | (UInt32(b5) << 16)
             let distMeters = Double(distRaw) * 0.1
             
-            DispatchQueue.main.async {
-                self.generalStatusBytes3to5 = String(format: "%02X %02X %02X", b3, b4, b5)
-                self.distance = distMeters // Update the main distance property
-            }
-            
             let s = data.startIndex
             let timeVal = (UInt32(data[s]) | (UInt32(data[s+1]) << 8) | (UInt32(data[s+2]) << 16))
             let timeSec = Double(timeVal) * 0.01
+            let intervalTypeByte: UInt8? = data.count >= 8 ? data[7] : nil
+            let workoutStateByte: UInt8? = data.count >= 9 ? data[8] : nil
             
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                self.elapsedTime = timeSec
+                self.generalStatusBytes3to5 = String(format: "%02X %02X %02X", b3, b4, b5)
+                if let it = intervalTypeByte { self.currentIntervalType = it }
+                if let ws = workoutStateByte { self.currentWorkoutState = ws }
                 
-                // --- State Inference Logic (Stabilized) ---
-                let now = Date()
-                let commStart = self.communicationStartTime ?? now
-                let elapsedSinceComm = now.timeIntervalSince(commStart)
+                let ws = workoutStateByte ?? self.currentWorkoutState
+                let isWorkState = [1, 4, 5, 6, 7].contains(ws)
+                let isRestState = [3, 8, 9].contains(ws)
+                let isEndState = [10, 11, 12].contains(ws)
+                let isInterval = self.isIntervalWorkout
                 
-                // 1. Stabilization Period: Don't infer anything for the first 2.0s
-                if elapsedSinceComm < 2.0 {
-                    if self.currentMachineState != .ready {
-                        self.currentMachineState = .ready
+                if isWorkState {
+                    self.isIntervalRest = false
+                    if isInterval {
+                        if self.isInWorkInterval &&
+                            (timeSec + 0.5 < self.currentIntervalWorkTime || distMeters + 1.0 < self.currentIntervalWorkDistance) {
+                            self.accumulatedWorkTime += self.currentIntervalWorkTime
+                            self.accumulatedWorkDistance += self.currentIntervalWorkDistance
+                            self.completedIntervalCount += 1
+                        }
+                        self.isInWorkInterval = true
+                        self.currentIntervalWorkTime = timeSec
+                        self.currentIntervalWorkDistance = distMeters
+                        self.elapsedTime = self.accumulatedWorkTime + timeSec
+                        self.distance = self.accumulatedWorkDistance + distMeters
+                    } else {
+                        self.isInWorkInterval = true
+                        self.currentIntervalWorkTime = timeSec
+                        self.currentIntervalWorkDistance = distMeters
+                        self.elapsedTime = timeSec
+                        self.distance = distMeters
                     }
-                    return
-                }
-                
-                // 2. Ready Logic (Metric Side)
-                // Only set Ready if metrics are 0 AND we are NOT already Rowing.
-                // We do NOT promote to Rowing here; only Stroke Data triggers Rowing.
-                if timeSec > 0 || distMeters > 0 {
-                    // Active metrics, but we wait for Stroke Data to confirm Rowing.
-                    // If we are already Rowing, we do nothing (maintain state).
+                    
+                    let now = Date()
+                    let commStart = self.communicationStartTime ?? now
+                    if now.timeIntervalSince(commStart) >= 2.0 && (timeSec > 0 || distMeters > 0) {
+                        if self.currentMachineState != .rowing {
+                            self.currentMachineState = .rowing
+                        }
+                    }
+                } else if isRestState {
+                    self.isIntervalRest = true
+                    if self.isInWorkInterval {
+                        self.accumulatedWorkTime += self.currentIntervalWorkTime
+                        self.accumulatedWorkDistance += self.currentIntervalWorkDistance
+                        self.currentIntervalWorkTime = 0
+                        self.currentIntervalWorkDistance = 0
+                        self.isInWorkInterval = false
+                        self.completedIntervalCount += 1
+                        self.appendBoundaryDataPointIfNeeded()
+                    }
+                    if isInterval {
+                        self.elapsedTime = self.accumulatedWorkTime
+                        self.distance = self.accumulatedWorkDistance
+                    }
+                    self.strokeRate = 0
+                    self.power = 0
+                    self.pace500m = 0
+                    if self.currentMachineState == .rowing {
+                        self.currentMachineState = .pause
+                    }
+                } else if isEndState {
+                    self.isIntervalRest = false
+                    if self.isInWorkInterval {
+                        if isInterval {
+                            let finalWorkTime = max(self.currentIntervalWorkTime, timeSec)
+                            let finalWorkDist = max(self.currentIntervalWorkDistance, distMeters)
+                            self.accumulatedWorkTime += finalWorkTime
+                            self.accumulatedWorkDistance += finalWorkDist
+                            self.elapsedTime = self.accumulatedWorkTime
+                            self.distance = self.accumulatedWorkDistance
+                        } else {
+                            self.elapsedTime = max(self.elapsedTime, timeSec)
+                            self.distance = max(self.distance, distMeters)
+                        }
+                        self.currentIntervalWorkTime = 0
+                        self.currentIntervalWorkDistance = 0
+                        self.isInWorkInterval = false
+                        self.completedIntervalCount += 1
+                        self.appendBoundaryDataPointIfNeeded()
+                    }
+                    self.strokeRate = 0
+                    self.power = 0
+                    if self.currentMachineState != .finished {
+                        self.currentMachineState = .finished
+                    }
                 } else {
-                    // Metrics are clear (0.0)
-                    // If we are NOT Rowing, we can go to Ready.
-                    if self.currentMachineState != .rowing && self.currentMachineState != .ready {
-                        print("RowErgManager: 🧠 Inferring 'Ready' state (Metrics are zero)")
-                        self.currentMachineState = .ready
+                    self.isIntervalRest = false
+                    if data.count < 9 {
+                        self.elapsedTime = timeSec
+                        self.distance = distMeters
+                    }
+                    
+                    let now = Date()
+                    let commStart = self.communicationStartTime ?? now
+                    let elapsedSinceComm = now.timeIntervalSince(commStart)
+                    if elapsedSinceComm < 2.0 {
+                        if self.currentMachineState != .ready {
+                            self.currentMachineState = .ready
+                        }
+                        return
+                    }
+                    if timeSec == 0 && distMeters == 0 {
+                        if self.currentMachineState != .rowing && self.currentMachineState != .ready {
+                            self.currentMachineState = .ready
+                        }
                     }
                 }
             }
         }
+    }
+    
+    private func appendBoundaryDataPointIfNeeded() {
+        guard elapsedTime > 0 || distance > 0 else { return }
+        guard elapsedTime > lastRecordedTimeOffset || distance > lastRecordedDistance else { return }
+        lastRecordedTimeOffset = elapsedTime
+        lastRecordedDistance = distance
+        workoutDataPoints.append(
+            WorkoutDataPoint(
+                timeOffset: elapsedTime,
+                pace: pace500m,
+                spm: strokeRate,
+                power: power,
+                distance: distance
+            )
+        )
     }
 
     private func parseRowingStatus0x32(_ data: Data) {
@@ -1633,9 +1805,20 @@ extension RowErgManager: CBPeripheralDelegate {
         
         DispatchQueue.main.async {
             self.heartRate = hr
+            let isInactive = Self.inactiveOrRestWorkoutStates.contains(self.currentWorkoutState)
+                || self.currentMachineState == .pause
+                || self.currentMachineState == .finished
+            
+            if isInactive {
+                self.strokeRate = 0
+                self.power = 0
+                self.pace500m = 0.0
+                return
+            }
+            
+            self.strokeRate = rate
             if rate > 0 {
-                self.strokeRate = rate
-                
+                self.lastActiveStrokeAt = Date()
                 // Active stroke detected -> definitely rowing
                 if self.currentMachineState != .rowing {
                     let now = Date()
@@ -1646,13 +1829,11 @@ extension RowErgManager: CBPeripheralDelegate {
                         self.currentMachineState = .rowing
                     }
                 }
+            } else {
+                self.power = 0
             }
             
-            if paceRaw > 0 {
-                self.pace500m = paceSec
-            } else {
-                self.pace500m = 0.0
-            }
+            self.pace500m = paceRaw > 0 ? paceSec : 0.0
         }
     }
 
@@ -1682,11 +1863,23 @@ extension RowErgManager: CBPeripheralDelegate {
             let watts = Int(wattsRaw)
             
             DispatchQueue.main.async {
-                self.power = watts
+                let isInactive = Self.inactiveOrRestWorkoutStates.contains(self.currentWorkoutState)
+                    || self.currentMachineState == .pause
+                    || self.currentMachineState == .finished
+                if isInactive {
+                    self.power = 0
+                } else {
+                    self.power = watts
+                    if watts > 0 {
+                        self.lastActiveStrokeAt = Date()
+                    }
+                }
             }
         }
         
-        // Projected Work Time: bytes 9-11, Projected Work Distance: bytes 12-14
+        // Concept2 0x0036 仕様:
+        // Bytes 9-11: Projected Work Time (1s単位, uint24 LE)
+        // Bytes 12-14: Projected Work Distance (1m単位, uint24 LE)
         if data.count >= 15 {
             let timeRaw = UInt32(data[9]) | (UInt32(data[10]) << 8) | (UInt32(data[11]) << 16)
             let distRaw = UInt32(data[12]) | (UInt32(data[13]) << 8) | (UInt32(data[14]) << 16)

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CloudflareTeamListView: View {
-    @StateObject private var viewModel = CloudflareTeamViewModel()
+    @ObservedObject private var viewModel = CloudflareTeamViewModel.shared
     @ObservedObject private var subManager = SubscriptionManager.shared
     @State private var teamToDelete: Team?
     @State private var showDeleteConfirm = false
@@ -24,6 +24,12 @@ struct CloudflareTeamListView: View {
     @State private var showRejectConfirm = false
     @State private var memberToKick: CloudflareUser?
     @State private var showKickConfirm = false
+    @State private var memberToTransferOwnership: CloudflareUser?
+    @State private var showTransferOwnershipConfirm = false
+    @State private var memberToResetAuth: CloudflareUser?
+    @State private var showResetAuthConfirm = false
+    @State private var showResetInviteConfirm = false
+    @State private var showAuthResetDoneAlert = false
     
     // Polling
     @State private var pollingTimer: Timer?
@@ -49,51 +55,22 @@ struct CloudflareTeamListView: View {
     }
     
     private var alertsContent: some View {
+        teamAlertsContent
+            .sheet(isPresented: $showSubscriptionSheet) {
+                SubscriptionView()
+            }
+            .sheet(isPresented: $showMembersSheet) {
+                membersManagementSheet
+            }
+    }
+
+    private var navigationConfiguredContent: some View {
         mainContent
             .navigationTitle("チーム管理".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 16) {
-                        if let team = viewModel.myTeam {
-                            Menu {
-                                Text("招待コード: \(team.invite_code)")
-                                Button("コピーする", systemImage: "doc.on.doc") {
-                                    UIPasteboard.general.string = team.invite_code
-                                    withAnimation {
-                                        showCopiedBanner = true
-                                    }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                        withAnimation {
-                                            showCopiedBanner = false
-                                        }
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: "key.fill").foregroundColor(Theme.accent)
-                            }
-                            
-                            Button(action: { showMembersSheet = true }) {
-                                ZStack(alignment: .topTrailing) {
-                                    Image(systemName: "person.2.fill").foregroundColor(Theme.secondaryAccent)
-                                    let pendingCount = viewModel.members.filter { $0.role == "pending" }.count
-                                    if pendingCount > 0 {
-                                        Text("\(pendingCount)")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 4)
-                                            .padding(.vertical, 1)
-                                            .background(Color.red)
-                                            .clipShape(Capsule())
-                                            .offset(x: 8, y: -6)
-                                    }
-                                }
-                            }
-                        }
-                        Button(action: { Task { await viewModel.refreshMyTeamStatus() } }) {
-                            Image(systemName: "arrow.clockwise").foregroundColor(Theme.accent)
-                        }
-                    }
+                    trailingToolbarButtons
                 }
             }
             .task { await initialLoad() }
@@ -103,6 +80,60 @@ struct CloudflareTeamListView: View {
             }
             .onChange(of: viewModel.myRole) { _, newRole in handleRoleChange(newRole: newRole) }
             .onChange(of: viewModel.errorMessage) { _, error in if error != nil { showErrorAlert = true } }
+    }
+
+    @ViewBuilder
+    private var trailingToolbarButtons: some View {
+        HStack(spacing: 16) {
+            if let team = viewModel.myTeam {
+                Menu {
+                    Text("招待コード: \(team.invite_code)")
+                    Button("コピーする", systemImage: "doc.on.doc") {
+                        UIPasteboard.general.string = team.invite_code
+                        withAnimation {
+                            showCopiedBanner = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            withAnimation {
+                                showCopiedBanner = false
+                            }
+                        }
+                    }
+                    if (viewModel.myRole == "owner" || viewModel.myRole == "admin") && !team.isSuspended {
+                        Divider()
+                        Button("招待コードを再生成", systemImage: "arrow.triangle.2.circlepath") {
+                            showResetInviteConfirm = true
+                        }
+                    }
+                } label: {
+                    Image(systemName: "key.fill").foregroundColor(Theme.accent)
+                }
+
+                Button(action: { showMembersSheet = true }) {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "person.2.fill").foregroundColor(Theme.secondaryAccent)
+                        let pendingCount = viewModel.members.filter { $0.role == "pending" }.count
+                        if pendingCount > 0 {
+                            Text("\(pendingCount)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.red)
+                                .clipShape(Capsule())
+                                .offset(x: 8, y: -6)
+                        }
+                    }
+                }
+            }
+            Button(action: { Task { await viewModel.refreshMyTeamStatus() } }) {
+                Image(systemName: "arrow.clockwise").foregroundColor(Theme.accent)
+            }
+        }
+    }
+
+    private var teamAlertsContent: some View {
+        navigationConfiguredContent
             .alert("エラー", isPresented: $showErrorAlert) {
                 Button("OK", role: .cancel) { viewModel.errorMessage = nil }
             } message: {
@@ -146,9 +177,6 @@ struct CloudflareTeamListView: View {
             } message: {
                 Text("チームの作成・管理機能を利用するには、TeamプランまたはMAXプランへのご加入が必要です。")
             }
-            .sheet(isPresented: $showSubscriptionSheet) {
-                SubscriptionView()
-            }
             .alert("チーム名の変更", isPresented: $showRenameAlert) {
                 TextField("新しいチーム名を入力", text: $renameText)
                 Button("保存") {
@@ -165,50 +193,105 @@ struct CloudflareTeamListView: View {
             } message: {
                 Text("チームの新しい名前を入力してください。")
             }
-            .sheet(isPresented: $showMembersSheet) {
-                NavigationStack {
-                    ZStack {
-                        Theme.background.ignoresSafeArea()
-                        ScrollView {
-                            if let team = viewModel.myTeam {
-                                VStack(spacing: 20) {
-                                    if viewModel.myRole == "owner" || viewModel.myRole == "admin" {
-                                        pendingSection(team: team)
-                                    }
-                                    activeMembersList(team: team)
+            .alert("招待コードの再生成", isPresented: $showResetInviteConfirm) {
+                Button("再生成する", role: .destructive) {
+                    if let teamID = viewModel.myTeam?.id {
+                        Task {
+                            if let newCode = await viewModel.resetInviteCode(teamID: teamID) {
+                                UIPasteboard.general.string = newCode
+                                withAnimation { showCopiedBanner = true }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                    withAnimation { showCopiedBanner = false }
                                 }
-                                .padding()
                             }
                         }
                     }
-                    .navigationTitle("メンバー管理")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("閉じる") { showMembersSheet = false }
+                }
+                Button("キャンセル", role: .cancel) {}
+            } message: {
+                Text("現在の招待コードは無効になります。新しい招待コードを発行しますか？")
+            }
+    }
+
+    private var membersManagementSheet: some View {
+        NavigationStack {
+            membersManagementBase
+                .alert("エラー", isPresented: $showErrorAlert) {
+                    Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+                } message: {
+                    Text(viewModel.errorMessage ?? "不明なエラーが発生しました")
+                }
+                .alert("オーナー権限の移譲", isPresented: $showTransferOwnershipConfirm, presenting: memberToTransferOwnership) { member in
+                    Button("移譲する", role: .destructive) {
+                        if let teamID = viewModel.myTeam?.id {
+                            Task {
+                                _ = await viewModel.transferOwnership(teamID: teamID, targetUserID: member.id)
+                            }
                         }
                     }
-                    .memberApprovalAlerts(
-                        showApproveConfirm: $showApproveConfirm,
-                        memberToApprove: $memberToApprove,
-                        showRejectConfirm: $showRejectConfirm,
-                        memberToReject: $memberToReject,
-                        showKickConfirm: $showKickConfirm,
-                        memberToKick: $memberToKick,
-                        showMemberOptions: $showMemberOptions,
-                        selectedMember: $selectedMember,
-                        onApprove: approveRequest,
-                        onReject: rejectRequest,
-                        onKick: kickMember,
-                        menuContent: memberMenuContentAsAnyView
-                    )
-                    .alert("エラー", isPresented: $showErrorAlert) {
-                        Button("OK", role: .cancel) { viewModel.errorMessage = nil }
-                    } message: {
-                        Text(viewModel.errorMessage ?? "不明なエラーが発生しました")
+                    Button("キャンセル", role: .cancel) {}
+                } message: { member in
+                    Text("\(member.display_name) にチームオーナー権限を移譲しますか？\n現在のオーナーは管理者へと変更されます。")
+                }
+                .alert("端末認証ロックの解除", isPresented: $showResetAuthConfirm, presenting: memberToResetAuth) { member in
+                    Button("解除する", role: .destructive) {
+                        if let teamID = viewModel.myTeam?.id {
+                            Task {
+                                let ok = await viewModel.resetMemberAuth(teamID: teamID, userID: member.id)
+                                if ok {
+                                    showAuthResetDoneAlert = true
+                                }
+                            }
+                        }
                     }
+                    Button("キャンセル", role: .cancel) {}
+                } message: { member in
+                    Text("\(member.display_name) が新しい端末から再認証できるようにロックを解除しますか？")
+                }
+                .alert("端末認証を解除しました", isPresented: $showAuthResetDoneAlert) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text("対象メンバーは次回アプリ起動または更新時にこのアカウントへ再ログインできるようになります。")
+                }
+        }
+    }
+
+    private var membersManagementBase: some View {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            ScrollView {
+                if let team = viewModel.myTeam {
+                    VStack(spacing: 20) {
+                        if viewModel.myRole == "owner" || viewModel.myRole == "admin" {
+                            pendingSection(team: team)
+                        }
+                        activeMembersList(team: team)
+                    }
+                    .padding()
                 }
             }
+        }
+        .navigationTitle("メンバー管理")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("閉じる") { showMembersSheet = false }
+            }
+        }
+        .memberApprovalAlerts(
+            showApproveConfirm: $showApproveConfirm,
+            memberToApprove: $memberToApprove,
+            showRejectConfirm: $showRejectConfirm,
+            memberToReject: $memberToReject,
+            showKickConfirm: $showKickConfirm,
+            memberToKick: $memberToKick,
+            showMemberOptions: $showMemberOptions,
+            selectedMember: $selectedMember,
+            onApprove: approveRequest,
+            onReject: rejectRequest,
+            onKick: kickMember,
+            menuContent: memberMenuContentAsAnyView
+        )
     }
     
     // MARK: - Main Content
@@ -348,6 +431,19 @@ struct CloudflareTeamListView: View {
                         Task { _ = await viewModel.updateMemberRole(userID: member.id, role: "athlete", teamID: teamID) }
                     }
                 }
+
+                let memberPlan = SubscriptionPlan(rawValue: member.entitlement) ?? .free
+                if memberPlan.hasTeamFeature && member.role != "pending" {
+                    Button("オーナー権限を移譲") {
+                        memberToTransferOwnership = member
+                        showTransferOwnershipConfirm = true
+                    }
+                }
+            }
+
+            Button("端末認証ロックを解除") {
+                memberToResetAuth = member
+                showResetAuthConfirm = true
             }
             
             Button("チームから追放する", role: .destructive) {
@@ -363,7 +459,7 @@ struct CloudflareTeamListView: View {
     // MARK: - Action Handlers
     
     private func handleCreateTeam() {
-        guard subManager.currentPlan.hasTeamFeature else {
+        guard subManager.ownPlan.hasTeamFeature else {
             showUpgradeRequiredAlert = true
             return
         }
@@ -1140,7 +1236,7 @@ struct CloudflareTeamListView: View {
     private func effectivePlan(for team: Team?) -> String {
         guard let team = team else { return "team" }
         if let owner = viewModel.members.first(where: { $0.role == "owner" }),
-           ["team", "max", "organization", "enterprise"].contains(owner.entitlement.lowercased()) {
+           !owner.entitlement.isEmpty {
             return owner.entitlement
         }
         return team.plan
@@ -1212,7 +1308,14 @@ struct CloudflareTeamListView: View {
         guard team.members_scheduled_for_deletion_at != nil else { return [] }
         
         let activeMembers = viewModel.members.filter { $0.role != "pending" }
-        let sortedMembers = activeMembers.sorted { $0.created_at < $1.created_at }
+        let sortedMembers = activeMembers.sorted { lhs, rhs in
+            let lPriority = roleLevel(lhs.role)
+            let rPriority = roleLevel(rhs.role)
+            if lPriority != rPriority {
+                return lPriority > rPriority
+            }
+            return lhs.created_at < rhs.created_at
+        }
         
         let owner = viewModel.members.first(where: { $0.role == "owner" })
         let targetPlan = owner?.entitlement ?? team.plan

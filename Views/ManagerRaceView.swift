@@ -24,29 +24,33 @@ struct ManagerRaceView: View {
     @State private var showPaceSettings = false
     @State private var raceStartTime: Date? = nil
     
-    /// ソート済みの選手データ（距離の多い順 = 先行順、またはレーン固定順）
+    /// ソート済みの選手データ（レーン固定時は表示順のみ番号順、順位は常に走行距離順）
     private var rankedDevices: [(peripheral: CBPeripheral, metrics: PM5DeviceMetrics, rank: Int)] {
         let devices = viewModel.connectedDevices.compactMap { device -> (CBPeripheral, PM5DeviceMetrics)? in
             guard let m = viewModel.deviceMetrics[device.identifier] else { return nil }
             return (device, m)
         }
         
+        let distanceSorted = devices.sorted { $0.1.distance > $1.1.distance }
+        let distanceRankByID = Dictionary(
+            uniqueKeysWithValues: distanceSorted.enumerated().map { ($1.0.identifier, $0 + 1) }
+        )
+        
         if laneLockEnabled {
-            let sorted = devices.sorted {
+            let laneSorted = devices.sorted {
                 (viewModel.deviceNumbers[$0.0.identifier] ?? Int.max) < (viewModel.deviceNumbers[$1.0.identifier] ?? Int.max)
             }
-            return sorted.enumerated().map { (index, pair) in
-                (peripheral: pair.0, metrics: pair.1, rank: index + 1)
+            return laneSorted.map { pair in
+                (peripheral: pair.0, metrics: pair.1, rank: distanceRankByID[pair.0.identifier] ?? Int.max)
             }
         } else {
-            let sorted = devices.sorted { $0.1.distance > $1.1.distance }
-            return sorted.enumerated().map { (index, pair) in
+            return distanceSorted.enumerated().map { (index, pair) in
                 (peripheral: pair.0, metrics: pair.1, rank: index + 1)
             }
         }
     }
     
-    /// ズーム適用後の表示対象デバイス（先頭からzoomDistanceBehindメートル以内、最大zoomMaxBoats艇）
+    /// ズーム適用後の表示対象デバイス（先頭からzoomDistanceBehindメートル以内、距離上位zoomMaxBoats艇）
     private var visibleDevices: [(peripheral: CBPeripheral, metrics: PM5DeviceMetrics, rank: Int)] {
         let ranked = rankedDevices
         guard zoomEnabled else {
@@ -54,9 +58,14 @@ struct ManagerRaceView: View {
         }
         let leaderDist = leaderDistance
         let limitDist = leaderDist - zoomDistanceBehind
-        return ranked.filter { entry in
-            entry.metrics.distance >= limitDist
-        }.prefix(zoomMaxBoats).map { $0 }
+        let topIDs = Set(
+            ranked
+                .filter { $0.metrics.distance >= limitDist }
+                .sorted { $0.rank < $1.rank }
+                .prefix(zoomMaxBoats)
+                .map { $0.peripheral.identifier }
+        )
+        return ranked.filter { topIDs.contains($0.peripheral.identifier) }
     }
     
     private func getSmoothPacemakerDistance(at date: Date) -> Double {
@@ -484,14 +493,49 @@ struct RaceRowView: View {
                     }
                     .animation(.easeInOut(duration: 0.5), value: displayProgress)
                 } else {
-                    // 送信中ステータス
+                    // 送信中・エラー・劣化ステータス表示
                     HStack(spacing: 6) {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .tint(Theme.accent)
-                        Text(metrics.configStatus == .resetting ? "Resetting...".localized : "Configuring...".localized)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Theme.textSecondary)
+                        switch metrics.configStatus {
+                        case .resetting:
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .tint(Theme.accent)
+                            Text("Resetting...".localized)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(Theme.textSecondary)
+                        case .polling:
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .tint(.yellow)
+                            Text("Syncing...".localized)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.yellow)
+                        case .configuring, .idle:
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .tint(.orange)
+                            Text("Configuring...".localized)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.orange)
+                        case .degraded(let msg):
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.orange)
+                            Text(msg)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.orange)
+                                .lineLimit(1)
+                        case .error(let msg):
+                            Image(systemName: "xmark.octagon.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.red)
+                            Text(msg)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.red)
+                                .lineLimit(1)
+                        case .ready:
+                            EmptyView()
+                        }
                     }
                     .padding(.leading, 10)
                 }

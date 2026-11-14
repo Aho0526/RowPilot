@@ -35,6 +35,7 @@ class AppViewModel: ObservableObject {
     
     // バックグラウンド管理
     private var lastBackgroundTime: Date?
+    private var isAutoStartStandby: Bool = false
     
     // セッション状態
     @Published var isSessionActive: Bool = false
@@ -100,9 +101,43 @@ class AppViewModel: ObservableObject {
     }
     
     // MARK: - Session Management
+
+    func startAutoStartStandbyIfNeeded() {
+        let settings = SettingsManager.shared.settings
+        guard settings.autoStartOnMotion, !isSessionActive, !isAutoStartStandby else { return }
+        isAutoStartStandby = true
+        motionManager.reset()
+        motionManager.onStrokeDetected = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self = self, self.isAutoStartStandby, !self.isSessionActive else { return }
+                let minSPM = SettingsManager.shared.settings.minSPMThreshold
+                if self.motionManager.strokeCount >= 2 && (self.motionManager.spm >= minSPM || self.motionManager.spm > 0) {
+                    self.stopAutoStartStandby()
+                    self.startSession()
+                }
+            }
+        }
+        motionManager.startMonitoring()
+    }
+
+    func stopAutoStartStandby() {
+        guard isAutoStartStandby else { return }
+        isAutoStartStandby = false
+        motionManager.onStrokeDetected = nil
+        if !isSessionActive {
+            motionManager.stopMonitoring()
+            motionManager.reset()
+        }
+    }
     
     func startSession() {
         guard !isSessionActive else { return }
+        if isAutoStartStandby {
+            isAutoStartStandby = false
+            motionManager.onStrokeDetected = nil
+            motionManager.stopMonitoring()
+            motionManager.reset()
+        }
         
         let now = Date()
         isSessionActive = true
@@ -164,7 +199,7 @@ class AppViewModel: ObservableObject {
         isRecording = true
         currentSegmentStartTime = Date()
         motionManager.startMonitoring()
-        locationManager.startTracking()
+        locationManager.resumeTracking()
         
         sessionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -197,8 +232,11 @@ class AppViewModel: ObservableObject {
             if let lastTime = lastBackgroundTime {
                 let diff = Date().timeIntervalSince(lastTime)
                 print("AppViewModel: Returned to active. Stayed in background for \(Int(diff))s")
-                // 15分（900秒）以上経過しており、かつ計測セッション中でない場合のみリセット
-                if diff > 900 && !isSessionActive {
+                // 15分（900秒）以上経過しており、計測セッション中・PM5接続中のいずれでもない場合のみリセット (H-11)
+                let isErgoBusy = ergManager.connectionState != .disconnected
+                    || !pm5Manager.connectedDevices.isEmpty
+                    || !pm5Manager.connectingDeviceIDs.isEmpty
+                if diff > 900 && !isSessionActive && !isErgoBusy {
                     print("AppViewModel: Timeout reached (15min+). Triggering full reset.")
                     fullReset()
                 }
@@ -250,12 +288,17 @@ class AppViewModel: ObservableObject {
         let level = UIDevice.current.batteryLevel
         let batteryStr = level >= 0 ? "\(Int(level * 100))%" : "Unknown"
         
-        var locationStr = "Unknown"
+        var locationStr = "Unknown".localized
         if let loc = locationManager.previousLocation {
             let lat = loc.coordinate.latitude
             let lon = loc.coordinate.longitude
             
-            let appleMapsURL = "https://maps.apple.com/?q=SOS+地点&ll=\(lat),\(lon)"
+            var components = URLComponents(string: "https://maps.apple.com/")
+            components?.queryItems = [
+                URLQueryItem(name: "q", value: "SOS Location".localized),
+                URLQueryItem(name: "ll", value: "\(lat),\(lon)")
+            ]
+            let appleMapsURL = components?.url?.absoluteString ?? "https://maps.apple.com/?ll=\(lat),\(lon)"
             let googleMapsURL = "https://www.google.com/maps/search/?api=1&query=\(lat),\(lon)"
             
             switch settings.sosMapSelection {
@@ -274,11 +317,11 @@ class AppViewModel: ObservableObject {
         
         let message = """
         RowPilot SOS
-        \("User Name"): \(userName)
-        \("Location Info"): \(locationStr)
-        \("Time"): \(timeStr)
-        \("Battery"): \(batteryStr)
-        \("No response. Please check.")
+        \("User Name".localized): \(userName)
+        \("Location Info".localized): \(locationStr)
+        \("Time".localized): \(timeStr)
+        \("Battery".localized): \(batteryStr)
+        \("No response. Please check.".localized)
         """
         
         if !settings.sosContactPhone.isEmpty {

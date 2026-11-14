@@ -35,8 +35,8 @@ struct RiggingEditorView: View {
     @State private var boatFootplateHeight: Double
     @State private var boatSeatPosition: Double
     
-    // Blade Preset State (固定: Smoothie2)
-    private let selectedBladePreset: String = "Smoothie2"
+    // Blade Presets
+    private let bladePresets: [String] = ["Smoothie2", "Comp", "Macon", "Fat2"]
     
     // Rigger Type
     @State private var boatRiggerType: String = "wing" // "wing" or "straight"
@@ -108,6 +108,7 @@ struct RiggingEditorView: View {
         _boatFootplateAngle = State(initialValue: config.boatFootplateAngle)
         _boatFootplateHeight = State(initialValue: config.boatFootplateHeight)
         _boatSeatPosition = State(initialValue: config.boatSeatPosition)
+        _boatRiggerType = State(initialValue: config.riggerType)
         
         isNew = false
         
@@ -223,7 +224,7 @@ struct RiggingEditorView: View {
                             OarDiagramView(
                                 totalLength: activeSide == .port ? oarTotalLengthPort : oarTotalLengthStarboard,
                                 inboard: activeSide == .port ? oarInboardPort : oarInboardStarboard,
-                                bladeType: selectedBladePreset,
+                                bladeType: oarBladeType,
                                 sleevePitch: activeSide == .port ? oarSleevePitchPort : oarSleevePitchStarboard,
                                 selectedField: activeOarField
                             )
@@ -272,9 +273,16 @@ struct RiggingEditorView: View {
                                     Text("Blade Type".localized)
                                         .foregroundColor(Theme.textSecondary)
                                     Spacer()
-                                    Text(selectedBladePreset)
-                                        .foregroundColor(Theme.textMain.opacity(0.7))
-                                        .font(.body)
+                                    Picker("", selection: $oarBladeType) {
+                                        ForEach(bladePresets, id: \.self) { preset in
+                                            Text(preset).tag(preset)
+                                        }
+                                        if !bladePresets.contains(oarBladeType) && !oarBladeType.isEmpty {
+                                            Text(oarBladeType).tag(oarBladeType)
+                                        }
+                                    }
+                                    .pickerStyle(MenuPickerStyle())
+                                    .tint(Theme.accent)
                                 }
                                 
                                 // Sleeve Pitch (Port & Starboard)
@@ -316,6 +324,7 @@ struct RiggingEditorView: View {
                                 .foregroundColor(Theme.textMain)
                             
                             BoatRiggingDiagramView(
+                                configId: configId,
                                 span: boatSpan,
                                 workHeightPort: boatWorkHeightPort,
                                 workHeightStarboard: boatWorkHeightStarboard,
@@ -531,7 +540,9 @@ struct RiggingEditorView: View {
     // MARK: - Save Action
     
     private func saveSetup() {
-        let finalBlade = selectedBladePreset
+        let finalBlade = oarBladeType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Smoothie2"
+            : oarBladeType
             
         let finalName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty 
             ? "\(boatType.displayName) Setup" 
@@ -552,6 +563,7 @@ struct RiggingEditorView: View {
             oarSleevePitchStarboard: oarSleevePitchStarboard,
             oarGripDiameterPort: oarGripDiameterPort,
             oarGripDiameterStarboard: oarGripDiameterStarboard,
+            riggerType: boatRiggerType,
             boatSpan: boatSpan,
             boatWorkHeightPort: boatWorkHeightPort,
             boatWorkHeightStarboard: boatWorkHeightStarboard,

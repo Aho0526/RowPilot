@@ -54,6 +54,14 @@ class DeveloperModeManager: ObservableObject {
         return .countdown(remaining: remaining)
     }
 
+    func disable() {
+        tapResetTimer?.invalidate()
+        tapResetTimer = nil
+        tapCount = 0
+        isEnabled = false
+        maxPM5Connections = 10
+    }
+
     enum DeveloperModeEvent {
         case enabled
         case disabled

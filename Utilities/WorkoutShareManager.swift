@@ -187,9 +187,10 @@ class WorkoutShareManager {
         record.crewInfo = sharedData.crewInfo
         record.routePoints = sharedData.routePoints
         
-        // マネージャーモードで記録されたものを受信した場合は、1:1の個人記録として扱うよう変換
+        // マネージャーモードで記録されたものを受信した場合は、マネージャーモードフラグを保持したまま
+        // セッション紐付けのみ外し、選手個人の記録として保存する (C1)
         if record.isManagerMode {
-            record.isManagerMode = false
+            record.isManagerMode = true
             record.managerSessionId = nil
             
             let noteLabel = "Recorded by Manager Mode"
@@ -275,7 +276,10 @@ class WorkoutShareManager {
         csvString += "RowPilot Workout Record Summary\n"
         csvString += "Date,Duration (seconds),Distance (meters),Avg SPM,Avg Pace (seconds/500m),Avg Pace (formatted),Avg Speed (km/h),Avg Watt,Device,Notes\n"
         
-        let dateStr = formatDateForFileName(recordToShare.date)
+        let csvDateFormatter = DateFormatter()
+        csvDateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        csvDateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let dateStr = csvDateFormatter.string(from: recordToShare.date)
         let durationVal = recordToShare.duration
         let distanceVal = recordToShare.distance
         let avgSPM = recordToShare.averageSPM
@@ -291,6 +295,16 @@ class WorkoutShareManager {
         let notesVal = "\"\(notesClean)\""
         
         csvString += "\(dateStr),\(durationVal),\(distanceVal),\(avgSPM),\(avgPaceSec),\(avgPaceFormatted),\(avgSpeed),\(avgWatt),\(device),\(notesVal)\n"
+
+        // 時系列データポイント部
+        if let dataPoints = recordToShare.dataPoints, !dataPoints.isEmpty {
+            csvString += "\nTime Series Data Points\n"
+            csvString += "Time Offset (seconds),Distance (meters),Pace (seconds/500m),SPM,Watt\n"
+            for point in dataPoints {
+                let distStr = point.distance.map { String($0) } ?? ""
+                csvString += "\(point.timeOffset),\(distStr),\(point.pace),\(point.spm),\(point.power)\n"
+            }
+        }
         
         // Excelで文字化けしないようにBOM付き of UTF-8にする
         let bom = "\u{FEFF}"

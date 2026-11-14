@@ -18,6 +18,7 @@ struct TideContent: View {
     @EnvironmentObject var app: AppViewModel
     @ObservedObject var tideManager: TideManager
     @State private var currentLocationName: String = "Waiting for GPS".localized
+    @State private var lastGeocodedLocation: CLLocation?
     @State private var showingHelp = false
     @State private var showingThresholdPopover = false
     @State private var showingStationMap = false
@@ -450,6 +451,11 @@ struct TideContent: View {
     }
     
     private func updateLocationInfo(location: CLLocation) {
+        if let lastLoc = lastGeocodedLocation, location.distance(from: lastLoc) < 500.0 {
+            tideManager.findNearestStation(location: location)
+            return
+        }
+        lastGeocodedLocation = location
         lookUpCurrentLocation(location: location) { name in
             currentLocationName = name
         }

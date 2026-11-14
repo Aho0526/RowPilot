@@ -35,6 +35,7 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
     var oarGripDiameterStarboard: Double
     
     // Boat measurements
+    var riggerType: String // "wing" or "straight"
     var boatSpan: Double // cm (e.g. 160)
     var boatWorkHeightPort: Double // cm (e.g. 16.5)
     var boatWorkHeightStarboard: Double
@@ -70,6 +71,7 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
         oarSleevePitchStarboard: Double = 0.0,
         oarGripDiameterPort: Double = 34.0,
         oarGripDiameterStarboard: Double = 34.0,
+        riggerType: String = "wing",
         boatSpan: Double = 160.0,
         boatWorkHeightPort: Double = 16.0,
         boatWorkHeightStarboard: Double = 16.0,
@@ -96,6 +98,7 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
         self.oarSleevePitchStarboard = oarSleevePitchStarboard
         self.oarGripDiameterPort = oarGripDiameterPort
         self.oarGripDiameterStarboard = oarGripDiameterStarboard
+        self.riggerType = riggerType
         self.boatSpan = boatSpan
         self.boatWorkHeightPort = boatWorkHeightPort
         self.boatWorkHeightStarboard = boatWorkHeightStarboard
@@ -111,7 +114,7 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
     
     enum CodingKeys: String, CodingKey {
         case id, name, date, boatType, oarType, oarBladeType
-        case boatSpan, boatFootstretch, boatFootplateAngle, boatFootplateHeight, boatSeatPosition
+        case riggerType, boatSpan, boatFootstretch, boatFootplateAngle, boatFootplateHeight, boatSeatPosition
         
         // New keys corresponding directly to stored properties
         case oarTotalLengthPort, oarTotalLengthStarboard
@@ -138,6 +141,7 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
         boatType = try container.decode(BoatType.self, forKey: .boatType)
         oarType = try container.decode(OarType.self, forKey: .oarType)
         oarBladeType = try container.decode(String.self, forKey: .oarBladeType)
+        riggerType = try container.decodeIfPresent(String.self, forKey: .riggerType) ?? "wing"
         
         boatSpan = try container.decode(Double.self, forKey: .boatSpan)
         boatFootstretch = try container.decode(Double.self, forKey: .boatFootstretch)
@@ -243,6 +247,7 @@ struct RiggingConfig: Codable, Identifiable, Equatable {
             oarSleevePitchStarboard != 0.0 ||
             oarGripDiameterPort != 34.0 ||
             oarGripDiameterStarboard != 34.0 ||
+            riggerType != "wing" ||
             boatSpan != defaultBoatSpan ||
             boatWorkHeightPort != 16.0 ||
             boatWorkHeightStarboard != 16.0 ||

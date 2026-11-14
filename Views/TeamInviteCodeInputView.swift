@@ -4,7 +4,7 @@ import SwiftUI
 struct TeamInviteCodeInputView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var settingsManager = SettingsManager.shared
-    @StateObject private var viewModel = CloudflareTeamViewModel()
+    @ObservedObject private var viewModel = CloudflareTeamViewModel.shared
     @ObservedObject private var subManager = SubscriptionManager.shared
 
     @State private var showingResult = false
@@ -55,8 +55,6 @@ struct TeamInviteCodeInputView: View {
                                 .foregroundColor(.white.opacity(0.6))
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
-
-                            // CloudKitTeamManager依存を削除（チーム参加日時は現在取得不可）
                         }
 
                         // 共有名の入力・確認
@@ -118,7 +116,7 @@ struct TeamInviteCodeInputView: View {
                         // 申請ボタン
                         Button(action: submitRequest) {
                             HStack(spacing: 10) {
-                                if false { // ckTeam.isLoading - CloudKitTeamManager無効化
+                                if viewModel.isLoading {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 } else {
@@ -262,13 +260,21 @@ struct TeamInviteCodeInputView: View {
         Task {
             let displayName = settingsManager.settings.sharingName.trimmingCharacters(in: .whitespacesAndNewlines)
             if !displayName.isEmpty {
-                _ = await viewModel.createUser(
+                let userRegistered = await viewModel.createUser(
                     userID: subManager.myUserRecordId,
                     displayName: displayName,
                     email: nil,
                     isGhost: 0,
-                    entitlement: subManager.currentPlan.rawValue
+                    entitlement: subManager.ownPlan.rawValue
                 )
+                if !userRegistered {
+                    await MainActor.run {
+                        resultSuccess = false
+                        resultMessage = viewModel.errorMessage ?? "ユーザー登録に失敗しました。通信状況を確認して再度お試しください。"
+                        showingResult = true
+                    }
+                    return
+                }
             }
             let success = await viewModel.joinTeam(
                 inviteCode: inviteCode,

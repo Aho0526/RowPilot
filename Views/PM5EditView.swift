@@ -155,14 +155,14 @@ struct PM5EditRow: View {
     }
     
     private func startEditing() {
-        let currentCustom = viewModel.deviceCustomNames[bleName]
+        let currentCustom = viewModel.customName(for: device)
         editingName = currentCustom ?? ""
         isEditing = true
         isFocused = true
     }
     
     private func commitEdit() {
-        viewModel.setCustomName(editingName, for: bleName)
+        viewModel.setCustomName(editingName, for: device)
         isEditing = false
         isFocused = false
     }

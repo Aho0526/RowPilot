@@ -6,3 +6,6 @@ compatibility_date = "2026-06-21"
 binding = "DB"
 database_name = "rowpilot-prod"
 database_id = "355cb1b4-a9ec-404a-9bb3-db0237bb579b"
+
+[triggers]
+crons = ["0 */6 * * *"]

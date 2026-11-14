@@ -117,9 +117,14 @@ extension RowingRecord {
         }
     }
     
-    /// フォーマットされた距離 (m)
+    /// フォーマットされた距離（設定された距離単位を反映）
     var formattedDistance: String {
-        return String(format: "%.0f m", distance)
+        return SettingsManager.shared.settings.distanceUnit.format(distance, decimalsForMeters: 0)
+    }
+
+    /// フォーマットされた平均速度（設定された速度単位を反映）
+    var formattedSpeed: String {
+        return SettingsManager.shared.settings.speedUnit.format(averageSpeed)
     }
     
     /// フォーマットされたペース (MM:SS /500m)

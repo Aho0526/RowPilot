@@ -16,6 +16,8 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
     @Published var averagePower: Int = 0          // 平均ワット (0x33 byte 4-5)
     @Published var strokeRate: Int = 0            // SPM
     @Published var workoutState: UInt8 = 0       // index 8 of 0x31
+    @Published var intervalType: UInt8 = 255     // index 7 of 0x31 (255 = None)
+    @Published var rowingState: UInt8 = 0        // index 9 of 0x31 (0 = Inactive, 1 = Active)
     @Published var heartRate: Int = 0             // BPM（心拍数）
     @Published var predictedFinishTime: Double = 0.0  // 秒（予測完了時間）
     @Published var calories: Double = 0.0         // カロリー
@@ -39,6 +41,7 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
         case ready = 0x01
         case idle = 0x02
         case haveID = 0x03
+        case unassigned = 0x04
         case inUse = 0x05
         case pause = 0x06
         case finish = 0x07
@@ -52,6 +55,7 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
             case .ready: return "Ready"
             case .idle: return "Idle"
             case .haveID: return "HaveID"
+            case .unassigned: return "Unassigned"
             case .inUse: return "InUse"
             case .pause: return "Pause"
             case .finish: return "Finish"
@@ -75,6 +79,17 @@ class PM5DeviceMetrics: ObservableObject, Identifiable {
     var lastStrokeCount: Int = -1
     var lastStrokeTime: Double = 0
     var lastStrokeDistance: Double = 0
+    
+    // インターバル累積 & 記録制御用内部状態
+    var accumulatedWorkTime: Double = 0.0
+    var accumulatedWorkDistance: Double = 0.0
+    var currentIntervalWorkTime: Double = 0.0
+    var currentIntervalWorkDistance: Double = 0.0
+    var isInWorkInterval: Bool = false
+    var completedIntervalCount: Int = 0
+    var lastRecordedTimeOffset: Double = -1.0
+    var lastRecordedDistance: Double = -1.0
+    var lastActiveStrokeAt: Date? = nil
     
     // ワークアウト中の時系列データポイント
     @Published var workoutDataPoints: [WorkoutDataPoint] = []
@@ -300,13 +315,14 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     
     /// 接続済みPM5を削除（切断）
     func removeDevice(_ peripheral: CBPeripheral) {
+        ignoredDeviceIDs.insert(peripheral.identifier)
+        commandQueue.removeDevice(for: peripheral.identifier)
         centralManager.cancelPeripheralConnection(peripheral)
         connectedDevices.removeAll { $0.identifier == peripheral.identifier }
         disconnectedDeviceIDs.remove(peripheral.identifier)
         controlCharacteristics.removeValue(forKey: peripheral.identifier)
         sampleRateCharacteristics.removeValue(forKey: peripheral.identifier)
         deviceMetrics.removeValue(forKey: peripheral.identifier)
-        ignoredDeviceIDs.insert(peripheral.identifier)
         // 再スキャンまで検出一覧には戻さない
         
         // 番号の振り直し
@@ -332,18 +348,41 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     
     private static let customNamesKey = "PM5DeviceCustomNames"
     
-    /// カスタム名を取得（未設定の場合はBLE名を返す）
+    /// カスタム名を取得（UUID優先、旧BLE名フォールバック）
     func displayName(for peripheral: CBPeripheral) -> String {
+        if let custom = deviceCustomNames[peripheral.identifier.uuidString], !custom.isEmpty {
+            return custom
+        }
         let bleName = peripheral.name ?? "Unknown PM5"
-        return deviceCustomNames[bleName] ?? bleName
+        if let legacy = deviceCustomNames[bleName], !legacy.isEmpty {
+            return legacy
+        }
+        return bleName
     }
     
-    /// カスタム名を設定して永続化
-    func setCustomName(_ customName: String, for bleName: String) {
-        if customName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            deviceCustomNames.removeValue(forKey: bleName)
+    /// 設定済みカスタム名を取得（未設定時はnil）
+    func customName(for peripheral: CBPeripheral) -> String? {
+        if let custom = deviceCustomNames[peripheral.identifier.uuidString] {
+            return custom
+        }
+        if let bleName = peripheral.name, let legacy = deviceCustomNames[bleName] {
+            return legacy
+        }
+        return nil
+    }
+    
+    /// カスタム名をUUIDキーで設定して永続化
+    func setCustomName(_ customName: String, for peripheral: CBPeripheral) {
+        let key = peripheral.identifier.uuidString
+        let trimmed = customName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            deviceCustomNames.removeValue(forKey: key)
+            if let bleName = peripheral.name,
+               !connectedDevices.contains(where: { $0.identifier != peripheral.identifier && $0.name == bleName }) {
+                deviceCustomNames.removeValue(forKey: bleName)
+            }
         } else {
-            deviceCustomNames[bleName] = customName
+            deviceCustomNames[key] = trimmed
         }
         saveCustomNames()
     }
@@ -390,12 +429,18 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     /// 全PM5を切断してリストをクリア
     func disconnectAll() {
         for device in connectedDevices {
+            ignoredDeviceIDs.insert(device.identifier)
+            commandQueue.removeDevice(for: device.identifier)
             centralManager.cancelPeripheralConnection(device)
         }
+        for id in connectingDeviceIDs {
+            ignoredDeviceIDs.insert(id)
+            commandQueue.removeDevice(for: id)
+        }
+        commandQueue.cancelAll()
         connectedDevices.removeAll()
         connectingDeviceIDs.removeAll()
         disconnectedDeviceIDs.removeAll()
-        ignoredDeviceIDs.removeAll()
         controlCharacteristics.removeAll()
         sampleRateCharacteristics.removeAll()
         discoveredDevices.removeAll()
@@ -408,7 +453,9 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         workoutSplitTime = nil
         workoutSplitCalories = nil
         workoutRestTime = nil
+        workoutVariableIntervals = nil
         workoutStartTime = nil
+        stopDataRecordingTimer()
         stopScanning()
         print("PM5ManagerVM: 全PM5切断・リストクリア")
     }
@@ -1033,28 +1080,42 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         }
     }
     
+    private func resetMetricsState(_ metrics: PM5DeviceMetrics, status: PM5DeviceMetrics.ConfigStatus = .resetting) {
+        metrics.distance = 0
+        metrics.elapsedTime = 0
+        metrics.pace500m = 0
+        metrics.power = 0
+        metrics.averagePower = 0
+        metrics.strokeRate = 0
+        metrics.workoutState = 0
+        metrics.intervalType = 255
+        metrics.rowingState = 0
+        metrics.predictedFinishTime = 0
+        metrics.calories = 0
+        metrics.lastStrokeCount = -1
+        metrics.accumulatedWorkTime = 0
+        metrics.accumulatedWorkDistance = 0
+        metrics.currentIntervalWorkTime = 0
+        metrics.currentIntervalWorkDistance = 0
+        metrics.isInWorkInterval = false
+        metrics.completedIntervalCount = 0
+        metrics.lastRecordedTimeOffset = -1.0
+        metrics.lastRecordedDistance = -1.0
+        metrics.lastActiveStrokeAt = nil
+        metrics.configStatus = status
+        metrics.workoutDataPoints = []
+    }
+    
     /// 全デバイスのメトリクスを初期化（新規ワークアウト送信時に以前のデータを完全にクリア）
     private func initializeAllMetrics() {
         stopDataRecordingTimer()
         for device in connectedDevices {
             if let metrics = deviceMetrics[device.identifier] {
-                DispatchQueue.main.async {
-                    metrics.distance = 0
-                    metrics.elapsedTime = 0
-                    metrics.pace500m = 0
-                    metrics.power = 0
-                    metrics.averagePower = 0
-                    metrics.strokeRate = 0
-                    metrics.lastStrokeCount = -1
-                    metrics.configStatus = .resetting
-                    metrics.workoutDataPoints = []
-                }
+                resetMetricsState(metrics, status: .resetting)
             } else {
                 let metrics = PM5DeviceMetrics(id: device.identifier, name: device.name ?? "Unknown PM5")
                 metrics.configStatus = .resetting
-                DispatchQueue.main.async {
-                    self.deviceMetrics[device.identifier] = metrics
-                }
+                deviceMetrics[device.identifier] = metrics
             }
         }
         startDataRecordingTimer()
@@ -1062,28 +1123,49 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
     
     private func startDataRecordingTimer() {
         stopDataRecordingTimer()
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.dataRecordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-                Task { @MainActor in
-                    self?.recordDataPoints()
-                }
+        self.dataRecordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.recordDataPoints()
             }
         }
     }
     
     private func stopDataRecordingTimer() {
-        DispatchQueue.main.async {
-            self.dataRecordingTimer?.invalidate()
-            self.dataRecordingTimer = nil
-        }
+        self.dataRecordingTimer?.invalidate()
+        self.dataRecordingTimer = nil
     }
     
+    private static let inactiveOrRestWorkoutStates: Set<UInt8> = [0, 2, 3, 8, 9, 10, 11, 12, 13]
+    
     private func recordDataPoints() {
+        let now = Date()
         for device in connectedDevices {
             guard let metrics = deviceMetrics[device.identifier] else { continue }
-            let state = metrics.machineState
-            guard state == .inUse || state == .ready || state == .idle || state == .finish || state == .pause else { continue }
+            
+            let isInactiveWorkout = Self.inactiveOrRestWorkoutStates.contains(metrics.workoutState)
+            // CSAFE ポーリングは設定完了後に停止するため、実走行状態は 0x0031 の workoutState と経過時間・距離の変化で判定する
+            let isMachineStopped = isInactiveWorkout || metrics.machineState == .pause || metrics.machineState == .finish
+            
+            // ストローク停止・レスト・終了時は張り付きSPM/Wattを0に戻す (H-6)
+            if isMachineStopped {
+                if metrics.strokeRate != 0 { metrics.strokeRate = 0 }
+                if metrics.power != 0 { metrics.power = 0 }
+                if isInactiveWorkout && metrics.pace500m != 0 { metrics.pace500m = 0 }
+                continue
+            }
+            if let lastStroke = metrics.lastActiveStrokeAt, now.timeIntervalSince(lastStroke) > 5.0 {
+                if metrics.strokeRate != 0 { metrics.strokeRate = 0 }
+                if metrics.power != 0 { metrics.power = 0 }
+            }
+            
+            // 実際にワーク中で経過時間または距離が進んでいる場合のみ記録 (H-6, C-8)
+            guard metrics.elapsedTime > 0 || metrics.distance > 0 else { continue }
+            guard metrics.elapsedTime > metrics.lastRecordedTimeOffset || metrics.distance > metrics.lastRecordedDistance else {
+                continue
+            }
+            
+            metrics.lastRecordedTimeOffset = metrics.elapsedTime
+            metrics.lastRecordedDistance = metrics.distance
             
             let point = WorkoutDataPoint(
                 timeOffset: metrics.elapsedTime,
@@ -1092,10 +1174,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 power: metrics.power,
                 distance: metrics.distance
             )
-            
-            DispatchQueue.main.async {
-                metrics.workoutDataPoints.append(point)
-            }
+            metrics.workoutDataPoints.append(point)
         }
     }
     
@@ -1113,17 +1192,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
         // 全デバイスのメトリクスをクリア
         for device in connectedDevices {
             if let metrics = deviceMetrics[device.identifier] {
-                DispatchQueue.main.async {
-                    metrics.distance = 0
-                    metrics.elapsedTime = 0
-                    metrics.pace500m = 0
-                    metrics.power = 0
-                    metrics.averagePower = 0
-                    metrics.strokeRate = 0
-                    metrics.lastStrokeCount = -1
-                    metrics.configStatus = .resetting
-                    metrics.workoutDataPoints = []
-                }
+                resetMetricsState(metrics, status: .resetting)
             }
         }
         
@@ -1133,6 +1202,22 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             label: "TERMINATE_RESET",
             perDeviceStatus: .resetting
         )
+    }
+    
+    /// 指定デバイスのワークアウト送信を再試行 (M-5)
+    func retryWorkflow(for deviceID: UUID) {
+        guard let peripheral = connectedDevices.first(where: { $0.identifier == deviceID }) else { return }
+        if let intervals = workoutVariableIntervals, !intervals.isEmpty {
+            Task {
+                await self.runV4WorkflowVariable(for: peripheral, intervals: intervals)
+            }
+        } else if workoutDistance != nil || workoutTime != nil || workoutCalories != nil {
+            let split = workoutSplitDistance ?? workoutSplitTime ?? workoutSplitCalories
+            let workout = (distance: workoutDistance, time: workoutTime, calories: workoutCalories, split: split, rest: workoutRestTime)
+            Task {
+                await self.runV4Workflow(for: peripheral, workout: workout)
+            }
+        }
     }
     
     /// TERMINATE コマンドの Extended Frame を構築
@@ -1451,9 +1536,10 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
                 let recordNotes: String = "Indoor Workout (Manager Mode) - \(metrics.name)"
                 let recordTags: [String] = ["ManagerMode", "Indoor"]
                 
-                // Serial Number: The CBPeripheral name might just be "PM5", but sometimes we can use the identifier.
-                // It's better to store device name and custom name correctly.
-                let customName = deviceCustomNames[metrics.name] ?? metrics.name
+                // Serial Number & Custom Name (UUIDキー優先、旧BLE名フォールバック)
+                let customName = deviceCustomNames[metrics.id.uuidString]
+                    ?? deviceCustomNames[metrics.name]
+                    ?? metrics.name
                 
                 let record = RowingRecord(
                     id: UUID(),
@@ -1557,6 +1643,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
             centralManager.connect(peripheral, options: nil)
             print("PM5ManagerVM: 自動再接続試行 → \(peripheral.name ?? "Unknown")")
         } else {
+            commandQueue.removeDevice(for: peripheral.identifier)
             print("PM5ManagerVM: 意図的な削除のため自動再接続をスキップ → \(peripheral.name ?? "Unknown")")
         }
     }
@@ -1663,7 +1750,7 @@ class PM5ManagerViewModel: NSObject, ObservableObject {
 extension PM5ManagerViewModel {
     
     
-    /// General Status (0x31): 距離と経過時間をパース
+    /// General Status (0x31): 距離と経過時間をパース（インターバル累積・レスト制御含む）
     private func parseManagerGeneralStatus(_ data: Data, for deviceID: UUID) {
         guard data.count >= 6 else { return }
         
@@ -1675,28 +1762,128 @@ extension PM5ManagerViewModel {
         let distRaw = UInt32(data[3]) | (UInt32(data[4]) << 8) | (UInt32(data[5]) << 16)
         let distMeters = Double(distRaw) * 0.1
         
+        let intervalTypeByte: UInt8? = data.count >= 8 ? data[7] : nil
+        let workoutStateByte: UInt8? = data.count >= 9 ? data[8] : nil
+        let rowingStateByte: UInt8? = data.count >= 10 ? data[9] : nil
+        
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let metrics = self.deviceMetrics[deviceID] else { return }
-            metrics.elapsedTime = timeSec
-            metrics.distance = distMeters
             
-            if data.count >= 9 {
-                let ws = data[8]
-                metrics.workoutState = ws
+            if let it = intervalTypeByte { metrics.intervalType = it }
+            if let rs = rowingStateByte { metrics.rowingState = rs }
+            if let ws = workoutStateByte { metrics.workoutState = ws }
+            
+            let ws = workoutStateByte ?? metrics.workoutState
+            let isWorkState = [1, 4, 5, 6, 7].contains(ws)
+            let isRestState = [3, 8, 9].contains(ws)
+            let isEndState = [10, 11, 12].contains(ws)
+            let isIntervalMode = self.workoutRestTime != nil
+                || self.workoutVariableIntervals != nil
+                || metrics.intervalType != 255
+                || (ws >= 3 && ws <= 9)
+                || metrics.completedIntervalCount > 0
+            
+            if isWorkState {
+                metrics.machineState = .inUse
+                if isIntervalMode {
+                    // 前インターバルの完了を検出し累積加算（レストを挟まず次ワークに遷移した場合も補完）
+                    if metrics.isInWorkInterval &&
+                        (timeSec + 0.5 < metrics.currentIntervalWorkTime || distMeters + 1.0 < metrics.currentIntervalWorkDistance) {
+                        metrics.accumulatedWorkTime += metrics.currentIntervalWorkTime
+                        metrics.accumulatedWorkDistance += metrics.currentIntervalWorkDistance
+                        metrics.completedIntervalCount += 1
+                    }
+                    metrics.isInWorkInterval = true
+                    metrics.currentIntervalWorkTime = timeSec
+                    metrics.currentIntervalWorkDistance = distMeters
+                    metrics.elapsedTime = metrics.accumulatedWorkTime + timeSec
+                    metrics.distance = metrics.accumulatedWorkDistance + distMeters
+                } else {
+                    metrics.isInWorkInterval = true
+                    metrics.currentIntervalWorkTime = timeSec
+                    metrics.currentIntervalWorkDistance = distMeters
+                    metrics.elapsedTime = timeSec
+                    metrics.distance = distMeters
+                }
+            } else if isRestState {
+                if metrics.isInWorkInterval {
+                    metrics.accumulatedWorkTime += metrics.currentIntervalWorkTime
+                    metrics.accumulatedWorkDistance += metrics.currentIntervalWorkDistance
+                    metrics.currentIntervalWorkTime = 0
+                    metrics.currentIntervalWorkDistance = 0
+                    metrics.isInWorkInterval = false
+                    metrics.completedIntervalCount += 1
+                    self.appendBoundaryDataPointIfNeeded(metrics: metrics)
+                }
+                if isIntervalMode {
+                    metrics.elapsedTime = metrics.accumulatedWorkTime
+                    metrics.distance = metrics.accumulatedWorkDistance
+                }
+                metrics.strokeRate = 0
+                metrics.power = 0
+                metrics.pace500m = 0
+            } else if isEndState {
+                metrics.machineState = .finish
+                if metrics.isInWorkInterval {
+                    if isIntervalMode {
+                        // 最終ワーク区間の終了直前に0へ戻るPM5通知に備え、最後の有効値を加算
+                        let finalWorkTime = max(metrics.currentIntervalWorkTime, timeSec)
+                        let finalWorkDist = max(metrics.currentIntervalWorkDistance, distMeters)
+                        metrics.accumulatedWorkTime += finalWorkTime
+                        metrics.accumulatedWorkDistance += finalWorkDist
+                        metrics.elapsedTime = metrics.accumulatedWorkTime
+                        metrics.distance = metrics.accumulatedWorkDistance
+                    } else {
+                        metrics.elapsedTime = max(metrics.elapsedTime, timeSec)
+                        metrics.distance = max(metrics.distance, distMeters)
+                    }
+                    metrics.currentIntervalWorkTime = 0
+                    metrics.currentIntervalWorkDistance = 0
+                    metrics.isInWorkInterval = false
+                    metrics.completedIntervalCount += 1
+                    self.appendBoundaryDataPointIfNeeded(metrics: metrics)
+                }
+                metrics.strokeRate = 0
+                metrics.power = 0
+            } else {
+                // WaitToBegin(0), CountdownPause(2), Rearm(13) 等
+                if !isIntervalMode && data.count < 9 {
+                    metrics.elapsedTime = timeSec
+                    metrics.distance = distMeters
+                }
+                metrics.strokeRate = 0
+                metrics.power = 0
             }
             
-            // 予測完了時間の計算（距離ワークアウトの場合のみ）
-            // 予測 = 経過時間 + 残り距離 × 現在ペース / 500
-            if let targetDist = self.workoutDistance, metrics.pace500m > 0 {
-                let remaining = max(Double(targetDist) - distMeters, 0)
+            // 予測完了時間の計算（距離ワークアウトかつワーク中のみ）
+            if isWorkState, let targetDist = self.workoutDistance, metrics.pace500m > 0 {
+                let currentDist = isIntervalMode ? metrics.currentIntervalWorkDistance : metrics.distance
+                let currentBaseTime = isIntervalMode ? metrics.currentIntervalWorkTime : metrics.elapsedTime
+                let remaining = max(Double(targetDist) - currentDist, 0)
                 let predictedExtra = remaining * (metrics.pace500m / 500.0)
-                metrics.predictedFinishTime = timeSec + predictedExtra
+                metrics.predictedFinishTime = currentBaseTime + predictedExtra
             } else {
                 metrics.predictedFinishTime = 0
             }
             
             self.objectWillChange.send()
         }
+    }
+    
+    private func appendBoundaryDataPointIfNeeded(metrics: PM5DeviceMetrics) {
+        guard metrics.elapsedTime > 0 || metrics.distance > 0 else { return }
+        guard metrics.elapsedTime > metrics.lastRecordedTimeOffset || metrics.distance > metrics.lastRecordedDistance else { return }
+        metrics.lastRecordedTimeOffset = metrics.elapsedTime
+        metrics.lastRecordedDistance = metrics.distance
+        metrics.workoutDataPoints.append(
+            WorkoutDataPoint(
+                timeOffset: metrics.elapsedTime,
+                pace: metrics.pace500m,
+                spm: metrics.strokeRate,
+                power: metrics.power,
+                distance: metrics.distance
+            )
+        )
     }
     
     /// Rowing Status (0x32): レート(SPM)をパース（byte 5）, ペースをパース（byte[7-8]）
@@ -1709,13 +1896,22 @@ extension PM5ManagerViewModel {
         
         DispatchQueue.main.async { [weak self] in
             guard let metrics = self?.deviceMetrics[deviceID] else { return }
-            if rate > 0 {
-                metrics.strokeRate = rate
-            }
-            if paceRaw > 0 {
-                metrics.pace500m = paceSec
-            } else {
+            let isInactive = Self.inactiveOrRestWorkoutStates.contains(metrics.workoutState)
+                || metrics.machineState == .pause
+                || metrics.machineState == .finish
+            
+            if isInactive {
+                metrics.strokeRate = 0
+                metrics.power = 0
                 metrics.pace500m = 0.0
+            } else {
+                metrics.strokeRate = rate
+                if rate > 0 {
+                    metrics.lastActiveStrokeAt = Date()
+                } else {
+                    metrics.power = 0
+                }
+                metrics.pace500m = paceRaw > 0 ? paceSec : 0.0
             }
             self?.objectWillChange.send()
         }
@@ -1741,7 +1937,17 @@ extension PM5ManagerViewModel {
         
         DispatchQueue.main.async { [weak self] in
             guard let metrics = self?.deviceMetrics[deviceID] else { return }
-            metrics.power = watts
+            let isInactive = Self.inactiveOrRestWorkoutStates.contains(metrics.workoutState)
+                || metrics.machineState == .pause
+                || metrics.machineState == .finish
+            if isInactive {
+                metrics.power = 0
+            } else {
+                metrics.power = watts
+                if watts > 0 {
+                    metrics.lastActiveStrokeAt = Date()
+                }
+            }
             self?.objectWillChange.send()
         }
     }
@@ -1763,26 +1969,35 @@ extension PM5ManagerViewModel {
     }
     
     /// Data Point (0x22): CSAFE 応答をパースして Machine Status を更新
-    /// v4: Extended frame response にも対応
-    /// Response format:
-    ///   Standard: F1 [Status] [CmdResponse...] [Checksum] F2
-    ///   Extended: F0 [Src] [Dest] [Status] [CmdResponse...] [Checksum] F2
-    ///   Raw contents: [Status] [CmdResponse...] (framing stripped by BLE stack)
+    /// v4: Extended frame response と byte stuffing (0xF3) に対応
     private func parseManagerDataPoint(_ data: Data, for deviceID: UUID) {
         guard !data.isEmpty else { return }
         
-        let bytes = [UInt8](data)
-        let statusByte: UInt8
+        let rawBytes = [UInt8](data)
+        var unstuffed: [UInt8] = []
+        var i = 0
+        while i < rawBytes.count {
+            let b = rawBytes[i]
+            if b == 0xF3 && i + 1 < rawBytes.count {
+                unstuffed.append(0xF0 | rawBytes[i + 1])
+                i += 2
+            } else {
+                unstuffed.append(b)
+                i += 1
+            }
+        }
+        guard !unstuffed.isEmpty else { return }
         
-        if bytes[0] == 0xF0 && bytes.count >= 4 {
+        let statusByte: UInt8
+        if unstuffed[0] == 0xF0 && unstuffed.count >= 4 {
             // Extended frame response: F0 [Src] [Dest] [Status] ...
-            statusByte = bytes[3]
-        } else if bytes[0] == 0xF1 && bytes.count >= 2 {
+            statusByte = unstuffed[3]
+        } else if unstuffed[0] == 0xF1 && unstuffed.count >= 2 {
             // Standard frame response: F1 [Status] ...
-            statusByte = bytes[1]
+            statusByte = unstuffed[1]
         } else {
             // Raw frame contents (BLE stack がフレーミングを除去済み)
-            statusByte = bytes[0]
+            statusByte = unstuffed[0]
         }
         
         let stateValue = statusByte & 0x0F

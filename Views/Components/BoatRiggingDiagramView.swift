@@ -43,6 +43,7 @@ enum RiggingSide {
 }
 
 struct BoatRiggingDiagramView: View {
+    var configId: UUID = UUID()
     let span: Double
     let workHeightPort: Double
     let workHeightStarboard: Double
@@ -101,12 +102,51 @@ struct BoatRiggingDiagramView: View {
     @AppStorage("footstretchMeasurementMethod") private var footstretchMeasurementMethod: String = "fromHeel"
     @AppStorage("riggerDebugOverlay") private var riggerDebugOverlay: Bool = false
     
-    // リガー位置調整値 (ユーザーの最終調整値に基づき、デフォルト値を固定化 - AppStorageで永続)
-    @AppStorage("riggerPinYOffset_v4") private var riggerPinYOffset: Double = 13.3      // top-view ピンYオフセット(pt)
-    @AppStorage("riggerBowOffset_v4") private var riggerBowOffset: Double = 77.7        // ボウ側アンカー（ピンからの相対）
-    @AppStorage("riggerStrokeOffset_v4") private var riggerStrokeOffset: Double = -48.3 // ストローク側アンカー（ピンからの相対）
-    @AppStorage("riggerPinZOffset") private var riggerPinZOffset: Double = 0.0      // 3DピンZオフセット
-    @AppStorage("riggerXScaleFactor_v2") private var riggerXScaleFactor: Double = 0.78  // ピン近づき度 (0.4 - 1.2)
+    private static let defaultPinYOffset: Double = 13.3
+    private static let defaultBowOffset: Double = 77.7
+    private static let defaultStrokeOffset: Double = -48.3
+    private static let defaultPinZOffset: Double = 0.0
+    private static let defaultXScaleFactor: Double = 0.78
+
+    // リガー位置調整値 (艇種設定ごとにUserDefaultsへ永続化)
+    @State private var riggerPinYOffset: Double = 13.3      // top-view ピンYオフセット(pt)
+    @State private var riggerBowOffset: Double = 77.7        // ボウ側アンカー（ピンからの相対）
+    @State private var riggerStrokeOffset: Double = -48.3 // ストローク側アンカー（ピンからの相対）
+    @State private var riggerPinZOffset: Double = 0.0      // 3DピンZオフセット
+    @State private var riggerXScaleFactor: Double = 0.78  // ピン近づき度 (0.4 - 1.2)
+
+    private var riggerOffsetsStorageKey: String {
+        "riggerOffsets_\(configId.uuidString)"
+    }
+
+    private func loadRiggerOffsets() {
+        let saved = UserDefaults.standard.dictionary(forKey: riggerOffsetsStorageKey) as? [String: Double]
+        riggerPinYOffset = saved?["pinY"] ?? Self.defaultPinYOffset
+        riggerBowOffset = saved?["bow"] ?? Self.defaultBowOffset
+        riggerStrokeOffset = saved?["stroke"] ?? Self.defaultStrokeOffset
+        riggerPinZOffset = saved?["pinZ"] ?? Self.defaultPinZOffset
+        riggerXScaleFactor = saved?["xScale"] ?? Self.defaultXScaleFactor
+    }
+
+    private func saveRiggerOffsets() {
+        let dict: [String: Double] = [
+            "pinY": riggerPinYOffset,
+            "bow": riggerBowOffset,
+            "stroke": riggerStrokeOffset,
+            "pinZ": riggerPinZOffset,
+            "xScale": riggerXScaleFactor
+        ]
+        UserDefaults.standard.set(dict, forKey: riggerOffsetsStorageKey)
+    }
+
+    private func resetRiggerOffsets() {
+        riggerPinYOffset = Self.defaultPinYOffset
+        riggerBowOffset = Self.defaultBowOffset
+        riggerStrokeOffset = Self.defaultStrokeOffset
+        riggerPinZOffset = Self.defaultPinZOffset
+        riggerXScaleFactor = Self.defaultXScaleFactor
+        UserDefaults.standard.removeObject(forKey: riggerOffsetsStorageKey)
+    }
     
     // 調整モード状態
     @State private var isRiggerAdjustMode: Bool = false
@@ -210,6 +250,12 @@ struct BoatRiggingDiagramView: View {
             }
         }
         .padding(.horizontal)
+        .onAppear {
+            loadRiggerOffsets()
+        }
+        .onChange(of: configId) { _, _ in
+            loadRiggerOffsets()
+        }
     }
     
     // MARK: - Top View Diagram (Span, Footstretch, Footplate Angle)
@@ -446,10 +492,7 @@ struct BoatRiggingDiagramView: View {
                     // リセットボタン
                     Button(action: {
                         withAnimation(.spring()) {
-                            riggerPinYOffset = 13.3
-                            riggerBowOffset = 77.7
-                            riggerStrokeOffset = -48.3
-                            riggerXScaleFactor = 0.78
+                            resetRiggerOffsets()
                         }
                     }) {
                         Image(systemName: "arrow.counterclockwise")
@@ -491,6 +534,7 @@ struct BoatRiggingDiagramView: View {
                                 }
                                 .onEnded { _ in
                                     dragStartPinYOffset = riggerPinYOffset
+                                    saveRiggerOffsets()
                                 }
                         )
                         .simultaneousGesture(
@@ -515,6 +559,7 @@ struct BoatRiggingDiagramView: View {
                                 }
                                 .onEnded { _ in
                                     dragStartBowOffset = riggerBowOffset
+                                    saveRiggerOffsets()
                                 }
                         )
                     
@@ -536,6 +581,7 @@ struct BoatRiggingDiagramView: View {
                                 }
                                 .onEnded { _ in
                                     dragStartStrokeOffset = riggerStrokeOffset
+                                    saveRiggerOffsets()
                                 }
                         )
                     
@@ -560,6 +606,7 @@ struct BoatRiggingDiagramView: View {
                                 }
                                 .onEnded { _ in
                                     dragStartXScale = riggerXScaleFactor
+                                    saveRiggerOffsets()
                                 }
                         )
                         .simultaneousGesture(

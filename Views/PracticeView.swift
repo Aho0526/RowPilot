@@ -67,7 +67,7 @@ struct PracticeView: View {
             .fullScreenCover(isPresented: $ergManager.showingWorkoutExecution) {
                 PracticeWorkoutView(ergManager: ergManager)
             }
-            .navigationTitle("Practice(Dev)".localized)
+            .navigationTitle("Practice".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
@@ -824,7 +824,7 @@ private enum ApprovalResult {
 
 // MARK: - Join Team Module (Free & Pro Users)
 struct JoinTeamModule: View {
-    @StateObject private var teamViewModel = CloudflareTeamViewModel()
+    @ObservedObject private var teamViewModel = CloudflareTeamViewModel.shared
     @State private var showingTeamJoinInput = false
     @State private var showingPendingAlert = false
     @State private var pollingTask: Task<Void, Never>? = nil
@@ -1128,7 +1128,7 @@ struct JoinTeamModule: View {
 
 // MARK: - Team Management Module (Team & MAX Users)
 struct TeamManagementModule: View {
-    @StateObject private var teamViewModel = CloudflareTeamViewModel()
+    @ObservedObject private var teamViewModel = CloudflareTeamViewModel.shared
     @State private var showingTeamJoinInput = false
     @State private var showingPendingAlert = false
 
@@ -1237,7 +1237,7 @@ struct TeamManagementModule: View {
                                 Text("チーム管理".localized)
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundColor(Theme.textMain)
-                                Text("Cloudflare D1 チーム管理".localized)
+                                Text("メンバー管理・共有記録".localized)
                                     .font(.caption)
                                     .foregroundColor(Theme.textSecondary)
                                     .lineLimit(1)

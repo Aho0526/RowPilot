@@ -63,7 +63,7 @@ struct PortraitView: View {
     }
 
     private var formattedDistance: String {
-        return String(format: "%.1f", app.isSessionActive ? locationManager.totalDistance : 0.0)
+        return settingsManager.settings.distanceUnit.formatValue(app.isSessionActive ? locationManager.totalDistance : 0.0, decimalsForMeters: 1)
     }
 
     private var formattedAveragePace: String {
@@ -113,7 +113,7 @@ struct PortraitView: View {
     private func metricUnit(for metric: RowModeMetric) -> String? {
         switch metric {
         case .distance:
-            return "m"
+            return settingsManager.settings.distanceUnit.shortLabel
         case .distPerStroke:
             return "m"
         case .averagePace:
@@ -150,31 +150,51 @@ struct PortraitView: View {
                             height: geometry.size.height * 0.30
                         )
                         
-                        // GPS Indicator (Top Left)
-                        if SettingsManager.shared.settings.showGPSAccuracy {
-                            let accuracy = locationManager.previousLocation?.horizontalAccuracy ?? -1
-                            HStack(spacing: 6) {
-                                Image(systemName: "location.fill")
-                                    .font(.caption)
-                                if DeveloperModeManager.shared.isEnabled && accuracy >= 0 {
-                                    Text(String(format: "%.1fm", accuracy))
-                                        .font(.caption).bold()
-                                } else {
-                                    Text(gpsLabel(accuracy: accuracy))
-                                        .font(.caption).bold()
+                        // GPS & Battery Indicator (Top Left)
+                        HStack(spacing: 8) {
+                            if settingsManager.settings.showGPSAccuracy {
+                                let accuracy = locationManager.previousLocation?.horizontalAccuracy ?? -1
+                                HStack(spacing: 6) {
+                                    Image(systemName: "location.fill")
+                                        .font(.caption)
+                                    if DeveloperModeManager.shared.isEnabled && accuracy >= 0 {
+                                        Text(String(format: "%.1fm", accuracy))
+                                            .font(.caption).bold()
+                                    } else {
+                                        Text(gpsLabel(accuracy: accuracy))
+                                            .font(.caption).bold()
+                                    }
                                 }
+                                .foregroundColor(gpsColor(accuracy: accuracy))
+                                .padding(12)
+                                .background(Theme.cardBackground)
+                                .cornerRadius(20)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
                             }
-                            .foregroundColor(gpsColor(accuracy: accuracy))
-                            .padding(12)
-                            .background(Theme.cardBackground)
-                            .cornerRadius(20)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                            )
-                            .padding(.leading, 16)
-                            .padding(.top, 16)
+                            
+                            if settingsManager.settings.showBatteryStatus && batteryLevel >= 0 {
+                                HStack(spacing: 4) {
+                                    Image(systemName: batteryIcon(level: batteryLevel))
+                                        .font(.caption)
+                                        .foregroundColor(batteryColor(level: batteryLevel))
+                                    Text("\(Int(batteryLevel * 100))%")
+                                        .font(.caption).bold().monospacedDigit()
+                                        .foregroundColor(Theme.textMain)
+                                }
+                                .padding(12)
+                                .background(Theme.cardBackground)
+                                .cornerRadius(20)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
+                            }
                         }
+                        .padding(.leading, 16)
+                        .padding(.top, 16)
                         
                         // Help, SOS & Settings Buttons (Top Right)
                         HStack(spacing: 12) {
@@ -256,73 +276,98 @@ struct PortraitView: View {
                             height: geometry.size.height * 0.2
                         )
                     }
+                    .frame(height: geometry.size.height * 0.2)
                     
                     Divider().overlay(Theme.textSecondary.opacity(0.3))
                     
                     // 4. Controls (Bottom Area)
-                    ZStack {
-                        LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.3)], startPoint: .top, endPoint: .bottom)
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
                         
-                        VStack(spacing: 0) {
-                            Spacer(minLength: 8)
-                            
-                            if isPaused {
-                                HStack(spacing: 16) {
-                                    Button(action: {
-                                        app.resumeSession()
-                                    }) {
-                                        Text("Resume".localized)
-                                            .font(Theme.headerFont())
-                                            .frame(maxWidth: .infinity)
-                                            .frame(height: 60)
-                                            .background(Theme.accent)
-                                            .foregroundColor(Color.white)
-                                            .cornerRadius(30)
-                                            .shadow(color: Theme.accent.opacity(0.5), radius: 10, x: 0, y: 5)
-                                    }
-                                    
-                                    Button(action: {
-                                        stopSession()
-                                    }) {
-                                        Text("Stop".localized)
-                                            .font(Theme.headerFont())
-                                            .frame(maxWidth: .infinity)
-                                            .frame(height: 60)
-                                            .background(Color.red)
-                                            .foregroundColor(Color.white)
-                                            .cornerRadius(30)
-                                            .shadow(color: Color.red.opacity(0.5), radius: 10, x: 0, y: 5)
-                                    }
-                                }
-                                .padding(.horizontal, 24)
-                            } else {
+                        if isPaused {
+                            HStack(spacing: 16) {
                                 Button(action: {
-                                    if isRunning {
-                                        stopSession()
-                                    } else {
-                                        checkSOSAndStart()
-                                    }
+                                    app.resumeSession()
                                 }) {
-                                    Text(isRunning ? "Stop".localized : "Start Rowing".localized)
+                                    Text("Resume".localized)
                                         .font(Theme.headerFont())
                                         .frame(maxWidth: .infinity)
                                         .frame(height: 60)
-                                        .background(isRunning ? Color.red : Theme.accent)
+                                        .background(Theme.accent)
                                         .foregroundColor(Color.white)
                                         .cornerRadius(30)
-                                        .shadow(color: (isRunning ? Color.red : Theme.accent).opacity(0.5), radius: 10, x: 0, y: 5)
-                                        .padding(.horizontal, 40)
-                                        .scaleEffect(isRunning ? 0.98 : 1.0)
-                                        .animation(.spring(response: 0.3), value: isRunning)
+                                        .shadow(color: Theme.accent.opacity(0.5), radius: 10, x: 0, y: 5)
+                                }
+                                
+                                Button(action: {
+                                    stopSession()
+                                }) {
+                                    Text("Stop".localized)
+                                        .font(Theme.headerFont())
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 60)
+                                        .background(Color.red)
+                                        .foregroundColor(Color.white)
+                                        .cornerRadius(30)
+                                        .shadow(color: Color.red.opacity(0.5), radius: 10, x: 0, y: 5)
                                 }
                             }
-                            
-                            Spacer(minLength: 32)
+                            .padding(.horizontal, 24)
+                        } else if isRunning {
+                            HStack(spacing: 16) {
+                                Button(action: {
+                                    app.stopSession()
+                                }) {
+                                    Text("Pause".localized)
+                                        .font(Theme.headerFont())
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 60)
+                                        .background(Color.orange)
+                                        .foregroundColor(Color.white)
+                                        .cornerRadius(30)
+                                        .shadow(color: Color.orange.opacity(0.5), radius: 10, x: 0, y: 5)
+                                }
+                                
+                                Button(action: {
+                                    stopSession()
+                                }) {
+                                    Text("Stop".localized)
+                                        .font(Theme.headerFont())
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 60)
+                                        .background(Color.red)
+                                        .foregroundColor(Color.white)
+                                        .cornerRadius(30)
+                                        .shadow(color: Color.red.opacity(0.5), radius: 10, x: 0, y: 5)
+                                }
+                            }
+                            .padding(.horizontal, 24)
+                        } else {
+                            Button(action: {
+                                checkSOSAndStart()
+                            }) {
+                                Text("Start Rowing".localized)
+                                    .font(Theme.headerFont())
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 60)
+                                    .background(Theme.accent)
+                                    .foregroundColor(Color.white)
+                                    .cornerRadius(30)
+                                    .shadow(color: Theme.accent.opacity(0.5), radius: 10, x: 0, y: 5)
+                                    .padding(.horizontal, 40)
+                            }
                         }
+                        
+                        Spacer(minLength: 0)
                     }
-                    .frame(height: geometry.size.height * 0.24)
-                    .background(Theme.cardBackground)
-                    .ignoresSafeArea(edges: .bottom)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(
+                        ZStack {
+                            Rectangle().fill(Theme.cardBackground)
+                            LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.3)], startPoint: .top, endPoint: .bottom)
+                        }
+                        .ignoresSafeArea(edges: .bottom)
+                    )
                 }
                 
                 // SOS Overlay
@@ -427,6 +472,10 @@ struct PortraitView: View {
         // Removed local sheet as it's now in ContainerView
         // Removed onChange as it's now in ContainerView
         .onAppear {
+            UIDevice.current.isBatteryMonitoringEnabled = true
+            batteryLevel = UIDevice.current.batteryLevel
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
             batteryLevel = UIDevice.current.batteryLevel
         }
         .onDisappear {

@@ -85,7 +85,8 @@ struct ManagerWorkoutDashboardView: View {
                                             targetDistance: viewModel.workoutDistance,
                                             targetTime: viewModel.workoutTime,
                                             targetCalories: viewModel.workoutCalories,
-                                            isDisconnected: viewModel.disconnectedDeviceIDs.contains(device.identifier)
+                                            isDisconnected: viewModel.disconnectedDeviceIDs.contains(device.identifier),
+                                            onRetry: { viewModel.retryWorkflow(for: device.identifier) }
                                         )
                                     } else {
                                         PM5MetricsCardView(
@@ -95,7 +96,8 @@ struct ManagerWorkoutDashboardView: View {
                                             targetDistance: viewModel.workoutDistance,
                                             targetTime: viewModel.workoutTime,
                                             targetCalories: viewModel.workoutCalories,
-                                            isDisconnected: viewModel.disconnectedDeviceIDs.contains(device.identifier)
+                                            isDisconnected: viewModel.disconnectedDeviceIDs.contains(device.identifier),
+                                            onRetry: { viewModel.retryWorkflow(for: device.identifier) }
                                         )
                                     }
                                 }
@@ -617,6 +619,7 @@ struct PM5MetricsCardView: View {
     let targetTime: Int?
     let targetCalories: Int?
     let isDisconnected: Bool
+    var onRetry: (() -> Void)? = nil
     
     @AppStorage("pm5DisplayMode") private var pm5DisplayMode: Int = 1
     @AppStorage("pm5ShowSPM") private var pm5ShowSPM: Bool = true
@@ -865,19 +868,57 @@ struct PM5MetricsCardView: View {
                             Text("Resetting...".localized)
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(Theme.textSecondary)
-                        case .configuring:
+                        case .polling:
+                            ProgressView()
+                                .tint(.yellow)
+                            Text("Syncing...".localized)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.yellow)
+                        case .configuring, .idle:
                             ProgressView()
                                 .tint(.orange)
                             Text("Configuring...".localized)
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.orange)
-                        case .error(let msg):
+                        case .degraded(let msg):
                             Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text(msg)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.orange)
+                                .multilineTextAlignment(.center)
+                            if let onRetry = onRetry {
+                                Button(action: onRetry) {
+                                    Text("Retry".localized)
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(Color.orange)
+                                        .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        case .error(let msg):
+                            Image(systemName: "xmark.octagon.fill")
                                 .foregroundColor(.red)
                             Text(msg)
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.red)
-                        default:
+                                .multilineTextAlignment(.center)
+                            if let onRetry = onRetry {
+                                Button(action: onRetry) {
+                                    Text("Retry".localized)
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(Color.red)
+                                        .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        case .ready:
                             EmptyView()
                         }
                     }

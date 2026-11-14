@@ -20,13 +20,14 @@ class ICloudSyncManager: ObservableObject {
     private let fileExtension = "rowpilot"
 
     private init() {
-        self.isAvailable = true
+        self.isAvailable = FileManager.default.ubiquityIdentityToken != nil
         // url(forUbiquityContainerIdentifier:) はブロッキング呼び出しのためバックグラウンドで実行
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let url = FileManager.default.url(forUbiquityContainerIdentifier: nil)?
                 .appendingPathComponent("Documents", isDirectory: true)
             DispatchQueue.main.async {
                 self?.cachedContainerURL = url
+                self?.isAvailable = (url != nil && FileManager.default.ubiquityIdentityToken != nil)
             }
         }
     }
@@ -64,15 +65,25 @@ class ICloudSyncManager: ObservableObject {
                 return
             }
 
-            do {
-                try jsonData.write(to: fileURL, options: .atomic)
+            let coordinator = NSFileCoordinator()
+            var coordError: NSError?
+            var writeError: Error?
+            coordinator.coordinate(writingItemAt: fileURL, options: .forReplacing, error: &coordError) { url in
+                do {
+                    try jsonData.write(to: url, options: .atomic)
+                } catch {
+                    writeError = error
+                }
+            }
+            
+            if let err = coordError ?? writeError {
+                DispatchQueue.main.async { self.syncError = "アップロード失敗: \(err.localizedDescription)" }
+            } else {
                 DispatchQueue.main.async {
                     self.lastSyncDate = Date()
                     self.syncError = nil
                     print("ICloudSyncManager: Uploaded \(record.id)")
                 }
-            } catch {
-                DispatchQueue.main.async { self.syncError = "アップロード失敗: \(error.localizedDescription)" }
             }
         }
     }
@@ -161,13 +172,14 @@ class ICloudSyncManager: ObservableObject {
                     options: .skipsHiddenFiles
                 ).filter { $0.pathExtension == "rowpilot" }
 
+                var pendingURLs: [URL] = []
                 for fileURL in files {
-                    // ダウンロードが必要なファイルはダウンロードをトリガー
                     let status = try? fileURL.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
                     let downloadStatus = status?.ubiquitousItemDownloadingStatus
                     if downloadStatus != .current {
                         try? FileManager.default.startDownloadingUbiquitousItem(at: fileURL)
-                        continue // ダウンロード中は次回起動時に読み込み
+                        pendingURLs.append(fileURL)
+                        continue
                     }
 
                     var error: NSError?
@@ -177,6 +189,31 @@ class ICloudSyncManager: ObservableObject {
                             return
                         }
                         decodedItems.append(sharedData)
+                    }
+                }
+                
+                // .notDownloaded だったアイテムは最大6秒までダウンロード完了をリトライ待機 (H-10)
+                if !pendingURLs.isEmpty {
+                    let deadline = Date().addingTimeInterval(6.0)
+                    var remaining = pendingURLs
+                    while !remaining.isEmpty && Date() < deadline {
+                        Thread.sleep(forTimeInterval: 0.5)
+                        var stillPending: [URL] = []
+                        for fileURL in remaining {
+                            let status = try? fileURL.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+                            if status?.ubiquitousItemDownloadingStatus == .current {
+                                var error: NSError?
+                                coordinator.coordinate(readingItemAt: fileURL, options: [], error: &error) { url in
+                                    if let data = try? Data(contentsOf: url),
+                                       let sharedData = try? JSONDecoder().decode(SharedWorkoutData.self, from: data) {
+                                        decodedItems.append(sharedData)
+                                    }
+                                }
+                            } else {
+                                stillPending.append(fileURL)
+                            }
+                        }
+                        remaining = stillPending
                     }
                 }
             } catch {

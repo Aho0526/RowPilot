@@ -62,9 +62,10 @@ private extension SubscriptionPlan {
             ("PM5 複数台同時接続 (最大10台)".localized,  [.team, .max, .organization, .manager]),
             ("リアルタイム一斉トレーニング".localized,    [.pro, .team, .max, .organization, .manager]),
             ("マネージャープランの共有 (1名)".localized,    [.team]),
-            ("マネージャープランの共有 (5名)".localized,    [.max, .organization]),
-            ("メンバー管理 (最大25名)".localized,         [.team]),
-            ("メンバー管理 (最大80名)".localized,         [.max]),
+            ("マネージャープランの共有 (3名)".localized,    [.max]),
+            ("マネージャープランの共有 (最大5名)".localized, [.organization]),
+            ("メンバー管理 (最大30名)".localized,         [.team]),
+            ("メンバー管理 (最大100名)".localized,        [.max]),
             ("メンバー管理 (最大200名)".localized,        [.organization]),
             ("管理者の指定 (3名)".localized,             [.max]),
             ("管理者の指定 (7名)".localized,             [.organization]),
@@ -79,20 +80,19 @@ private extension SubscriptionPlan {
                 } else if self == .manager {
                     return !name.contains("共有 (") && !name.contains("メンバー管理") && !name.contains("管理者の指定") && !name.contains("(最大4台)")
                 } else if self == .team {
-                    return !name.contains("共有 (5名)") &&
-                           !name.contains("メンバー管理 (最大80名)") && !name.contains("メンバー管理 (最大200名)") &&
+                    return !name.contains("共有 (3名)") && !name.contains("共有 (最大5名)") &&
+                           !name.contains("メンバー管理 (最大100名)") && !name.contains("メンバー管理 (最大200名)") &&
                            !name.contains("管理者の指定") &&
                            !name.contains("(最大4台)")
                 } else if self == .max {
-                    return !name.contains("共有 (1名)") &&
-                           !name.contains("メンバー管理 (最大25名)") && !name.contains("メンバー管理 (最大200名)") &&
+                    return !name.contains("共有 (1名)") && !name.contains("共有 (最大5名)") &&
+                           !name.contains("メンバー管理 (最大30名)") && !name.contains("メンバー管理 (最大200名)") &&
                            !name.contains("管理者の指定 (7名)") &&
                            !name.contains("(最大4台)")
                 } else if self == .organization {
-                    return !name.contains("共有 (1名)") &&
-                           !name.contains("メンバー管理 (最大25名)") && !name.contains("メンバー管理 (最大80名)") &&
+                    return !name.contains("共有 (1名)") && !name.contains("共有 (3名)") &&
+                           !name.contains("メンバー管理 (最大30名)") && !name.contains("メンバー管理 (最大100名)") &&
                            !name.contains("管理者の指定 (3名)") &&
-                           !name.contains("(準備中)") &&
                            !name.contains("(最大4台)")
                 } else {
                     return !name.contains("共有 (") && !name.contains("メンバー管理") && !name.contains("管理者の指定") && !name.contains("(最大10台)")
@@ -219,7 +219,7 @@ struct SubscriptionView: View {
 
                 Spacer()
 
-                if subManager.isSharedManagerPlan {
+                if subManager.isSharedTeamBenefitActive {
                     Label("共有プラン".localized, systemImage: "person.2.fill")
                         .font(.caption2)
                         .fontWeight(.bold)
@@ -587,7 +587,7 @@ private struct PlanCard: View {
     private var priceDisplay: String {
         if let productId = plan.productId,
            let product = SubscriptionManager.shared.products.first(where: { $0.id == productId }) {
-            return product.displayPrice
+            return "\(product.displayPrice) / 月"
         }
         return plan.priceString.localized
     }
@@ -681,7 +681,7 @@ struct SubscriptionDetailView: View {
 
     private var priceDisplay: String {
         if let product = storeProduct {
-            return product.displayPrice
+            return "\(product.displayPrice) / 月"
         }
         return plan.priceString.localized
     }
@@ -852,9 +852,9 @@ struct SubscriptionDetailView: View {
         case .manager:
             return "Proプランの全機能に加え、PM5最大10台の同時接続や記録共有など、指導者向けのモニタリング機能を開放するプランです。".localized
         case .team:
-            return "高校部活やサークル向け。最大25名の部員を一元管理し、マネージャープランを他1名に共有してチーム運営を円滑にします。".localized
+            return "高校部活やサークル向け。最大30名の部員を一元管理し、マネージャープランを他1名に共有してチーム運営を円滑にします。".localized
         case .max:
-            return "顧問・監督・強豪校向け最上位プラン。最大80名の部員管理、複数指導者体制（管理3名/共有5名）、レースビュー、CSV出力など高度な指導・選考をフルサポートします。".localized
+            return "顧問・監督・強豪校向け最上位プラン。最大100名の部員管理、複数指導者体制（管理3名/共有3名）、レースビュー、CSV出力など高度な指導・選考をフルサポートします。".localized
         case .organization:
             return "最大5人に「RowPilot Manager」を共有でき、最大7人の管理者として指定、最大200人をメンバーとして追加できます。".localized
         }
@@ -933,7 +933,7 @@ struct SubscriptionDetailView: View {
                                         Image(systemName: plan.icon)
                                             .font(.headline)
                                     }
-                                    Text(subManager.isPurchasing ? "購入処理中..." : "\(plan.displayName) を購入 — \(priceDisplay)/月")
+                                    Text(subManager.isPurchasing ? "購入処理中..." : "\(plan.displayName) を購入 — \(priceDisplay)")
                                         .font(.headline)
                                         .fontWeight(.bold)
                                 }

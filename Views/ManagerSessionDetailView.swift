@@ -3,10 +3,23 @@ import SwiftUI
 struct ManagerSessionDetailView: View {
     let records: [RowingRecord]
     
-    @AppStorage("userSubscriptionPlan") private var currentPlan: SubscriptionPlan = .free
+    @ObservedObject private var subManager = SubscriptionManager.shared
+    @ObservedObject private var teamViewModel = CloudflareTeamViewModel.shared
     @State private var showMaxPlanAlert = false
     @State private var showSubscriptionView = false
     @State private var showingShareHelp = false
+    @State private var shareFeedbackMessage: String? = nil
+    @State private var showShareFeedbackAlert = false
+
+    private var canProxyUploadToTeam: Bool {
+        guard let team = teamViewModel.myTeam, !team.isSuspended else { return false }
+        let role = (teamViewModel.myRole ?? "").lowercased()
+        return ["owner", "admin", "manager"].contains(role)
+    }
+
+    private var assignableMembers: [CloudflareUser] {
+        teamViewModel.members.filter { $0.role.lowercased() != "pending" }
+    }
     
     var body: some View {
         ZStack {
@@ -45,9 +58,14 @@ struct ManagerSessionDetailView: View {
                         ForEach(records.sorted { ($0.pm5CustomName ?? "") < ($1.pm5CustomName ?? "") }) { record in
                             ManagerDeviceCardView(
                                 record: record,
-                                currentPlan: currentPlan,
+                                currentPlan: subManager.currentPlan,
+                                teamMembers: canProxyUploadToTeam ? assignableMembers : [],
                                 onCSVExportLocked: { showMaxPlanAlert = true },
-                                onShowShareHelp: { showingShareHelp = true }
+                                onShowShareHelp: { showingShareHelp = true },
+                                onAssignTeamMember: { member in
+                                    let prepared = WorkoutShareManager.shared.prepareManagerRecord(record)
+                                    TeamRecordUploader.shared.uploadManual(record: prepared, targetAthleteId: member.id)
+                                }
                             )
                         }
                     }
@@ -73,6 +91,25 @@ struct ManagerSessionDetailView: View {
         .sheet(isPresented: $showingShareHelp) {
             ShareHelpView()
         }
+        .alert("チーム共有", isPresented: $showShareFeedbackAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(shareFeedbackMessage ?? "")
+        }
+        .task {
+            await teamViewModel.fetchMyTeam()
+            if let team = teamViewModel.myTeam {
+                await teamViewModel.fetchMembers(teamID: team.id)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TeamWorkoutUploadSuccess"))) { notif in
+            shareFeedbackMessage = (notif.userInfo?["message"] as? String) ?? "記録がチームに共有されました。"
+            showShareFeedbackAlert = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TeamWorkoutUploadFailed"))) { notif in
+            shareFeedbackMessage = (notif.userInfo?["error"] as? String) ?? "記録の共有に失敗しました。"
+            showShareFeedbackAlert = true
+        }
     }
 }
 
@@ -80,8 +117,10 @@ struct ManagerSessionDetailView: View {
 struct ManagerDeviceCardView: View {
     let record: RowingRecord
     let currentPlan: SubscriptionPlan
+    var teamMembers: [CloudflareUser] = []
     let onCSVExportLocked: () -> Void
     let onShowShareHelp: () -> Void
+    var onAssignTeamMember: ((CloudflareUser) -> Void)? = nil
     
     private var titleText: String {
         if let custom = record.pm5CustomName, !custom.isEmpty {
@@ -129,6 +168,18 @@ struct ManagerDeviceCardView: View {
                                 Label("Export CSV (.csv)".localized, systemImage: "tablecells")
                             } else {
                                 Label("Export CSV (.csv) 👑".localized, systemImage: "tablecells")
+                            }
+                        }
+
+                        if !teamMembers.isEmpty, let onAssign = onAssignTeamMember {
+                            Menu {
+                                ForEach(teamMembers) { member in
+                                    Button(member.display_name) {
+                                        onAssign(member)
+                                    }
+                                }
+                            } label: {
+                                Label("チームメンバーへ代理登録".localized, systemImage: "person.badge.plus")
                             }
                         }
                     } label: {

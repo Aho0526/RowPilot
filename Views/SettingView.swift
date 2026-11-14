@@ -12,13 +12,12 @@ struct SettingView: View {
     @State private var showingDeleteAllAlert = false
     @State private var showingTargetEditAlert = false
     @State private var targetDistanceInput = ""
-    // CloudKitTeamManager依存を削除（Cloudflare移行中）
-    // @ObservedObject private var ckTeam = CloudKitTeamManager.shared
     @State private var showingICloudDeleteAlert = false
     @State private var showingICloudSyncAllAlert = false
     @ObservedObject private var iCloudSync = ICloudSyncManager.shared
+    @ObservedObject private var subManager = SubscriptionManager.shared
     
-    @StateObject private var teamViewModel = CloudflareTeamViewModel()
+    @ObservedObject private var teamViewModel = CloudflareTeamViewModel.shared
     @State private var showingProfileSaveResult = false
     @State private var profileSaveMessage = ""
     @AppStorage("isCloudflareProfileRegistered") private var isProfileRegistered = false
@@ -368,6 +367,22 @@ struct SettingView: View {
                     Text("Sharing Name Hint".localized)
                         .font(.caption)
                         .foregroundColor(Theme.textSecondary)
+
+                    if let authErr = subManager.authErrorMessage, !authErr.isEmpty {
+                        Divider().background(Theme.textSecondary.opacity(0.3))
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(authErr)
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                                Text("機種変更などで端末認証がロックされた場合は、チームの管理者またはオーナーに「端末認証ロックを解除」を依頼してから再度お試しください。")
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                        }
+                    }
                 }
             }
             
@@ -432,8 +447,8 @@ struct SettingView: View {
                 }
             }
             
-            // チーム管理リンク（Team以上で表示）
-            if currentPlan.hasTeamFeature {
+            // チーム管理リンク（個人プランでTeam以上を契約している場合）
+            if subManager.ownPlan.hasTeamFeature {
                 SettingsSection(title: "Team Management".localized, icon: "person.3.fill") {
                     Divider().background(Theme.textSecondary.opacity(0.3))
                     NavigationLink(destination: CloudflareTeamListView()) {
@@ -507,7 +522,7 @@ struct SettingView: View {
             // ─── チーム機能セクション ───
             if teamViewModel.myTeam != nil && teamViewModel.myRole != "pending" {
                 SettingsSection(title: "チーム管理".localized, icon: "person.3.fill") {
-                    if !currentPlan.hasTeamFeature {
+                    if !subManager.ownPlan.hasTeamFeature {
                         NavigationLink(destination: CloudflareTeamListView()) {
                             HStack {
                                 Text("チームを見る".localized)
@@ -837,9 +852,10 @@ extension SettingView {
 
             Divider().background(Color.white.opacity(0.1))
 
-            // 開発者モードを無効にするボタン（5回タップ相当を内部から呼ぶ）
+            // 開発者モードを無効にするボタン
             Button {
-                for _ in 0..<5 { _ = devMode.handleVersionTap() }
+                devMode.disable()
+                showDevToast("Developer mode disabled")
             } label: {
                 HStack {
                     Image(systemName: "xmark.circle")

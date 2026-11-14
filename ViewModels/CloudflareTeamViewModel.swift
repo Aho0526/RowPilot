@@ -3,6 +3,8 @@ import Combine
 
 @MainActor
 class CloudflareTeamViewModel: ObservableObject {
+    static let shared = CloudflareTeamViewModel()
+
     @Published var teams: [Team] = []
     @Published var members: [CloudflareUser] = []
     @Published var teamWorkouts: [CloudflareWorkoutRecord] = []
@@ -26,14 +28,30 @@ class CloudflareTeamViewModel: ObservableObject {
     @Published var myRole: String? = nil
     
     private func ensureValidToken() async -> String {
-        let userID = SubscriptionManager.shared.myUserRecordId
-        if SubscriptionManager.shared.apiToken.isEmpty && !userID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            await SubscriptionManager.shared.syncTeamPlanWithCloudflare(
-                ownerId: userID,
-                jws: SubscriptionManager.shared.lastVerifiedJWS
-            )
-        }
+        await SubscriptionManager.shared.ensureValidApiToken()
         return SubscriptionManager.shared.apiToken
+    }
+
+    private func authorizedData(for originalRequest: URLRequest) async throws -> (Data, URLResponse) {
+        var request = originalRequest
+        let token = await ensureValidToken()
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 401 {
+            let refreshed = await SubscriptionManager.shared.refreshApiToken()
+            if refreshed {
+                var retryRequest = originalRequest
+                let newToken = SubscriptionManager.shared.apiToken
+                if !newToken.isEmpty {
+                    retryRequest.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
+                }
+                return try await URLSession.shared.data(for: retryRequest)
+            }
+        }
+        return (data, response)
     }
     
     /// 旧 `GET /teams`（全チーム公開）はサーバー側で廃止済み(H2)。
@@ -48,14 +66,10 @@ class CloudflareTeamViewModel: ObservableObject {
         let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/users/\(userID)/team"
         guard let url = URL(string: urlString) else { return }
         
-        var request = URLRequest(url: url)
-        let token = await ensureValidToken()
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        let request = URLRequest(url: url)
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await authorizedData(for: request)
             if let httpResponse = response as? HTTPURLResponse {
                 if (200...299).contains(httpResponse.statusCode) {
                     // 返り値が null (所属チームなし) の場合を考慮
@@ -63,7 +77,7 @@ class CloudflareTeamViewModel: ObservableObject {
                     if responseString == "null" {
                         self.myTeam = nil
                         self.myRole = nil
-                        SubscriptionManager.shared.setCloudflareManager(false)
+                        SubscriptionManager.shared.setCloudflareTeamRole(role: nil, teamPlan: nil, isSuspended: false)
                         return
                     }
                     
@@ -72,17 +86,17 @@ class CloudflareTeamViewModel: ObservableObject {
                     self.myRole = decodedTeam.my_role
                     print("▶ fetchMyTeam Success: \(decodedTeam.name), role: \(self.myRole ?? "unknown")")
                     
-                    // アーカイブ猶予期間（30日間）が終了した場合のみ Manager 権限を停止する
-                    let isSuspended = decodedTeam.isSuspended
-                    let isManager = (self.myRole?.lowercased() == "manager") && !isSuspended
-                    SubscriptionManager.shared.setCloudflareManager(isManager)
+                    // アーカイブ猶予期間（30日間）終了後は権限共有を停止する
+                    SubscriptionManager.shared.setCloudflareTeamRole(
+                        role: self.myRole?.lowercased(),
+                        teamPlan: SubscriptionPlan(rawValue: decodedTeam.plan),
+                        isSuspended: decodedTeam.isSuspended
+                    )
                 } else if httpResponse.statusCode == 404 {
                     self.myTeam = nil
                     self.myRole = nil
-                    SubscriptionManager.shared.setCloudflareManager(false)
+                    SubscriptionManager.shared.setCloudflareTeamRole(role: nil, teamPlan: nil, isSuspended: false)
                 }
-            } else {
-                // HTTPレスポンスがない場合はネットワークエラーとみなし、状態を維持する
             }
         } catch {
             print("Fetch My Team Error:", error)
@@ -95,8 +109,6 @@ class CloudflareTeamViewModel: ObservableObject {
         defer { isLoading = false }
         errorMessage = nil
         
-        // 削除エンドポイント。/teams/delete に変更してみるか、元のままか。
-        // エラー詳細を取得して errorMessage に入れる。
         let ownerID = SubscriptionManager.shared.myUserRecordId
         let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams?id=\(teamID)&requester_id=\(ownerID)"
         guard let url = URL(string: urlString) else {
@@ -105,14 +117,10 @@ class CloudflareTeamViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         request.httpMethod = "DELETE"
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await authorizedData(for: request)
             
             if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
                 let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
@@ -124,8 +132,7 @@ class CloudflareTeamViewModel: ObservableObject {
             self.myRole = nil
             self.members = []
             self.teamWorkouts = []
-            SubscriptionManager.shared.setCloudflareManager(false)
-            // Re-fetch after delete
+            SubscriptionManager.shared.setCloudflareTeamRole(role: nil, teamPlan: nil, isSuspended: false)
             await fetchTeams()
         } catch {
             self.errorMessage = error.localizedDescription
@@ -144,10 +151,6 @@ class CloudflareTeamViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
@@ -158,7 +161,7 @@ class CloudflareTeamViewModel: ObservableObject {
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await authorizedData(for: request)
             
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 await fetchMyTeam()
@@ -189,10 +192,6 @@ class CloudflareTeamViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
@@ -201,13 +200,7 @@ class CloudflareTeamViewModel: ObservableObject {
             errorMessage = "ユーザー情報の取得中です。少し待ってから再度お試しください。"
             return
         }
-        var plan = SubscriptionManager.shared.currentPlan.rawValue
-        if let stored = UserDefaults.standard.string(forKey: "userSubscriptionPlan"),
-           let p1 = SubscriptionPlan(rawValue: plan),
-           let p2 = SubscriptionPlan(rawValue: stored),
-           p2.level > p1.level {
-            plan = stored
-        }
+        let plan = SubscriptionManager.shared.ownPlan.rawValue
         
         let displayName = SettingsManager.shared.settings.sharingName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !displayName.isEmpty {
@@ -231,23 +224,8 @@ class CloudflareTeamViewModel: ObservableObject {
             let jsonData = try JSONSerialization.data(withJSONObject: body, options: .prettyPrinted)
             request.httpBody = jsonData
             
-            print("=== createTeam Request ===")
-            print("URL: \(urlString)")
-            print("Method: \(request.httpMethod ?? "UNKNOWN")")
-            if let jsonString = String(data: jsonData, encoding: .utf8) {
-                print("Body:\n\(jsonString)")
-            }
-            print("==========================")
-            
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            print("=== createTeam Response ===")
-            if let httpResponse = response as? HTTPURLResponse {
-                print("Status: \(httpResponse.statusCode)")
-            }
+            let (data, response) = try await authorizedData(for: request)
             let responseString = String(data: data, encoding: .utf8) ?? ""
-            print("Response Body:\n\(responseString)")
-            print("===========================")
             
             if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
                 let errStr = cleanErrorMessage(from: data, fallback: responseString)
@@ -268,14 +246,10 @@ class CloudflareTeamViewModel: ObservableObject {
         let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/members"
         guard let url = URL(string: urlString) else { return }
         
-        var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        let request = URLRequest(url: url)
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await authorizedData(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 let decoded = try JSONDecoder().decode([CloudflareUser].self, from: data)
                 self.members = decoded
@@ -293,10 +267,6 @@ class CloudflareTeamViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        let token = await ensureValidToken()
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
@@ -315,23 +285,8 @@ class CloudflareTeamViewModel: ObservableObject {
             let jsonData = try JSONSerialization.data(withJSONObject: body, options: .prettyPrinted)
             request.httpBody = jsonData
             
-            print("=== createUser Request ===")
-            print("Method: \(request.httpMethod ?? "UNKNOWN")")
-            print("Sending userID: \(userID)")
-            if let jsonString = String(data: jsonData, encoding: .utf8) {
-                print("Body:\n\(jsonString)")
-            }
-            print("==========================")
-            
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
+            let (data, response) = try await authorizedData(for: request)
             let responseString = String(data: data, encoding: .utf8) ?? ""
-            print("=== createUser Response ===")
-            if let httpResponse = response as? HTTPURLResponse {
-                print("Status: \(httpResponse.statusCode)")
-            }
-            print("Response Body:\n\(responseString)")
-            print("===========================")
             
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 return true
@@ -354,10 +309,6 @@ class CloudflareTeamViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        let token = await ensureValidToken()
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
@@ -368,7 +319,7 @@ class CloudflareTeamViewModel: ObservableObject {
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await authorizedData(for: request)
             
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 // ★ fetchMyTeam()を先に呼び、myTeam/myRoleを正しく更新する
@@ -409,14 +360,10 @@ class CloudflareTeamViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         request.httpMethod = "DELETE"
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await authorizedData(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 await fetchMembers(teamID: teamID)
                 if deleteRecords {
@@ -444,7 +391,7 @@ class CloudflareTeamViewModel: ObservableObject {
             self.myRole = nil
             self.members = []
             self.teamWorkouts = []
-            SubscriptionManager.shared.setCloudflareManager(false)
+            SubscriptionManager.shared.setCloudflareTeamRole(role: nil, teamPlan: nil, isSuspended: false)
             NotificationCenter.default.post(name: NSNotification.Name("TeamJoinStatusChanged"), object: nil)
         }
         return success
@@ -458,10 +405,6 @@ class CloudflareTeamViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
@@ -472,13 +415,103 @@ class CloudflareTeamViewModel: ObservableObject {
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await authorizedData(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 await fetchMembers(teamID: teamID)
                 return true
             } else {
                 let errStr = cleanErrorMessage(from: data, fallback: "Unknown Error")
                 self.errorMessage = "Update Role Error: \(errStr)"
+                return false
+            }
+        } catch {
+            self.errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func transferOwnership(teamID: String, targetUserID: String) async -> Bool {
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/transfer-ownership"
+        guard let url = URL(string: urlString) else {
+            self.errorMessage = "Invalid URL"
+            return false
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["target_user_id": targetUserID], options: [])
+            let (data, response) = try await authorizedData(for: request)
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                await fetchMyTeam()
+                await fetchMembers(teamID: teamID)
+                return true
+            } else {
+                self.errorMessage = cleanErrorMessage(from: data, fallback: "オーナー移譲に失敗しました。")
+                return false
+            }
+        } catch {
+            self.errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func resetInviteCode(teamID: String) async -> String? {
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/reset-invite-code"
+        guard let url = URL(string: urlString) else {
+            self.errorMessage = "Invalid URL"
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            let (data, response) = try await authorizedData(for: request)
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let newCode = json["invite_code"] as? String {
+                await fetchMyTeam()
+                return newCode
+            } else {
+                self.errorMessage = cleanErrorMessage(from: data, fallback: "招待コードの再生成に失敗しました。")
+                return nil
+            }
+        } catch {
+            self.errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    func resetMemberAuth(teamID: String, userID: String) async -> Bool {
+        errorMessage = nil
+        let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/members/\(userID)/reset-auth"
+        guard let url = URL(string: urlString) else {
+            self.errorMessage = "Invalid URL"
+            return false
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            let (data, response) = try await authorizedData(for: request)
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                return true
+            } else {
+                self.errorMessage = cleanErrorMessage(from: data, fallback: "端末認証のリセットに失敗しました。")
                 return false
             }
         } catch {
@@ -493,14 +526,10 @@ class CloudflareTeamViewModel: ObservableObject {
         let urlString = "https://rowpilot-api.rowpilot-jp.workers.dev/teams/\(teamID)/workouts"
         guard let url = URL(string: urlString) else { return }
         
-        var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        let request = URLRequest(url: url)
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await authorizedData(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 let decoded = try JSONDecoder().decode([CloudflareWorkoutRecord].self, from: data)
                 self.teamWorkouts = decoded
@@ -521,16 +550,12 @@ class CloudflareTeamViewModel: ObservableObject {
         }
         
         var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         do {
             request.httpBody = try JSONEncoder().encode(record)
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await authorizedData(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 print("▶ saveWorkout Success")
                 return true
@@ -553,14 +578,10 @@ class CloudflareTeamViewModel: ObservableObject {
         guard let url = URL(string: urlString) else { return false }
         
         var request = URLRequest(url: url)
-        let token = SubscriptionManager.shared.apiToken
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         request.httpMethod = "DELETE"
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await authorizedData(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 print("▶ deleteWorkout Success")
                 // 再取得して一覧を更新

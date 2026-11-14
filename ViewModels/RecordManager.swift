@@ -138,6 +138,8 @@ class RecordManager: ObservableObject {
             handleStoreLoaded()
         }
     }
+
+    private var isSavingLocally = false
     
     private func handleStoreLoaded() {
         print("RecordManager: Store is ready. Loading records...")
@@ -147,7 +149,8 @@ class RecordManager: ObservableObject {
     
     @objc private func contextObjectsDidChange(_ notification: Notification) {
         guard let notificationContext = notification.object as? NSManagedObjectContext,
-              notificationContext === context else { return }
+              notificationContext === context,
+              !isSavingLocally else { return }
               
         DispatchQueue.main.async {
             self.fetchRecords()
@@ -166,17 +169,27 @@ class RecordManager: ObservableObject {
             let entities = try context.fetch(request)
             self.records = entities.compactMap { entity -> RowingRecord? in
                 guard var record = self.mapEntityToModel(entity) else { return nil }
-                // JSONファイルからdataPointsを復元
-                record.dataPoints = self.loadDataPoints(for: record.id)
-                // JSONファイルからcrewInfoを復元
+                // dataPoints と routePoints は詳細画面や共有時に遅延読み込みする (M9)
                 record.crewInfo = self.loadCrewInfo(for: record.id)
-                // JSONファイルからroutePointsを復元
-                record.routePoints = self.loadRoutePoints(for: record.id)
                 return record
             }
         } catch {
             print("Failed to fetch records: \(error)")
         }
+    }
+
+    func resolvedRecord(_ record: RowingRecord) -> RowingRecord {
+        var resolved = record
+        if resolved.dataPoints == nil || resolved.dataPoints?.isEmpty == true {
+            resolved.dataPoints = loadDataPoints(for: record.id)
+        }
+        if resolved.crewInfo == nil {
+            resolved.crewInfo = loadCrewInfo(for: record.id)
+        }
+        if resolved.routePoints == nil || resolved.routePoints?.isEmpty == true {
+            resolved.routePoints = loadRoutePoints(for: record.id)
+        }
+        return resolved
     }
     
     func addRecord(_ record: RowingRecord) {
@@ -202,20 +215,13 @@ class RecordManager: ObservableObject {
         saveContext()
         fetchRecords()
         
-        // チームに参加中の場合、Shared DBにワークアウトをアップロード（個人データの正本はPrivate DB/CoreDataに保存済み）
-        TeamRecordUploader.shared.uploadIfNeeded(record: record)
+        // マネージャーの複数台セッション記録は選手への自動共有・個人成績混入を避けるため自動アップロード対象外にする (C1)
+        if record.managerSessionId == nil {
+            TeamRecordUploader.shared.uploadIfNeeded(record: record)
+        }
         
         // iCloud Driveに.rowpilotファイルとしてアップロード（フルデータ）
-        var recordForCloud = record
-        if recordForCloud.dataPoints == nil || recordForCloud.dataPoints?.isEmpty == true {
-            recordForCloud.dataPoints = loadDataPoints(for: record.id)
-        }
-        if recordForCloud.crewInfo == nil {
-            recordForCloud.crewInfo = loadCrewInfo(for: record.id)
-        }
-        if recordForCloud.routePoints == nil || recordForCloud.routePoints?.isEmpty == true {
-            recordForCloud.routePoints = loadRoutePoints(for: record.id)
-        }
+        let recordForCloud = resolvedRecord(record)
         ICloudSyncManager.shared.upload(record: recordForCloud)
     }
     
@@ -282,6 +288,7 @@ class RecordManager: ObservableObject {
                 context.delete(object)
             }
             saveContext()
+            fetchRecords()
         } catch {
             print("Failed to delete record: \(error)")
         }
@@ -307,8 +314,11 @@ class RecordManager: ObservableObject {
                 
                 fetchRecords()
                 if let updated = self.records.first(where: { $0.id == id }) {
-                    ICloudSyncManager.shared.upload(record: updated)
-                    TeamRecordUploader.shared.uploadIfNeeded(record: updated)
+                    let fullUpdated = resolvedRecord(updated)
+                    ICloudSyncManager.shared.upload(record: fullUpdated)
+                    if fullUpdated.managerSessionId == nil {
+                        TeamRecordUploader.shared.uploadIfNeeded(record: fullUpdated)
+                    }
                 }
             }
         } catch {
@@ -325,8 +335,11 @@ class RecordManager: ObservableObject {
         }
         fetchRecords()
         if let updated = self.records.first(where: { $0.id == id }) {
-            ICloudSyncManager.shared.upload(record: updated)
-            TeamRecordUploader.shared.uploadIfNeeded(record: updated)
+            let fullUpdated = resolvedRecord(updated)
+            ICloudSyncManager.shared.upload(record: fullUpdated)
+            if fullUpdated.managerSessionId == nil {
+                TeamRecordUploader.shared.uploadIfNeeded(record: fullUpdated)
+            }
         }
     }
     
@@ -347,6 +360,8 @@ class RecordManager: ObservableObject {
     
     private func saveContext() {
         if context.hasChanges {
+            isSavingLocally = true
+            defer { isSavingLocally = false }
             do {
                 try context.save()
             } catch {
@@ -478,15 +493,20 @@ class RecordManager: ObservableObject {
     }
     
     // MARK: - Statistics
+
+    /// マネージャー複数台計測セッション（managerSessionId != nil）を除いた個人記録
+    private var personalRecords: [RowingRecord] {
+        records.filter { $0.managerSessionId == nil }
+    }
     
-    var totalDistance: Double { records.reduce(0) { $0 + $1.distance } }
-    var totalDuration: TimeInterval { records.reduce(0) { $0 + $1.duration } }
-    var totalCount: Int { records.count }
+    var totalDistance: Double { personalRecords.reduce(0) { $0 + $1.distance } }
+    var totalDuration: TimeInterval { personalRecords.reduce(0) { $0 + $1.duration } }
+    var totalCount: Int { personalRecords.count }
     
     var recordsThisMonth: [RowingRecord] {
         let calendar = Calendar.current
         let now = Date()
-        return records.filter { calendar.isDate($0.date, equalTo: now, toGranularity: .month) }
+        return personalRecords.filter { calendar.isDate($0.date, equalTo: now, toGranularity: .month) }
     }
     
     var monthlyDistance: Double { recordsThisMonth.reduce(0) { $0 + $1.distance } }
@@ -517,9 +537,10 @@ class RecordManager: ObservableObject {
     }
     
     func stats(for records: [RowingRecord]) -> (distance: Double, duration: TimeInterval, count: Int) {
-        let dist = records.reduce(0) { $0 + $1.distance }
-        let dur = records.reduce(0) { $0 + $1.duration }
-        return (dist, dur, records.count)
+        let personalOnly = records.filter { $0.managerSessionId == nil }
+        let dist = personalOnly.reduce(0) { $0 + $1.distance }
+        let dur = personalOnly.reduce(0) { $0 + $1.duration }
+        return (dist, dur, personalOnly.count)
     }
     
     func isOutdoor(_ record: RowingRecord) -> Bool {

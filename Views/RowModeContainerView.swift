@@ -5,6 +5,8 @@ import MessageUI
 /// GeometryReaderでwidth > heightを判定し、縦横画面を切り替える
 struct RowModeContainerView: View {
     @EnvironmentObject var app: AppViewModel
+    @ObservedObject private var soundManager = SoundManager.shared
+    @ObservedObject private var settingsManager = SettingsManager.shared
     
     /// 前回のジオメトリ状態を追跡してロック解除タイミングを検出
     @State private var wasPortrait: Bool = true
@@ -41,6 +43,41 @@ struct RowModeContainerView: View {
                     if !newValue && app.landscapeLocked {
                         app.unlockLandscape()
                     }
+                }
+                
+                // 画面回転後も継続してSOS警報を停止できるフローティングバナー (M-8)
+                if soundManager.isSOSActive {
+                    VStack {
+                        HStack(spacing: 12) {
+                            Image(systemName: "sos.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                            Text("SOS Alarm Active".localized)
+                                .font(.subheadline.bold())
+                                .foregroundColor(.white)
+                            Spacer()
+                            Button(action: {
+                                soundManager.stopSOS()
+                            }) {
+                                Text("Stop SOS".localized)
+                                    .font(.caption.bold())
+                                    .foregroundColor(.red)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.white)
+                                    .cornerRadius(14)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.red.opacity(0.92))
+                        .cornerRadius(14)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+                        Spacer()
+                    }
+                    .zIndex(300)
                 }
             }
             .sheet(isPresented: $showingSOSMessage) {
@@ -133,10 +170,30 @@ struct RowModeContainerView: View {
             AppDelegate.orientationLock = .allButUpsideDown
             updateIdleTimer()
             triggerLowPowerWarningIfNeeded()
+            if !isIPad {
+                app.startAutoStartStandbyIfNeeded()
+            }
         }
         .onDisappear {
+            app.stopAutoStartStandby()
             AppDelegate.orientationLock = .portrait
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { error in
+                    print("RowModeContainerView: Failed to restore portrait orientation: \(error.localizedDescription)")
+                }
+                for window in windowScene.windows {
+                    window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+                }
+            }
             UIApplication.shared.isIdleTimerDisabled = false // Restore default behavior
+        }
+        .onChange(of: settingsManager.settings.autoStartOnMotion) { _, enabled in
+            guard !isIPad else { return }
+            if enabled {
+                app.startAutoStartStandbyIfNeeded()
+            } else {
+                app.stopAutoStartStandby()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
             updateIdleTimer()
